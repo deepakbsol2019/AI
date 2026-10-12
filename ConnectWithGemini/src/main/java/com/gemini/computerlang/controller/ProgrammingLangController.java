@@ -1,6 +1,8 @@
 package com.gemini.computerlang.controller;
 
 
+import java.util.List;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,6 +24,12 @@ public class ProgrammingLangController {
 	@GetMapping("/lang-dtls")
 	public ResponseEntity<ProgrammingLagModel> getDetails(@RequestParam String userQuestion){
 		ProgrammingLagModel dtls = programmingLangService.getDtls(userQuestion);
+		return new ResponseEntity<>(dtls,HttpStatus.OK);
+	}
+	
+	@GetMapping("/lang-dtls-list")
+	public ResponseEntity<List<ProgrammingLagModel>> getDetailsList(@RequestParam String userQuestion){
+		List<ProgrammingLagModel> dtls = programmingLangService.getDtlsList(userQuestion);
 		return new ResponseEntity<>(dtls,HttpStatus.OK);
 	}
 
