@@ -1,4 +1,4 @@
-package com.gemini.computerlang.controller;
+package com.gemini.controller;
 
 
 import java.util.List;
@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.gemini.computerlang.service.ProgrammingLangService;
+import com.gemini.chatservice.ProgrammingLangService;
 import com.gemini.model.ProgrammingLagModel;
 
 @RestController

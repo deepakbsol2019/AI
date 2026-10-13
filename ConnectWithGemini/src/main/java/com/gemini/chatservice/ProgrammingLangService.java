@@ -1,4 +1,4 @@
-package com.gemini.computerlang.service;
+package com.gemini.chatservice;
 
 import java.util.List;
 
