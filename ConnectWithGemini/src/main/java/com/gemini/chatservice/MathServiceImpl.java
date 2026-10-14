@@ -1,6 +1,5 @@
 package com.gemini.chatservice;
 
-import org.jspecify.annotations.Nullable;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 
@@ -17,21 +16,14 @@ public class MathServiceImpl implements MathService{
 	@Override
 	public MathModel singleQuentionAns(String question) {
 		try {
-			@Nullable
-			String content = chatClient.prompt()
+			return chatClient.prompt()
 					//.system("")
 					.user(question)
 					.call()
-					.content();
-			System.out.println("contant ::"+content);
-					//.entity(MathModel.class);
-			 
-			 return new MathModel(question, null, question, question, question, null, null, null);
+					.entity(MathModel.class);
 		}catch(Exception e) {
-			System.out.println("exception :: "+e);
 			throw new CustException(e.getMessage());
 		}
-		
 	}
 
 }
