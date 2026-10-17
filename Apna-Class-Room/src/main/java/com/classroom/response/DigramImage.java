@@ -12,6 +12,7 @@ public class DigramImage {
 	private List<String> labels;
 	private String formula;
 	private String imageUrl;
+	private String imageBase64;
 	public String getTitle() {
 		return title;
 	}
@@ -60,8 +61,14 @@ public class DigramImage {
 	public void setImageUrl(String imageUrl) {
 		this.imageUrl = imageUrl;
 	}
+	public String getImageBase64() {
+		return imageBase64;
+	}
+	public void setImageBase64(String imageBase64) {
+		this.imageBase64 = imageBase64;
+	}
 	public DigramImage(String title, String type, String style, String description, List<String> objects,
-			List<String> labels, String formula, String imageUrl) {
+			List<String> labels, String formula, String imageUrl, String imageBase64) {
 		super();
 		this.title = title;
 		this.type = type;
@@ -71,6 +78,7 @@ public class DigramImage {
 		this.labels = labels;
 		this.formula = formula;
 		this.imageUrl = imageUrl;
+		this.imageBase64 = imageBase64;
 	}
 	public DigramImage() {
 		super();
