@@ -2,6 +2,7 @@ package com.classroom.config;
 
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
+import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -13,6 +14,9 @@ public class ChatClientConfig {
 	public ChatClient chatClient(ChatClient.Builder builder) {
 		return builder
 				.defaultAdvisors(new SimpleLoggerAdvisor())
+				.defaultOptions(ChatOptions.builder().model("qwen3:1.7b")
+		                .temperature(0.2)
+		                .maxTokens(1500))
 				.build();
 	}
 }

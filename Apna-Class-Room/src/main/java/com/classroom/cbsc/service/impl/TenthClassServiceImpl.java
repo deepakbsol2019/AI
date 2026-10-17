@@ -3,7 +3,13 @@ package com.classroom.cbsc.service.impl;
 import java.util.List;
 import java.util.Map;
 
+import org.jspecify.annotations.Nullable;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.memory.ChatMemoryRepository;
+import org.springframework.ai.chat.memory.InMemoryChatMemoryRepository;
+import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
@@ -97,11 +103,23 @@ public class TenthClassServiceImpl implements TenthClassService {
                 List.of(systemMessage, userMessage)
         );
 
-        // 5. Call Gemini
+        MessageWindowChatMemory messageWindowChatMemory = MessageWindowChatMemory.builder().build();
+		MessageChatMemoryAdvisor messageChatMemoryAdvisor = MessageChatMemoryAdvisor.builder(messageWindowChatMemory).build();
+		
         ResponseModel response = chatClient.prompt(prompt)
+        		.advisors(messageChatMemoryAdvisor)
+        		.advisors(e->e.param(ChatMemory.CONVERSATION_ID, student.getId().toString()))
                 .call()
                 .entity(ResponseModel.class);
-
+		
+//		String content = chatClient.prompt(prompt)
+//		.advisors(messageChatMemoryAdvisor)
+//		.advisors(e->e.param(ChatMemory.CONVERSATION_ID, student.getId().toString()))
+//		.call()
+//		.content();
+//		System.out.println("Final Result ::"+content);
+//		ResponseModel response =new ResponseModel();
+		
         if (response == null) {
             throw new IllegalStateException(
                     "AI returned an empty response");
