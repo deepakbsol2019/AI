@@ -19,4 +19,9 @@ public class FindAnswerFromAICtr {
 	public String findAnswer(@RequestParam String question) {
 		return findAnswerFromAI.findUserQuestionAnswer(question);
 	}
+	
+	@GetMapping("/search-adv")
+	public String searchAdv(@RequestParam String question) {
+		return findAnswerFromAI.searchAdv(question);
+	}
 }

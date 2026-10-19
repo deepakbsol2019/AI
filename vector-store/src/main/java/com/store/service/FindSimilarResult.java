@@ -6,4 +6,5 @@ public interface FindSimilarResult {
 
 	List<String> findSimilarDataByQuestion(String question);
 
+
 }

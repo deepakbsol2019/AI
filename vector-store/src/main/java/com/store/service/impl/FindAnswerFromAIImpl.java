@@ -3,7 +3,15 @@ package com.store.service.impl;
 import java.util.List;
 
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
+import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.memory.ChatMemoryRepository;
+import org.springframework.ai.chat.memory.InMemoryChatMemoryRepository;
+import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.vectorstore.SearchRequest;
+import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
@@ -19,11 +27,13 @@ public class FindAnswerFromAIImpl implements FindAnswerFromAI{
 	@Value("classpath:user_message.st")
 	private Resource userResource;
 	
+	private final VectorStore vectorStore;
 	private final FindSimilarResult findSimilarResult;
 	private final ChatClient chatClient;
-	public FindAnswerFromAIImpl(ChatClient chatClient,FindSimilarResult findSimilarResult) {
+	public FindAnswerFromAIImpl(ChatClient chatClient,FindSimilarResult findSimilarResult,VectorStore vectorStore) {
 		this.chatClient=chatClient;
 		this.findSimilarResult=findSimilarResult;
+		this.vectorStore=vectorStore;
 	}
 	@Override
 	public String findUserQuestionAnswer(String question) {
@@ -35,5 +45,32 @@ public class FindAnswerFromAIImpl implements FindAnswerFromAI{
 		.call()
 		.content();
 	}
+	@Override
+	public String searchAdv(String question) {
+		QuestionAnswerAdvisor questionAnswerAdvisor = QuestionAnswerAdvisor.builder(vectorStore)
+		.searchRequest(searchRequest(question)).build();
+		
+		ChatMemoryRepository chatMemoryRepository=new InMemoryChatMemoryRepository();
+		ChatMemory chatMemory=MessageWindowChatMemory.builder()
+				.chatMemoryRepository(chatMemoryRepository)
+				.maxMessages(10)
+				.build();
+		MessageChatMemoryAdvisor memoryAdvisor= MessageChatMemoryAdvisor.builder(chatMemory)
+				.build();
+		
+		return chatClient.prompt()
+		.user(question)
+		.advisors(questionAnswerAdvisor)
+		.advisors(e->e.advisors(memoryAdvisor).param(ChatMemory.CONVERSATION_ID, "deepak"))
+		.call()
+		.content();
+	}
 
+	public SearchRequest searchRequest(String question) {
+		return  SearchRequest.builder()
+		.topK(5)
+		.query(question)
+		.similarityThreshold(0.4)
+		.build();
+	}
 }

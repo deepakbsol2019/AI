@@ -26,5 +26,4 @@ public class FindSimilarResultImpl implements FindSimilarResult{
 		List<Document> similaritySearch = vectorStore.similaritySearch(searchRequest);
 		return similaritySearch.stream().map(d->d.getText()).toList();
 	}
-
 }
