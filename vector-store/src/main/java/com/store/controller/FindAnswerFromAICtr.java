@@ -24,4 +24,9 @@ public class FindAnswerFromAICtr {
 	public String searchAdv(@RequestParam String question) {
 		return findAnswerFromAI.searchAdv(question);
 	}
+	
+	@GetMapping("/retrival-arg-ad")
+	public String getByRetrivalArgumentedAdvisor(String question) {
+		return findAnswerFromAI.getByRetrivalArgementionAdvisor(question);
+	}
 }
