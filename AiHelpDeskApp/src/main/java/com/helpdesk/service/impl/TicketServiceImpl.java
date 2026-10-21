@@ -1,5 +1,7 @@
 package com.helpdesk.service.impl;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -7,6 +9,7 @@ import org.springframework.stereotype.Service;
 
 import com.helpdesk.custException.CustomException;
 import com.helpdesk.enitity.Ticket;
+import com.helpdesk.enitity.TicketPriority;
 import com.helpdesk.enitity.TicketStatus;
 import com.helpdesk.repo.TicketRepository;
 import com.helpdesk.service.TicketService;
@@ -42,5 +45,18 @@ public class TicketServiceImpl implements TicketService {
 	
 	public Ticket updateTicket(Ticket ticket) {
 		return ticketRepository.save(ticket);
+	}
+
+	@Override
+	public List<Ticket> findTicketByTicketPriority(TicketPriority ticketPriority) {
+		return ticketRepository.findTicketByTicketPriority(ticketPriority);
+	}
+
+	@Override
+	public List<Ticket> findTicketByCreatedOn(LocalDate createdOn) {
+		LocalDateTime startDate = createdOn.atStartOfDay();
+	    LocalDateTime endDate = createdOn.plusDays(1).atStartOfDay();
+	    System.out.println("startDate :: "+startDate+" endDate :: "+endDate);
+		return ticketRepository.findByCreatedOnGreaterThanEqualAndCreatedOnLessThan(startDate,endDate);
 	}
 }
