@@ -4,26 +4,41 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
 import org.springframework.stereotype.Service;
 
 import com.helpdesk.custException.CustomException;
+import com.helpdesk.email.HelpdeskSendEmailService;
 import com.helpdesk.enitity.Ticket;
 import com.helpdesk.enitity.TicketPriority;
 import com.helpdesk.enitity.TicketStatus;
 import com.helpdesk.repo.TicketRepository;
 import com.helpdesk.service.TicketService;
+
+import jakarta.transaction.Transactional;
 @Service
 public class TicketServiceImpl implements TicketService {
 
 	private final TicketRepository ticketRepository;
-	public TicketServiceImpl(TicketRepository ticketRepository) {
+	private final HelpdeskSendEmailService helpdeskSendEmailService;
+	public TicketServiceImpl(TicketRepository ticketRepository,HelpdeskSendEmailService helpdeskSendEmailService) {
 		this.ticketRepository=ticketRepository;
+		this.helpdeskSendEmailService=helpdeskSendEmailService;
 	}
 	
+	@Transactional(rollbackOn = Exception.class)
 	public Ticket createTicket(Ticket ticket) {
 		Ticket save = ticketRepository.save(ticket);
 		System.out.println("Saved Ticket ::"+save);
+		CompletableFuture<Void> createrMail = CompletableFuture.runAsync(()->{
+			helpdeskSendEmailService.sendMailToCreatorTicketCreated("kumar.dpk03@gmail.com", ticket);
+		});
+		CompletableFuture<Void> assignedTo = CompletableFuture.runAsync(()->{
+			helpdeskSendEmailService.sendMailTicketAssignedTo("kumar.dpk03@gmail.com", ticket);
+		});
+		createrMail.join();
+		assignedTo.join();
 		return save;
 	}
 	
@@ -38,6 +53,7 @@ public class TicketServiceImpl implements TicketService {
 		return tickets.orElseThrow(()->new CustomException("Ticket not found with ticket status ::"+ticketStatus));
 	}
 	
+	@Transactional(rollbackOn = Exception.class)
 	public Ticket updateTicket(Ticket ticket) {
 		return ticketRepository.save(ticket);
 	}
