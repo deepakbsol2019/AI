@@ -7,6 +7,7 @@ import java.util.List;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 
+import com.helpdesk.enitity.HelpdeskUsers;
 import com.helpdesk.enitity.Ticket;
 import com.helpdesk.enitity.TicketPriority;
 import com.helpdesk.enitity.TicketStatus;
@@ -30,13 +31,22 @@ public interface TicketTools {
 	public Ticket findTicketById(@ToolParam(description = "This is input parameter of type Long, this is primary key in table") Long ticketId);
 	
 	@Tool(description = """
-	        Find tickets by userName.
+	        Find all tickets created by userName.
 	        Valid userName is String type.
 	        Returns a JSON array of tickets.
 	        If no tickets exist, returns an empty array.
 	        """,returnDirect = true
 			)
-	public List<Ticket> findTicketByUserName(@ToolParam(description = "userName is input data for this function of type String.") String userName);
+	public List<Ticket> findTicketCreatedByUserName(@ToolParam(description = "userName is input data for this function of type String.") String userName);
+	
+	@Tool(description = """
+	        Find all tickets assigned to userName.
+	        Valid userName is String type.
+	        Returns a JSON array of tickets.
+	        If no tickets exist, returns an empty array.
+	        """,returnDirect = true
+			)
+	public List<Ticket> findTicketAssignedToUserName(@ToolParam(description = "userName is input data for this function of type String.") String userName);
 	
 	@Tool(description = """
 	        Find tickets by status.
@@ -75,4 +85,36 @@ public interface TicketTools {
 			)
 	public List<Ticket> findTicketByCreatedOn(@ToolParam(description = "createdOn is the input parameter of type local date time. use this paramert to filter the ticket data from table.",required = true) LocalDate createdOn);
 		
+	@Tool(
+		    name = "findHelpdeskUserByUserName",
+		    description = """
+		        Find an existing helpdesk user by exact username.
+		        Returns user information if found.
+		        Returns null if the user does not exist.
+		        """,
+		    returnDirect = false
+		)
+		public HelpdeskUsers findHelpdeskUserByUserName(
+		    @ToolParam(description = "Exact username to search")
+		    String username
+		);
+	
+	@Tool(
+		    name = "findTicketAssignedTo",
+		    description = """
+		        Select the best SUPPORT department user for assigning
+		        a new helpdesk ticket.
+
+		        Selection rules:
+		        1. Fewest OPEN tickets.
+		        2. If tied, fewest INPROGRESS tickets.
+		        3. If tied, highest total assigned ticket count.
+		        4. If still tied, select any user.
+
+		        Returns the selected support user.
+		        Use this tool when a new ticket needs assignment.
+		        """,
+		    returnDirect = false
+		)
+		public HelpdeskUsers findTicketAssignedTo();
 }

@@ -2,13 +2,14 @@ package com.helpdesk.pipeline.impl;
 import java.util.List;
 
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 
 import com.helpdesk.enitity.Ticket;
 import com.helpdesk.pipeline.AiModelPipeLine;
 import com.helpdesk.tools.GeneralTool;
 import com.helpdesk.tools.TicketTools;
-import com.helpdesk.tools.impl.GeneralToolImpl;
 
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
@@ -16,6 +17,8 @@ import tools.jackson.databind.json.JsonMapper;
 @Service
 public class AiModelPipeLineImpl implements AiModelPipeLine {
 
+	@Value("classpath:helpdesk.st")
+	private Resource resource;
 	private final ChatClient chatClient;
 	private final TicketTools ticketTools;
 	private final JsonMapper jsonMapper;
@@ -90,6 +93,17 @@ public class AiModelPipeLineImpl implements AiModelPipeLine {
                 response,
                 new TypeReference<List<Ticket>>() {}
         );
+	}
+	@Override
+	public String connectWithHelpDesk(String question) {
+		
+		return chatClient.prompt()
+				.system(resource)
+				.user(question)
+				.tools(ticketTools,generalTool)
+				.call()
+				.content();
+		
 	}
 
 }

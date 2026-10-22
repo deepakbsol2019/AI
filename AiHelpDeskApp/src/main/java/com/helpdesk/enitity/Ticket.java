@@ -6,10 +6,14 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Lob;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
@@ -17,110 +21,151 @@ import jakarta.persistence.Table;
 @Entity
 @Table(name = "Ticket_Dtls")
 public class Ticket {
-
+	
 	@Id
-	@GeneratedValue(strategy = GenerationType.IDENTITY)
-	private Long ticketId;
-	
-	@Lob
-	private String ticketSummary;
-	
-	@Enumerated(EnumType.STRING)
-	private TicketPriority ticketPriority;
-	
-	@Column(unique = true,length = 25)
-	private String userName;
-	
-	private LocalDateTime createdOn;
-	
-	private LocalDateTime updatedOn;
-	
-	@Enumerated(EnumType.STRING)
-	private TicketStatus status;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long ticketId;
 
-	public Long getTicketId() {
-		return ticketId;
-	}
+    @Lob
+    @Column(name = "ticket_summary")
+    private String ticketSummary;
 
-	public void setTicketId(Long ticketId) {
-		this.ticketId = ticketId;
-	}
+    @Enumerated(EnumType.STRING)
+    @Column(name = "issue_type", length = 30)
+    private IssueTypes issueType;
 
-	public String getTicketSummary() {
-		return ticketSummary;
-	}
+    @Enumerated(EnumType.STRING)
+    @Column(name = "ticket_priority", length = 20)
+    private TicketPriority ticketPriority;
 
-	public void setTicketSummary(String ticketSummary) {
-		this.ticketSummary = ticketSummary;
-	}
+    @Enumerated(EnumType.STRING)
+    @Column(name = "ticket_status", length = 25)
+    private TicketStatus status;
 
-	public TicketPriority getTicketPriority() {
-		return ticketPriority;
-	}
+    // One user can create multiple tickets.
+    // References an existing HelpdeskUsers record.
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(
+        name = "created_by_user_id",
+        referencedColumnName = "userId",
+        nullable = false
+    )
+    private HelpdeskUsers createdBy;
 
-	public void setTicketPriority(TicketPriority ticketPriority) {
-		this.ticketPriority = ticketPriority;
-	}
+    // One support user can be assigned multiple tickets.
+    // Null is allowed before ticket assignment.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+        name = "assigned_to_user_id",
+        referencedColumnName = "userId"
+    )
+    private HelpdeskUsers assignedTo;
 
-	public String getUserName() {
-		return userName;
-	}
+    @Column(
+        name = "created_on",
+        nullable = false,
+        updatable = false
+    )
+    private LocalDateTime createdOn;
 
-	public void setUserName(String userName) {
-		this.userName = userName;
-	}
+    @Column(name = "updated_on", nullable = false)
+    private LocalDateTime updatedOn;
 
-	public LocalDateTime getCreatedOn() {
-		return createdOn;
-	}
+    @PrePersist
+    public void onCreate() {
+        LocalDateTime now = LocalDateTime.now();
+        createdOn = now;
+        updatedOn = now;
+        
+        issueType=issueType != null ? issueType : IssueTypes.UNKNOWN_ISSUE;
+    }
+    
 
-	public void setCreatedOn(LocalDateTime createdOn) {
-		this.createdOn = createdOn;
-	}
+    @PreUpdate
+    public void onUpdate() {
+        updatedOn = LocalDateTime.now();
+    }
 
-	public LocalDateTime getUpdatedOn() {
-		return updatedOn;
-	}
+    public Ticket() {
+    }
 
-	public void setUpdatedOn(LocalDateTime updatedOn) {
-		this.updatedOn = updatedOn;
-	}
+    public Ticket(
+            String ticketSummary,
+            IssueTypes issueType,
+            TicketPriority ticketPriority,
+            TicketStatus status,
+            HelpdeskUsers createdBy,
+            HelpdeskUsers assignedTo) {
 
-	public TicketStatus getStatus() {
-		return status;
-	}
+        this.ticketSummary = ticketSummary;
+        this.issueType = issueType;
+        this.ticketPriority = ticketPriority;
+        this.status = status;
+        this.createdBy = createdBy;
+        this.assignedTo = assignedTo;
+    }
 
-	public void setStatus(TicketStatus status) {
-		this.status = status;
-	}
+    public Long getTicketId() {
+        return ticketId;
+    }
 
-	public Ticket(Long ticketId, String ticketSummary, TicketPriority ticketPriority, String userName,
-			LocalDateTime createdOn, LocalDateTime updatedOn, TicketStatus status) {
-		super();
-		this.ticketId = ticketId;
-		this.ticketSummary = ticketSummary;
-		this.ticketPriority = ticketPriority;
-		this.userName = userName;
-		this.createdOn = createdOn;
-		this.updatedOn = updatedOn;
-		this.status = status;
-	}
+    public void setTicketId(Long ticketId) {
+        this.ticketId = ticketId;
+    }
 
-	public Ticket() {
-		super();
-		// TODO Auto-generated constructor stub
-	}
+    public String getTicketSummary() {
+        return ticketSummary;
+    }
 
-	@PrePersist
-	public void setBothDate() {
-		if(null==createdOn)
-			createdOn=LocalDateTime.now();
-		if(null==updatedOn)
-			updatedOn=LocalDateTime.now();
-	}
-	
-	@PreUpdate
-	public void setDateUpdatedOn() {
-		updatedOn=LocalDateTime.now();
-	}
+    public void setTicketSummary(String ticketSummary) {
+        this.ticketSummary = ticketSummary;
+    }
+
+    public IssueTypes getIssueType() {
+        return issueType;
+    }
+
+    public void setIssueType(IssueTypes issueType) {
+        this.issueType = issueType;
+    }
+
+    public TicketPriority getTicketPriority() {
+        return ticketPriority;
+    }
+
+    public void setTicketPriority(TicketPriority ticketPriority) {
+        this.ticketPriority = ticketPriority;
+    }
+
+    public TicketStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(TicketStatus status) {
+        this.status = status;
+    }
+
+    public HelpdeskUsers getCreatedBy() {
+        return createdBy;
+    }
+
+    public void setCreatedBy(HelpdeskUsers createdBy) {
+        this.createdBy = createdBy;
+    }
+
+    public HelpdeskUsers getAssignedTo() {
+        return assignedTo;
+    }
+
+    public void setAssignedTo(HelpdeskUsers assignedTo) {
+        this.assignedTo = assignedTo;
+    }
+
+    public LocalDateTime getCreatedOn() {
+        return createdOn;
+    }
+
+    public LocalDateTime getUpdatedOn() {
+        return updatedOn;
+    }	
 }

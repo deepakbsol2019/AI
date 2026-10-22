@@ -10,7 +10,8 @@ import com.helpdesk.enitity.TicketPriority;
 import com.helpdesk.enitity.TicketStatus;
 public interface TicketRepository extends JpaRepository<Ticket, Long> {
 
-	Optional<List<Ticket>> findByUserName(String userName);
+	List<Ticket> findByCreatedBy_Username(String username);
+	List<Ticket> findByAssignedTo_Username(String username);
 
 	Optional<List<Ticket>> findTicketByStatus(TicketStatus ticketStatus);
 

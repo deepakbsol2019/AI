@@ -33,11 +33,6 @@ public class TicketServiceImpl implements TicketService {
 		return ticket.orElseThrow(()->new CustomException("Ticket not found for ticket id :: "+ticketId));
 	}
 	
-	public List<Ticket> findTicketByUserName(String userName){
-		Optional<List<Ticket>> tickets=ticketRepository.findByUserName(userName);
-		return tickets.orElseThrow(()->new CustomException("Ticket Not available for userName ::"+userName));
-	}
-	
 	public List<Ticket> findTicketByStatus(TicketStatus ticketStatus){
 		Optional<List<Ticket>> tickets=ticketRepository.findTicketByStatus(ticketStatus);
 		return tickets.orElseThrow(()->new CustomException("Ticket not found with ticket status ::"+ticketStatus));
@@ -58,5 +53,15 @@ public class TicketServiceImpl implements TicketService {
 	    LocalDateTime endDate = createdOn.plusDays(1).atStartOfDay();
 	    System.out.println("startDate :: "+startDate+" endDate :: "+endDate);
 		return ticketRepository.findByCreatedOnGreaterThanEqualAndCreatedOnLessThan(startDate,endDate);
+	}
+
+	@Override
+	public List<Ticket> findTicketCreatedByUserName(String userName) {
+		return ticketRepository.findByCreatedBy_Username(userName);
+	}
+
+	@Override
+	public List<Ticket> findTicketAssignedToUserName(String userName) {
+		return ticketRepository.findByAssignedTo_Username(userName);
 	}
 }

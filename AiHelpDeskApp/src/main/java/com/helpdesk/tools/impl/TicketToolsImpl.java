@@ -3,20 +3,28 @@ package com.helpdesk.tools.impl;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
+import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Component;
 
+import com.helpdesk.custException.CustomException;
+import com.helpdesk.enitity.DepartmentNames;
+import com.helpdesk.enitity.HelpdeskUsers;
 import com.helpdesk.enitity.Ticket;
 import com.helpdesk.enitity.TicketPriority;
 import com.helpdesk.enitity.TicketStatus;
+import com.helpdesk.repo.HelpdeskUserRepo;
 import com.helpdesk.service.TicketService;
 import com.helpdesk.tools.TicketTools;
 @Component
 public class TicketToolsImpl implements TicketTools {
 
 	private final TicketService ticketService;
-	public TicketToolsImpl(TicketService ticketService) {
+	private final HelpdeskUserRepo helpdeskUserRepo;
+	public TicketToolsImpl(TicketService ticketService,HelpdeskUserRepo helpdeskUserRepo) {
 		this.ticketService=ticketService;
+		this.helpdeskUserRepo=helpdeskUserRepo;
 	}
 	@Override
 	public Ticket createTicket(String ticketSummary, TicketPriority ticketPriority, TicketStatus status,String userName) {
@@ -25,18 +33,25 @@ public class TicketToolsImpl implements TicketTools {
 		ticket.setTicketSummary(ticketSummary);
 		ticket.setTicketPriority(ticketPriority);
 		ticket.setStatus(status);
-		ticket.setUserName(userName);
+		ticket.setCreatedBy(findHelpdeskUserByUserName(userName));
+		ticket.setAssignedTo(findTicketAssignedTo());
 		return ticketService.createTicket(ticket);
 	}
-
+	
+	
+	
 	@Override
 	public Ticket findTicketById(Long ticketId) {
 		return ticketService.findTicketById(ticketId);
 	}
 
 	@Override
-	public List<Ticket> findTicketByUserName(String userName) {
-		return ticketService.findTicketByUserName(userName);
+	public List<Ticket> findTicketCreatedByUserName(String userName) {
+		return ticketService.findTicketCreatedByUserName(userName);
+	}
+	@Override
+	public List<Ticket> findTicketAssignedToUserName(String userName) {
+		return ticketService.findTicketAssignedToUserName(userName);
 	}
 
 	@Override
@@ -64,5 +79,17 @@ public class TicketToolsImpl implements TicketTools {
 		System.out.println("tool date ::"+createdOn);
 		return ticketService.findTicketByCreatedOn(createdOn);
 	}
+	@Override
+	public HelpdeskUsers findHelpdeskUserByUserName(String username) {
+		 Optional<HelpdeskUsers> byUsername = helpdeskUserRepo.findByUsername(username);
+		 return byUsername.orElseThrow(()->new CustomException("exception whicle fetching data by username "+username));
+	}
 
+	@Override
+	public HelpdeskUsers findTicketAssignedTo() {
+		
+		 return helpdeskUserRepo.findBestSupportUser().orElseThrow(() -> new IllegalStateException("No support user found"));
+	}
+	
+	
 }

@@ -1,0 +1,5 @@
+package com.helpdesk.enitity;
+
+public enum IssueTypes {
+	SYSTEM_ISSUE,HARDWARE_ISSUE,SOFTWARE_ISSUE,ACCESS_ISSUE,NETWORK_ISSUE,UNKNOWN_ISSUE
+}
