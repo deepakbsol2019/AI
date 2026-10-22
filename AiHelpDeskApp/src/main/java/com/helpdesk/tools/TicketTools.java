@@ -56,16 +56,53 @@ public interface TicketTools {
 	        """,returnDirect = true)
 	public List<Ticket> findTicketByStatus(TicketStatus ticketStatus);
 	
-	@Tool(description = "update the ticket infornation in table for existing ticket id.")
-	public Ticket updateTicket(
-			@ToolParam(description =  "ID of the existing ticket to update. Must be positive.",required = true) Long ticketId,
+	@Tool(
+		    name = "updateTicket",
+		    description = """
+		        Update an existing helpdesk ticket.
 
-		    @ToolParam( description ="Replacement summary. Omit or use null to keep the existing summary.", required = false) String ticketSummary,
+		        RULES:
+		        1. Use this tool only after explicit user confirmation.
+		        2. ticketId is mandatory.
+		        3. Update ONLY fields explicitly requested by the user.
+		        4. omit those field which is not specified by user.
+		        5. if user is clearly telling field name and value then only change it. otherwise omit it.
+		        6. Never use the user's update instruction as ticketSummary.
+		        7. Never invent values for unspecified fields.
+		        8. Preserve all other existing ticket information.
+		        9. If the ticket does not exist, report that it was not found.
+		        """,
+		    returnDirect = false
+		)
+		public Ticket updateTicket(
 
-		    @ToolParam(description = "Replacement priority. Omit or use null to keep the existing priority.", required = false) TicketPriority ticketPriority,
+		    @ToolParam(
+		        description = "Existing ticket ID. Must be positive.",
+		        required = true
+		    )
+		    Long ticketId,
 
-		    @ToolParam( description =  "Replacement status. Omit or use null to keep the existing status.", required = false) TicketStatus status
-	);
+		    @ToolParam(
+		        description = """
+		            New ticket summary ONLY when the user explicitly
+		            requests a summary change.
+		            Otherwise omit this parameter or pass null.
+		            """,
+		        required = false
+		    )
+		    String ticketSummary,
+
+		    @ToolParam(
+		        description = """
+		            New priority ONLY when the user explicitly
+		            requests a priority change.
+		            Allowed values: LOW, MEDIUM, HIGH.
+		            Otherwise omit this parameter or pass null.
+		            """,
+		        required = false
+		    )
+		    TicketPriority ticketPriority
+		);
 	
 	@Tool(description = """
 	        Find tickets by priority.

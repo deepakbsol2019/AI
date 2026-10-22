@@ -2,8 +2,6 @@ package com.helpdesk.pipeline;
 
 import java.util.List;
 
-import org.springframework.http.ResponseEntity;
-
 import com.helpdesk.enitity.Ticket;
 
 public interface AiModelPipeLine {

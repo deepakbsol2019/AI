@@ -60,14 +60,15 @@ public class TicketToolsImpl implements TicketTools {
 	}
 
 	@Override
-	public Ticket updateTicket(Long ticketId, String ticketSummary, TicketPriority ticketPriority,
-			TicketStatus status) {
-		Ticket ticket=new Ticket();
+	public Ticket updateTicket(Long ticketId, String ticketSummary, TicketPriority ticketPriority) {
+		
+		Ticket ticket=findTicketById(ticketId);
 		ticket.setTicketId(ticketId);
 		ticket.setTicketSummary(ticketSummary);
 		ticket.setTicketPriority(ticketPriority);
-		ticket.setStatus(status);
-		
+		if(null==ticket.getAssignedTo()) {
+			ticket.setAssignedTo(findTicketAssignedTo());
+		}
 		return ticketService.updateTicket(ticket);
 	}
 	@Override

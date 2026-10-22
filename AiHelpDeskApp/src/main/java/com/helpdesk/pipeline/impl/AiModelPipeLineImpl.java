@@ -2,6 +2,11 @@ package com.helpdesk.pipeline.impl;
 import java.util.List;
 
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.memory.ChatMemoryRepository;
+import org.springframework.ai.chat.memory.InMemoryChatMemoryRepository;
+import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
@@ -23,11 +28,14 @@ public class AiModelPipeLineImpl implements AiModelPipeLine {
 	private final TicketTools ticketTools;
 	private final JsonMapper jsonMapper;
 	private final GeneralTool generalTool;
-	public AiModelPipeLineImpl(ChatClient chatClient,TicketTools ticketTools,JsonMapper jsonMapper,GeneralTool generalTool) {
+	private final MessageChatMemoryAdvisor messageChatMemoryAdvisor;
+	public AiModelPipeLineImpl(ChatClient chatClient,TicketTools ticketTools,JsonMapper jsonMapper,
+			GeneralTool generalTool,MessageChatMemoryAdvisor messageChatMemoryAdvisor) {
 		this.chatClient=chatClient;
 		this.ticketTools=ticketTools;
 		this.jsonMapper=jsonMapper;
 		this.generalTool=generalTool;
+		this.messageChatMemoryAdvisor=messageChatMemoryAdvisor;
 	}
 	@Override
 	public Ticket createUpdatePipeLine(String question) {
@@ -100,10 +108,12 @@ public class AiModelPipeLineImpl implements AiModelPipeLine {
 		return chatClient.prompt()
 				.system(resource)
 				.user(question)
+				.advisors(m->m.advisors(messageChatMemoryAdvisor).param(ChatMemory.CONVERSATION_ID, "deepak"))
 				.tools(ticketTools,generalTool)
 				.call()
 				.content();
 		
 	}
+	
 
 }

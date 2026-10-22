@@ -84,6 +84,7 @@ public class Ticket {
     @PreUpdate
     public void onUpdate() {
         updatedOn = LocalDateTime.now();
+        issueType=issueType != null ? issueType : IssueTypes.UNKNOWN_ISSUE;
     }
 
     public Ticket() {
