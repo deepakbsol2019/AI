@@ -7,10 +7,9 @@ import com.exception.handle.service.StringToNumberConveter;
 @Service
 public class StringToNumberConveterImpl implements StringToNumberConveter {
 
-	@Override
+	
 	public Integer convert(String inputString) {
-		
-		return Integer.parseInt(inputString);
+			return Integer.parseInt(inputString);
 	}
 
 }

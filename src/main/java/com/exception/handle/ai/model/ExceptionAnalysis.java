@@ -43,8 +43,8 @@ public class ExceptionAnalysis {
 	}
 	@Override
 	public String toString() {
-		return "ExceptionAnalysis [category=" + category + ", probableCause=" + probableCause + ", suggestedFix="
-				+ suggestedFix + ", needsSourceCode=" + needsSourceCode + "]";
+		return "ExceptionAnalysis\n [category=" + category + ",\n probableCause=" + probableCause + ",\n suggestedFix="
+				+ suggestedFix + ",\n needsSourceCode=" + needsSourceCode + "]";
 	}
     
 }
