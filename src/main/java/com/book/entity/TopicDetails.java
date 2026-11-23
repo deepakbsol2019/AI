@@ -38,6 +38,26 @@ public class TopicDetails extends AuditedEntity {
     private BookDetails bookDetails;
 
     public TopicDetails() { }
+
+    private TopicDetails(TopicDetails source) {
+        super(source);
+        topicId = source.topicId;
+        topicName = source.topicName;
+        details = source.details;
+        startPage = source.startPage;
+        endPage = source.endPage;
+        printedStartPage = source.printedStartPage;
+        printedEndPage = source.printedEndPage;
+        pdfPath = source.pdfPath;
+        // Ownership is read through its ID only; never duplicate or modify the book graph.
+        bookDetails = source.bookDetails;
+    }
+
+    /** Independent response values remain accurate even if managed entities change or a transaction rolls back. */
+    public TopicDetails responseCopy() {
+        return new TopicDetails(this);
+    }
+
     public Long getTopicId() { return topicId; }
     public void setTopicId(Long topicId) { this.topicId = topicId; }
     public String getTopicName() { return topicName; }

@@ -15,6 +15,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.dao.DataIntegrityViolationException;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -90,6 +91,7 @@ class BookMetadataExtractionServiceTests {
         assertThat(result.topicDetails()).allSatisfy(topic ->
                 assertThat(topic.getBookDetails()).isSameAs(result.bookDetails()));
         verify(books).saveAndFlush(result.bookDetails());
+        verify(books).existsByCanonicalBookName(result.bookDetails().getBookName());
         verifyNoMoreInteractions(books);
     }
 
@@ -111,6 +113,7 @@ class BookMetadataExtractionServiceTests {
         assertThat(topic.getPrintedStartPage()).isNull();
         assertThat(topic.getPrintedEndPage()).isNull();
         verify(books).saveAndFlush(result.bookDetails());
+        verify(books).existsByCanonicalBookName(result.bookDetails().getBookName());
     }
 
     @Test
@@ -177,6 +180,7 @@ class BookMetadataExtractionServiceTests {
         verify(analyzer, times(2)).analyze(any(), any());
         assertThat(result.topicDetails().getFirst().getStartPage()).isNull();
         verify(books).saveAndFlush(result.bookDetails());
+        verify(books).existsByCanonicalBookName(result.bookDetails().getBookName());
     }
 
     @Test
@@ -225,6 +229,7 @@ class BookMetadataExtractionServiceTests {
             assertThat(topic.getEndPage()).isNull();
         });
         verify(books).saveAndFlush(result.bookDetails());
+        verify(books).existsByCanonicalBookName(result.bookDetails().getBookName());
     }
 
     private TopicData printed(String name, String details, int start) {
@@ -263,6 +268,7 @@ class BookMetadataExtractionServiceTests {
         assertThat(result.bookDetails().getBookDetails()).isEqualTo("First description");
         assertThat(result.topicDetails().getFirst().getDetails()).isEqualTo("Basics, Setup");
         verify(books).saveAndFlush(result.bookDetails());
+        verify(books).existsByCanonicalBookName(result.bookDetails().getBookName());
     }
 
     private String json(Object response) {
@@ -305,6 +311,7 @@ class BookMetadataExtractionServiceTests {
         assertThat(result.topicDetails()).extracting(t -> t.getPrintedStartPage()).containsExactly(1, 5);
         assertThat(result.topicDetails()).extracting(t -> t.getPrintedEndPage()).containsExactly(4, null);
         verify(books).saveAndFlush(result.bookDetails());
+        verify(books).existsByCanonicalBookName(result.bookDetails().getBookName());
         verifyNoMoreInteractions(books);
     }
 
@@ -321,6 +328,7 @@ class BookMetadataExtractionServiceTests {
         assertThat(result.topicDetails().getFirst().getEndPage()).isNull();
         assertThat(result.topicDetails().getFirst().getPrintedStartPage()).isEqualTo(1);
         verify(books).saveAndFlush(result.bookDetails());
+        verify(books).existsByCanonicalBookName(result.bookDetails().getBookName());
     }
 
     @Test
@@ -358,6 +366,7 @@ class BookMetadataExtractionServiceTests {
             assertThat(topic.getPdfPath()).isNull();
         });
         verify(books).saveAndFlush(result.bookDetails());
+        verify(books).existsByCanonicalBookName(result.bookDetails().getBookName());
         verifyNoMoreInteractions(books);
     }
 
@@ -383,6 +392,7 @@ class BookMetadataExtractionServiceTests {
         assertThat(pages.getValue().text()).doesNotContain("DO_NOT_SEND_BODY");
         assertThat(result.topicDetails().getFirst().getDetails()).isEqualTo("Basics, Setup");
         verify(books).saveAndFlush(result.bookDetails());
+        verify(books).existsByCanonicalBookName(result.bookDetails().getBookName());
         verifyNoMoreInteractions(analyzer, books);
     }
 
@@ -410,6 +420,7 @@ class BookMetadataExtractionServiceTests {
         assertThat(result.topicDetails().getFirst().getDetails()).isEqualTo("Basics, Setup");
         assertThat(result.topicDetails()).hasSize(2);
         verify(books).saveAndFlush(result.bookDetails());
+        verify(books).existsByCanonicalBookName(result.bookDetails().getBookName());
         verifyNoMoreInteractions(analyzer, books);
     }
 
@@ -431,6 +442,7 @@ class BookMetadataExtractionServiceTests {
         assertThat(pages.getValue().text()).contains("Setup").doesNotContain("Preface", "DO_NOT_SEND_BODY");
         assertThat(result.topicDetails().getFirst().getDetails()).isEqualTo("Basics, Setup");
         verify(books).saveAndFlush(result.bookDetails());
+        verify(books).existsByCanonicalBookName(result.bookDetails().getBookName());
     }
 
     @Test
@@ -451,6 +463,74 @@ class BookMetadataExtractionServiceTests {
         assertThat(previous.getValue().contentsComplete()).isFalse();
         assertThat(result.topicDetails().getFirst().getDetails()).isEqualTo("Basics, Setup");
         verify(books).saveAndFlush(result.bookDetails());
+        verify(books).existsByCanonicalBookName(result.bookDetails().getBookName());
+    }
+
+    @Test
+    void duplicateBookNameReturnsConflictBeforeAnyAuthorOrBookSave() throws Exception {
+        when(analyzer.analyze(any(), any())).thenReturn(json(new PdfBatchExtraction(
+                new AuthorData("Writer"), new BookData("  Existing Book  ", "Description"),
+                List.of(), false, null, false, true)));
+        when(books.existsByCanonicalBookName("Existing Book")).thenReturn(true);
+
+        assertThatThrownBy(() -> service.extract(pdf(1, true, Map.of()), "source.pdf"))
+                .isInstanceOfSatisfying(ResponseStatusException.class, failure -> {
+                    assertThat(failure.getStatusCode().value()).isEqualTo(409);
+                    assertThat(failure.getReason()).contains("Existing Book", "already exists");
+                });
+        verify(books).existsByCanonicalBookName("Existing Book");
+        verify(books, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void normalizesOnlySurroundingBookNameWhitespaceBeforeCheckingAndSaving() throws Exception {
+        when(analyzer.analyze(any(), any())).thenReturn(json(new PdfBatchExtraction(
+                new AuthorData("Writer"), new BookData("  Original Book Name  ", "Description"),
+                List.of(), false, null, false, true)));
+
+        var result = service.extract(pdf(1, true, Map.of()), "source.pdf");
+
+        assertThat(result.bookDetails().getBookName()).isEqualTo("Original Book Name");
+        verify(books).existsByCanonicalBookName("Original Book Name");
+        verify(books).saveAndFlush(result.bookDetails());
+    }
+
+    @Test
+    void duplicateNameConstraintRaceReturnsConflictWithoutRetryingSave() throws Exception {
+        when(analyzer.analyze(any(), any())).thenReturn(json(new PdfBatchExtraction(
+                new AuthorData("Writer"), new BookData("Concurrent Book", "Description"),
+                List.of(), false, null, false, true)));
+        when(books.saveAndFlush(any())).thenThrow(new DataIntegrityViolationException(
+                "Unique constraint uk_book_details_book_name violated"));
+
+        assertThatThrownBy(() -> service.extract(pdf(1, true, Map.of()), "source.pdf"))
+                .isInstanceOfSatisfying(ResponseStatusException.class, failure ->
+                        assertThat(failure.getStatusCode().value()).isEqualTo(409));
+        verify(books, times(1)).saveAndFlush(any());
+    }
+
+    @Test
+    void unrelatedIntegrityFailureIsNotMisreportedAsDuplicateBookName() throws Exception {
+        when(analyzer.analyze(any(), any())).thenReturn(json(new PdfBatchExtraction(
+                new AuthorData("Writer"), new BookData("Another Book", "Description"),
+                List.of(), false, null, false, true)));
+        DataIntegrityViolationException integrity = new DataIntegrityViolationException("Other constraint failure");
+        when(books.saveAndFlush(any())).thenThrow(integrity);
+
+        assertThatThrownBy(() -> service.extract(pdf(1, true, Map.of()), "source.pdf"))
+                .isSameAs(integrity);
+    }
+
+    @Test
+    void bookNameBeyondUniqueColumnCapacityFailsBeforeDatabaseWork() throws Exception {
+        when(analyzer.analyze(any(), any())).thenReturn(json(new PdfBatchExtraction(
+                new AuthorData("Writer"), new BookData("B".repeat(256), "Description"),
+                List.of(), false, null, false, true)));
+
+        assertThatThrownBy(() -> service.extract(pdf(1, true, Map.of()), "source.pdf"))
+                .isInstanceOfSatisfying(ResponseStatusException.class, failure ->
+                        assertThat(failure.getStatusCode().value()).isEqualTo(422));
+        verifyNoInteractions(books);
     }
 
     private static byte[] pdf(int pages, boolean readable, Map<Integer, String> pageText) throws IOException {

@@ -13,6 +13,14 @@ public abstract class AuditedEntity {
     @Column(nullable = false)
     private LocalDateTime updatedAt;
 
+    protected AuditedEntity() { }
+
+    /** Copies audit values for detached response snapshots, without triggering persistence callbacks. */
+    protected AuditedEntity(AuditedEntity source) {
+        createdAt = source.createdAt;
+        updatedAt = source.updatedAt;
+    }
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();

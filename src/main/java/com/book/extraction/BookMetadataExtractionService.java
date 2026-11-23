@@ -10,6 +10,7 @@ import org.apache.pdfbox.text.PDFTextStripper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.core.JacksonException;
@@ -20,6 +21,8 @@ import com.book.dto.PdfBatchExtraction;
 import com.book.dto.PdfPageBatch;
 import com.book.dto.PdfTopicBatchExtraction;
 import com.book.repository.BookDetailsRepository;
+import com.book.entity.BookDetails;
+import com.book.entity.BookUploadStatus;
 
 @Service
 public class BookMetadataExtractionService {
@@ -39,6 +42,13 @@ public class BookMetadataExtractionService {
     // Accumulation is local to this upload. No database writes occur during model calls.
     // The completed book, author and topics are saved together by the repository.
     public BookExtractionResult extract(byte[] pdfData, String fileName) {
+        return extract(pdfData, fileName, null);
+    }
+
+    public BookExtractionResult extract(byte[] pdfData, String fileName, Long bookUploadId) {
+        if (bookUploadId != null && bookUploadId <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The upload tracking ID must be positive.");
+        }
         if (pdfData == null || pdfData.length == 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Upload a non-empty PDF.");
         }
@@ -69,7 +79,7 @@ public class BookMetadataExtractionService {
                 if (batch == null) {
                     if (read.boundaryFound() || (read.contentsSeen() && end == totalPages)) {
                         merged.markContentsComplete();
-                        return save(merged, extractionId, sourceName, totalPages);
+                        return save(merged, extractionId, sourceName, totalPages, bookUploadId);
                     }
                     continue;
                 }
@@ -107,7 +117,7 @@ public class BookMetadataExtractionService {
                 logger.info("Book {} pages {}-{}: contentsComplete={}, firstTopicStartPage={}, requiredNextPageSet={}",
                         extractionId, start, end, state.contentsComplete(), state.firstTopicStartPage(), needsNext);
                 if (!needsNext) {
-                    return save(merged, extractionId, sourceName, totalPages);
+                    return save(merged, extractionId, sourceName, totalPages, bookUploadId);
                 }
             }
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
@@ -145,10 +155,57 @@ public class BookMetadataExtractionService {
     }
 
     private BookExtractionResult save(ExtractionAccumulator merged, String extractionId, String sourceName,
-            int totalPages) {
+            int totalPages, Long bookUploadId) {
         BookExtractionResult result = merged.toEntities(extractionId, sourceName, totalPages);
-        bookRepository.saveAndFlush(result.bookDetails());
+        if (bookUploadId != null) {
+            // The acknowledgement row is already committed. This reference joins it without cascading status changes.
+            BookUploadStatus uploadStatus = new BookUploadStatus();
+            uploadStatus.setBookUploadId(bookUploadId);
+            result.bookDetails().setBookUploadStatus(uploadStatus);
+        }
+        String bookName = result.bookDetails().getBookName().trim();
+        if (bookName.isBlank() || bookName.length() > BookDetails.MAX_BOOK_NAME_LENGTH) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "The book name must contain 1 to " + BookDetails.MAX_BOOK_NAME_LENGTH + " characters.");
+        }
+        result.bookDetails().setBookName(bookName);
+        if (bookRepository.existsByCanonicalBookName(bookName)) {
+            throw duplicateBook(bookName, null);
+        }
+        try {
+            bookRepository.saveAndFlush(result.bookDetails());
+        }
+        catch (DataIntegrityViolationException exception) {
+            // The database constraint closes the race between the friendly precheck and the insert.
+            // Other integrity errors (for example, extraction IDs) must retain their original cause.
+            if (isBookNameConstraint(exception)) {
+                throw duplicateBook(bookName, exception);
+            }
+            throw exception;
+        }
         return result;
+    }
+
+    private static ResponseStatusException duplicateBook(String bookName, Throwable cause) {
+        return new ResponseStatusException(HttpStatus.CONFLICT,
+                "A book named '" + bookName + "' already exists.", cause);
+    }
+
+    private static boolean isBookNameConstraint(Throwable failure) {
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof org.hibernate.exception.ConstraintViolationException violation
+                    && violation.getConstraintName() != null) {
+                return violation.getConstraintName().toLowerCase(java.util.Locale.ROOT)
+                        .contains("uk_book_details_book_name");
+            }
+        }
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause.getMessage() != null && cause.getMessage().toLowerCase(java.util.Locale.ROOT)
+                    .contains("uk_book_details_book_name")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private record ReadBatch(PdfPageBatch pages, boolean boundaryFound, boolean contentsSeen) { }

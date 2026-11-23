@@ -12,6 +12,13 @@ public class UploadFileDtlsDto {
 	private InputStream inputStream;
 	private Resource resource;
 	private Long fileSize;
+	private Long bookUploadId;
+	public Long getBookUploadId() {
+		return bookUploadId;
+	}
+	public void setBookUploadId(Long bookUploadId) {
+		this.bookUploadId = bookUploadId;
+	}
 	public String getFileName() {
 		return fileName;
 	}

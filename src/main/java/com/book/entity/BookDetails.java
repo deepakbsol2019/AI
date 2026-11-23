@@ -6,8 +6,11 @@ import java.util.List;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 @Entity
-@Table(name = "book_details")
+@Table(name = "book_details", uniqueConstraints =
+        @UniqueConstraint(name = "uk_book_details_book_name", columnNames = "book_name"))
 public class BookDetails extends AuditedEntity {
+    public static final int MAX_BOOK_NAME_LENGTH = 255;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long bookId;
@@ -15,7 +18,7 @@ public class BookDetails extends AuditedEntity {
     @Column(nullable = false, unique = true, length = 36)
     private String extractionId;
 
-    @Column(nullable = false, length = 1024)
+    @Column(name = "book_name", nullable = false, length = MAX_BOOK_NAME_LENGTH)
     private String bookName;
 
     @Lob
@@ -24,6 +27,11 @@ public class BookDetails extends AuditedEntity {
 
     @Column(nullable = false)
     private int totalPages;
+
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "book_upload_id", unique = true)
+    @JsonIgnore
+    private BookUploadStatus bookUploadStatus;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false, cascade = CascadeType.PERSIST)
     @JoinColumn(name = "author_id", nullable = false)
@@ -47,6 +55,10 @@ public class BookDetails extends AuditedEntity {
     public void setBookDetails(String bookDetails) { this.bookDetails = bookDetails; }
     public int getTotalPages() { return totalPages; }
     public void setTotalPages(int totalPages) { this.totalPages = totalPages; }
+    @JsonIgnore
+    public BookUploadStatus getBookUploadStatus() { return bookUploadStatus; }
+    public void setBookUploadStatus(BookUploadStatus bookUploadStatus) { this.bookUploadStatus = bookUploadStatus; }
+    public Long getBookUploadId() { return bookUploadStatus == null ? null : bookUploadStatus.getBookUploadId(); }
     public AuthorDetails getAuthorDetails() { return authorDetails; }
     public void setAuthorDetails(AuthorDetails authorDetails) { this.authorDetails = authorDetails; }
     public List<TopicDetails> getTopics() { return topics; }
