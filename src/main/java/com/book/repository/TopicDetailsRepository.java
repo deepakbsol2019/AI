@@ -1,6 +1,7 @@
 package com.book.repository;
 
 import java.util.List;
+import java.util.Collection;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -11,6 +12,9 @@ import com.book.entity.TopicDetails;
 
 public interface TopicDetailsRepository extends JpaRepository<TopicDetails, Long> {
     List<TopicDetails> findAllByBookDetailsBookIdOrderByTopicIdAsc(Long bookId);
+
+    /** A selected download must never retrieve another book's topic by its ID alone. */
+    List<TopicDetails> findAllByBookDetailsBookIdAndTopicIdIn(Long bookId, Collection<Long> topicIds);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select t from TopicDetails t where t.bookDetails.bookId = :bookId order by t.topicId asc")
