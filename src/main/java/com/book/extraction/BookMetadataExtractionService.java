@@ -62,22 +62,32 @@ public class BookMetadataExtractionService {
         ContentsPageReferenceParser pageReferences = new ContentsPageReferenceParser();
         try (PDDocument document = Loader.loadPDF(pdfData)) {
             int totalPages = document.getNumberOfPages();
-            if (totalPages == 0 || !document.getCurrentAccessPermission().canExtractContent()) {
+            if (totalPages == 0) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "The PDF has no pages or does not permit text extraction.");
+                        "The PDF has no pages.");
+            }
+            if (!document.getCurrentAccessPermission().canExtractContent()) {
+                // Keep the source file's protections intact; a whole-book copy does not extract its content.
+                merged.useWholeBook("The PDF does not permit contents text extraction or topic splitting.");
+                return save(merged, extractionId, sourceName, totalPages, bookUploadId);
             }
             // Uses printed margin evidence, not PDF length, for the final topic.
             merged.setLastPrintedPage(PrintedPageNumberResolver.findLastPrintedPage(document));
+            try {
             for (int start = 1; start <= totalPages; start += PAGE_BATCH_SIZE) {
                 int end = Math.min(start + PAGE_BATCH_SIZE - 1, totalPages);
                 ReadBatch read = readBatch(document, start, end, boundaryDetector, merged.snapshot());
+                if (start == 1 && !read.readable()) {
+                    merged.useWholeBook("The first PDF pages have no extractable contents text.");
+                    return save(merged, extractionId, sourceName, totalPages, bookUploadId);
+                }
                 if (read.boundaryFound()) {
                     logger.info("Book {}: Contents/Index heading changed; no pages after the boundary will be sent to AI",
                             extractionId);
                 }
                 PdfPageBatch batch = read.pages();
                 if (batch == null) {
-                    if (read.boundaryFound() || (read.contentsSeen() && end == totalPages)) {
+                    if (read.boundaryFound()) {
                         merged.markContentsComplete();
                         return save(merged, extractionId, sourceName, totalPages, bookUploadId);
                     }
@@ -89,13 +99,14 @@ public class BookMetadataExtractionService {
 
                 boolean firstBatch = start == 1;
                 PdfBatchExtraction response = parse(rawJson, firstBatch);
+                merged.captureMetadata(response, firstBatch);
                 if (response.indexFound() == null || response.requiredNextPageSet() == null
                         || response.contentsComplete() == null) {
                     throw ExtractionAccumulator.invalid("Required control flags are missing.");
                 }
                 // Once a real Contents heading is observed, the PDF section boundary,
                 // rather than the model's completion flag, controls the loop.
-                boolean sourceComplete = read.boundaryFound() || (read.contentsSeen() && end == totalPages);
+                boolean sourceComplete = read.boundaryFound();
                 boolean complete = read.contentsSeen() ? sourceComplete : Boolean.TRUE.equals(response.contentsComplete());
                 response = new PdfBatchExtraction(response.authorDetails(), response.bookDetails(),
                         response.topicDetails(), read.contentsSeen() || Boolean.TRUE.equals(response.indexFound()),
@@ -120,9 +131,14 @@ public class BookMetadataExtractionService {
                     return save(merged, extractionId, sourceName, totalPages, bookUploadId);
                 }
             }
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
-                    "Reached the end of the PDF before confirming the end of the contents/index section. Extraction: "
-                            + extractionId);
+            throw new UnusableContentsException(
+                    "The PDF ended before a complete contents section could be confirmed.");
+            }
+            catch (UnusableContentsException exception) {
+                merged.useWholeBook(exception.getReason());
+                logger.info("Book {} will be uploaded as one topic: {}", extractionId, exception.getReason());
+                return save(merged, extractionId, sourceName, totalPages, bookUploadId);
+            }
         }
         catch (IOException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -149,14 +165,19 @@ public class BookMetadataExtractionService {
             return response;
         }
         catch (JacksonException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
-                    "The model returned invalid extraction JSON; no extraction data was saved.", exception);
+            throw new UnusableContentsException("The model returned invalid extraction JSON.", exception);
         }
     }
 
     private BookExtractionResult save(ExtractionAccumulator merged, String extractionId, String sourceName,
             int totalPages, Long bookUploadId) {
         BookExtractionResult result = merged.toEntities(extractionId, sourceName, totalPages);
+        if (!result.wholeBook() && (result.topicDetails().isEmpty()
+                || result.topicDetails().stream().anyMatch(topic -> topic.getPrintedStartPage() == null
+                        || topic.getPrintedStartPage() <= 0))) {
+            merged.useWholeBook("The contents do not provide a verified printed start for every topic.");
+            result = merged.toEntities(extractionId, sourceName, totalPages);
+        }
         if (bookUploadId != null) {
             // The acknowledgement row is already committed. This reference joins it without cascading status changes.
             BookUploadStatus uploadStatus = new BookUploadStatus();
@@ -208,7 +229,7 @@ public class BookMetadataExtractionService {
         return false;
     }
 
-    private record ReadBatch(PdfPageBatch pages, boolean boundaryFound, boolean contentsSeen) { }
+    private record ReadBatch(PdfPageBatch pages, boolean boundaryFound, boolean contentsSeen, boolean readable) { }
 
     private ReadBatch readBatch(PDDocument document, int start, int end, ContentsBoundaryDetector detector,
             PdfBatchExtraction previous) throws IOException {
@@ -237,12 +258,8 @@ public class BookMetadataExtractionService {
                 break;
             }
         }
-        if (start == 1 && !readable) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
-                    "The first PDF pages contain no extractable text. Run OCR on scanned PDFs first.");
-        }
         PdfPageBatch pages = text.isEmpty() ? null
                 : new PdfPageBatch(start, lastIncludedPage, document.getNumberOfPages(), text.toString());
-        return new ReadBatch(pages, boundaryFound, contentsSeen);
+        return new ReadBatch(pages, boundaryFound, contentsSeen, readable);
     }
 }

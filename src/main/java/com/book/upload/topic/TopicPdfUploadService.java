@@ -31,6 +31,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import com.book.dto.BookExtractionResult;
 import com.book.entity.BookDetails;
 import com.book.entity.TopicDetails;
+import com.book.extraction.ContentsUnavailableException;
 import com.book.repository.BookDetailsRepository;
 import com.book.repository.TopicDetailsRepository;
 import com.book.upload.topic.TopicPdfFileStore.SavedTopicPdf;
@@ -54,10 +55,7 @@ public class TopicPdfUploadService {
 
     @Transactional(propagation = Propagation.MANDATORY, rollbackFor = Exception.class)
     public BookExtractionResult uploadTopic(BookExtractionResult savedBookDetails) {
-        if (!TransactionSynchronizationManager.isActualTransactionActive()
-                || !TransactionSynchronizationManager.isSynchronizationActive()) {
-            throw new TopicPdfUploadException("Topic PDFs must participate in the existing upload transaction.");
-        }
+        requireTransaction();
         PreparedUpload prepared = prepare(savedBookDetails);
         Path operationDirectory = files.createOperationDirectory(prepared.bookId(), prepared.bookName());
         List<CompletableFuture<SavedTopicPdf>> futures = new ArrayList<>();
@@ -67,9 +65,11 @@ public class TopicPdfUploadService {
             byte[] sourcePdf = prepared.pdfBytes();
             TopicPdfFileStore fileStore = files;
             for (TopicInput input : prepared.inputs()) {
-                futures.add(CompletableFuture.supplyAsync(() -> input.offset()
-                        ? fileStore.extractOffsetAndSave(sourcePdf, input.topicId(), input.topicName(), input.endPage(), operationDirectory)
-                        : fileStore.extractAndSave(sourcePdf, input.topicId(), input.topicName(), input.startPage(), input.endPage(), operationDirectory), executor));
+                futures.add(CompletableFuture.supplyAsync(() -> prepared.wholeBook()
+                        ? fileStore.saveWholeBook(sourcePdf, input.topicId(), input.topicName(), operationDirectory)
+                        : input.offset()
+                                ? fileStore.extractOffsetAndSave(sourcePdf, input.topicId(), input.topicName(), input.endPage(), operationDirectory)
+                                : fileStore.extractAndSave(sourcePdf, input.topicId(), input.topicName(), input.startPage(), input.endPage(), operationDirectory), executor));
             }
             awaitWorkers(futures);
             if (Thread.currentThread().isInterrupted()) {
@@ -94,7 +94,8 @@ public class TopicPdfUploadService {
                 return response;
             }).toList();
             return new BookExtractionResult(savedBookDetails.authorDetails(), savedBookDetails.bookDetails(),
-                    responseTopics, savedBookDetails.pageOffset());
+                    responseTopics, savedBookDetails.pageOffset(), null,
+                    savedBookDetails.wholeBook(), savedBookDetails.fallbackReason());
         }
         catch (RuntimeException | Error failure) {
             // Cancellation is intentionally avoided: it does not stop a running CompletableFuture task.
@@ -108,6 +109,19 @@ public class TopicPdfUploadService {
                 logger.error("Could not clean failed topic PDF operation {}", operationDirectory, cleanupFailure);
             }
             throw failure;
+        }
+    }
+
+    /** A quality preflight performs no writes or dispatch and does not mark the caller's transaction for rollback. */
+    public void validateContents(BookExtractionResult savedBookDetails) {
+        requireTransaction();
+        prepare(savedBookDetails);
+    }
+
+    private static void requireTransaction() {
+        if (!TransactionSynchronizationManager.isActualTransactionActive()
+                || !TransactionSynchronizationManager.isSynchronizationActive()) {
+            throw new TopicPdfUploadException("Topic PDFs must participate in the existing upload transaction.");
         }
     }
 
@@ -130,8 +144,9 @@ public class TopicPdfUploadService {
         int totalPages;
         try (PDDocument pdf = Loader.loadPDF(pdfBytes)) {
             totalPages = pdf.getNumberOfPages();
-            if (totalPages <= 0 || !pdf.getCurrentAccessPermission().canExtractContent()) {
-                throw new TopicPdfUploadException("The original PDF is empty or does not allow extraction.");
+            if (totalPages <= 0) throw new TopicPdfUploadException("The original PDF is empty.");
+            if (!saved.wholeBook() && !pdf.getCurrentAccessPermission().canExtractContent()) {
+                throw new ContentsUnavailableException("The readable PDF does not allow topic extraction; retain the original document instead.");
             }
         }
         catch (IOException failure) {
@@ -146,19 +161,22 @@ public class TopicPdfUploadService {
             throw new TopicPdfUploadException("The saved book/author response does not match the current uploaded PDF and book.");
         }
         String reservedOffsetName = bookName + "_offset";
-        Map<Long, TopicDetails> responseEntries = validatedTopics(saved.topicDetails(), bookId);
-        Map<Long, TopicDetails> persistedEntries = validatedTopics(topics.findAllLockedForBook(bookId), bookId);
+        Map<Long, TopicDetails> responseEntries = validatedTopics(saved.topicDetails(), bookId, saved.wholeBook());
+        Map<Long, TopicDetails> persistedEntries = validatedTopics(topics.findAllLockedForBook(bookId), bookId, saved.wholeBook());
+        if (saved.wholeBook()) {
+            return prepareWholeBook(saved, persistedBook, responseEntries, persistedEntries, pdfBytes, totalPages);
+        }
         List<TopicDetails> metadata = persistedEntries.values().stream()
                 .filter(topic -> reservedOffsetName.equals(topic.getTopicName())).toList();
         if (metadata.size() != 1) {
-            throw new TopicPdfUploadException("The current book must have exactly one saved offset topic before generating PDFs.");
+            throw new ContentsUnavailableException("The current book must have exactly one saved offset topic before generating PDFs.");
         }
         TopicDetails offsetTopic = metadata.getFirst();
         Integer offset = offsetTopic.getEndPage();
         if (!Objects.equals(offsetTopic.getStartPage(), 1) || offset == null || offset < 0 || offset >= totalPages
                 || !Objects.equals(offsetTopic.getDetails(), bookName + "_offset detail")
                 || offsetTopic.getPrintedStartPage() != null || offsetTopic.getPrintedEndPage() != null) {
-            throw new TopicPdfUploadException("The saved offset topic has inconsistent metadata or prefix pages.");
+            throw new ContentsUnavailableException("The saved offset topic has inconsistent metadata or prefix pages.");
         }
         Map<Long, TopicDetails> responseTopics = realTopics(responseEntries, reservedOffsetName);
         Map<Long, TopicDetails> persistedTopics = realTopics(persistedEntries, reservedOffsetName);
@@ -173,7 +191,10 @@ public class TopicPdfUploadService {
                 throw new TopicPdfUploadException("The nested offset topic response differs from the saved metadata.");
             }
         }
-        if (responseTopics.isEmpty() || !responseTopics.keySet().equals(persistedTopics.keySet())) {
+        if (responseTopics.isEmpty() && persistedTopics.isEmpty()) {
+            throw new ContentsUnavailableException("The contents contain no usable topics.");
+        }
+        if (!responseTopics.keySet().equals(persistedTopics.keySet())) {
             throw new TopicPdfUploadException("The nested topic response must contain every current-book real topic exactly once.");
         }
         List<TopicInput> inputs = new ArrayList<>();
@@ -199,10 +220,10 @@ public class TopicPdfUploadService {
             Integer start = response.getStartPage();
             Integer end = response.getEndPage();
             if (start == null || end == null || start <= 0 || start > end || end > totalPages) {
-                throw new TopicPdfUploadException("Topic " + response.getTopicId() + " has an invalid inclusive PDF page range.");
+                throw new ContentsUnavailableException("Topic " + response.getTopicId() + " has an invalid inclusive PDF page range.");
             }
             if (start != nextPage) {
-                throw new TopicPdfUploadException("Topic " + response.getTopicId()
+                throw new ContentsUnavailableException("Topic " + response.getTopicId()
                         + " leaves a gap or overlaps another PDF range; merging the saved pieces would not reproduce the book.");
             }
             nextPage = end + 1;
@@ -210,20 +231,57 @@ public class TopicPdfUploadService {
             snapshots.add(response.responseCopy());
         }
         if (nextPage != totalPages + 1) {
-            throw new TopicPdfUploadException("The saved topic ranges omit trailing PDF pages; the final topic must include the book's final page.");
+            throw new ContentsUnavailableException("The saved topic ranges omit trailing PDF pages; the final topic must include the book's final page.");
         }
         Set<String> names = new HashSet<>();
         for (TopicInput input : inputs) {
-            String fileName = TopicPdfFileStore.topicFileName(input.topicName()).toLowerCase(Locale.ROOT);
+            String fileName;
+            try {
+                fileName = TopicPdfFileStore.topicFileName(input.topicName()).toLowerCase(Locale.ROOT);
+            }
+            catch (IllegalArgumentException invalidName) {
+                throw new ContentsUnavailableException("A contents topic cannot form a usable PDF filename: "
+                        + input.topicName() + ". " + invalidName.getMessage());
+            }
             if (!names.add(fileName)) {
-                throw new TopicPdfUploadException("Topic PDF names collide after Windows filename normalization: " + input.topicName());
+                throw new ContentsUnavailableException("Topic PDF names collide after Windows filename normalization: " + input.topicName());
             }
         }
         TopicPdfFileStore.bookFolderName(bookName);
-        return new PreparedUpload(bookId, bookName, pdfBytes, List.copyOf(inputs), List.copyOf(snapshots));
+        return new PreparedUpload(bookId, bookName, pdfBytes, List.copyOf(inputs), List.copyOf(snapshots), false);
     }
 
-    private static Map<Long, TopicDetails> validatedTopics(List<TopicDetails> entries, Long bookId) {
+    private static PreparedUpload prepareWholeBook(BookExtractionResult saved, BookDetails persistedBook,
+            Map<Long, TopicDetails> responseEntries, Map<Long, TopicDetails> persistedEntries,
+            byte[] pdfBytes, int totalPages) {
+        if (responseEntries.size() != 1 || persistedEntries.size() != 1
+                || !responseEntries.keySet().equals(persistedEntries.keySet())) {
+            throw new TopicPdfUploadException("A whole-book upload must contain exactly one saved topic and no offset metadata.");
+        }
+        TopicDetails response = responseEntries.values().iterator().next();
+        TopicDetails persisted = persistedEntries.get(response.getTopicId());
+        for (TopicDetails topic : List.of(response, persisted)) {
+            if (!Objects.equals(topic.getTopicName(), saved.bookDetails().getBookName())
+                    || !Objects.equals(topic.getDetails(), saved.bookDetails().getBookDetails())
+                    || !Objects.equals(topic.getStartPage(), 1) || !Objects.equals(topic.getEndPage(), totalPages)
+                    || topic.getPrintedStartPage() != null || topic.getPrintedEndPage() != null) {
+                throw new TopicPdfUploadException("The whole-book topic must match the book details and cover physical pages 1 through the final page.");
+            }
+            if (topic.getPdfPath() != null) {
+                throw new TopicPdfUploadException("The whole-book topic already has a PDF path; existing files are preserved.");
+            }
+        }
+        if (!Objects.equals(saved.bookDetails().getBookDetails(), persistedBook.getBookDetails())) {
+            throw new TopicPdfUploadException("The saved book description changed before whole-book generation.");
+        }
+        TopicPdfFileStore.bookFolderName(persistedBook.getBookName());
+        TopicPdfFileStore.topicFileName(response.getTopicName());
+        return new PreparedUpload(persistedBook.getBookId(), persistedBook.getBookName(), pdfBytes,
+                List.of(new TopicInput(response.getTopicId(), response.getTopicName(), 1, totalPages, false)),
+                List.of(response.responseCopy()), true);
+    }
+
+    private static Map<Long, TopicDetails> validatedTopics(List<TopicDetails> entries, Long bookId, boolean wholeBook) {
         Map<Long, TopicDetails> all = new LinkedHashMap<>();
         Set<Long> seen = new HashSet<>();
         for (TopicDetails topic : entries) {
@@ -233,6 +291,7 @@ public class TopicPdfUploadService {
                 throw new TopicPdfUploadException("The topic response contains an unsaved, duplicate or foreign-book topic.");
             }
             if (topic.getTopicName() == null || topic.getTopicName().isBlank()) {
+                if (!wholeBook) throw new ContentsUnavailableException("Topic " + topic.getTopicId() + " has no name.");
                 throw new TopicPdfUploadException("Topic " + topic.getTopicId() + " has no name.");
             }
             all.put(topic.getTopicId(), topic);
@@ -292,7 +351,7 @@ public class TopicPdfUploadService {
 
     private record TopicInput(Long topicId, String topicName, int startPage, int endPage, boolean offset) { }
     private record PreparedUpload(Long bookId, String bookName, byte[] pdfBytes, List<TopicInput> inputs,
-            List<TopicDetails> responseTopics) { }
+            List<TopicDetails> responseTopics, boolean wholeBook) { }
 
     public static class TopicPdfUploadException extends RuntimeException {
         public TopicPdfUploadException(String message) { super(message); }

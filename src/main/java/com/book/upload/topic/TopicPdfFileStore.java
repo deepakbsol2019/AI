@@ -67,7 +67,12 @@ public class TopicPdfFileStore {
      */
     public SavedTopicPdf extractAndSave(byte[] sourcePdf, Long topicId, String topicName,
             int startPage, int endPage, Path operationDirectory) {
-        return extractAndSave(sourcePdf, topicId, topicName, startPage, endPage, operationDirectory, false);
+        return extractAndSave(sourcePdf, topicId, topicName, startPage, endPage, operationDirectory, false, false);
+    }
+
+    /** Saves the original document intact; PDF validity is checked once by the upload orchestration thread. */
+    public SavedTopicPdf saveWholeBook(byte[] sourcePdf, Long topicId, String topicName, Path operationDirectory) {
+        return extractAndSave(sourcePdf, topicId, topicName, 1, 1, operationDirectory, false, true);
     }
 
     /** The offset row represents the physical prefix, including a legitimate empty prefix. */
@@ -76,11 +81,11 @@ public class TopicPdfFileStore {
         if (offset < 0) {
             throw new IllegalArgumentException("The offset prefix cannot have a negative length.");
         }
-        return extractAndSave(sourcePdf, topicId, topicName, 1, offset, operationDirectory, offset == 0);
+        return extractAndSave(sourcePdf, topicId, topicName, 1, offset, operationDirectory, offset == 0, false);
     }
 
     private SavedTopicPdf extractAndSave(byte[] sourcePdf, Long topicId, String topicName,
-            int startPage, int endPage, Path operationDirectory, boolean emptyPrefix) {
+            int startPage, int endPage, Path operationDirectory, boolean emptyPrefix, boolean wholeBook) {
         if (sourcePdf == null || sourcePdf.length == 0 || topicId == null || topicId <= 0
                 || topicName == null || topicName.isBlank() || startPage < 1
                 || (endPage < startPage && !(emptyPrefix && startPage == 1 && endPage == 0))) {
@@ -109,7 +114,8 @@ public class TopicPdfFileStore {
                     requireOperationDirectory(operation);
                     temporary = Files.createTempFile(operation, ".topic-" + topicId + "-", ".part");
                     files.paths.add(temporary);
-                    writeTopicPdf(sourcePdf, startPage, endPage, temporary);
+                    if (wholeBook) writeWholeBookPdf(sourcePdf, temporary);
+                    else writeTopicPdf(sourcePdf, startPage, endPage, temporary);
                     if (Files.exists(destination, LinkOption.NOFOLLOW_LINKS)) {
                         throw new IOException("A topic PDF already exists in this operation: " + destination);
                     }
@@ -164,6 +170,11 @@ public class TopicPdfFileStore {
             throw new IllegalArgumentException("The book or topic filename exceeds the Windows component limit.");
         }
         return safe;
+    }
+
+    /** A protected I/O boundary permits deterministic filesystem-failure tests without a database. */
+    protected void writeWholeBookPdf(byte[] sourcePdf, Path output) throws IOException {
+        Files.write(output, sourcePdf);
     }
 
     /** A protected I/O boundary permits deterministic filesystem-failure tests without a database. */

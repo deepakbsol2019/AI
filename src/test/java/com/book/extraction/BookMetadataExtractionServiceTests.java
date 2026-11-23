@@ -108,8 +108,9 @@ class BookMetadataExtractionServiceTests {
         var topic = result.topicDetails().getFirst();
         assertThat(topic.getTopicName()).isEqualTo("No Contents");
         assertThat(topic.getDetails()).isEqualTo("Description");
-        assertThat(topic.getStartPage()).isNull();
-        assertThat(topic.getEndPage()).isNull();
+        assertThat(result.wholeBook()).isTrue();
+        assertThat(topic.getStartPage()).isEqualTo(1);
+        assertThat(topic.getEndPage()).isEqualTo(7);
         assertThat(topic.getPrintedStartPage()).isNull();
         assertThat(topic.getPrintedEndPage()).isNull();
         verify(books).saveAndFlush(result.bookDetails());
@@ -148,25 +149,25 @@ class BookMetadataExtractionServiceTests {
     }
 
     @Test
-    void stopsAtEofWithoutPersistingIncompleteBook() throws Exception {
+    void uploadsTheWholeBookWhenContentsNeverBecomeComplete() throws Exception {
         when(analyzer.analyze(any(), any())).thenReturn(json(new PdfBatchExtraction(null,
                 new BookData("Book", null), List.of(printed("Opening", null, 1)), true, null, true, false)));
 
-        assertThatThrownBy(() -> service.extract(pdf(7, true), "book.pdf"))
-                .isInstanceOfSatisfying(ResponseStatusException.class,
-                        e -> assertThat(e.getStatusCode().value()).isEqualTo(422));
+        var result = service.extract(pdf(7, true), "book.pdf");
 
         verify(analyzer, times(2)).analyze(any(), any());
-        verifyNoInteractions(books);
+        assertWholeBook(result, 7);
+        assertThat(result.bookDetails().getBookName()).isEqualTo("Book");
+        verify(books).saveAndFlush(result.bookDetails());
     }
 
     @Test
-    void rejectsMalformedModelResponseWithoutSavingAnything() throws Exception {
+    void uploadsTheWholeBookWhenTheModelReturnsMalformedJson() throws Exception {
         when(analyzer.analyze(any(), any())).thenReturn("not JSON");
-        assertThatThrownBy(() -> service.extract(pdf(3, true), "book.pdf"))
-                .isInstanceOfSatisfying(ResponseStatusException.class,
-                        e -> assertThat(e.getStatusCode().value()).isEqualTo(502));
-        verifyNoInteractions(books);
+        var result = service.extract(pdf(3, true), "book.pdf");
+        assertWholeBook(result, 3);
+        assertThat(result.bookDetails().getBookName()).isEqualTo("book");
+        verify(books).saveAndFlush(result.bookDetails());
     }
 
     @Test
@@ -184,23 +185,23 @@ class BookMetadataExtractionServiceTests {
     }
 
     @Test
-    void rejectsMissingControlFlags() throws Exception {
+    void missingControlFlagsUseWholeBookFallback() throws Exception {
         when(analyzer.analyze(any(), any())).thenReturn("{}");
-        assertThatThrownBy(() -> service.extract(pdf(1, true), "book.pdf"))
-                .isInstanceOfSatisfying(ResponseStatusException.class,
-                        e -> assertThat(e.getStatusCode().value()).isEqualTo(502));
-        verifyNoInteractions(books);
+        var result = service.extract(pdf(1, true), "book.pdf");
+        assertWholeBook(result, 1);
+        verify(books).saveAndFlush(result.bookDetails());
     }
 
     @Test
-    void rejectsInvalidPdfAndScansWithoutCallingModel() throws Exception {
+    void rejectsInvalidPdfButUploadsScansWithoutCallingModel() throws Exception {
         assertThatThrownBy(() -> service.extract(new byte[] {1, 2, 3}, "bad.pdf"))
                 .isInstanceOfSatisfying(ResponseStatusException.class,
                         e -> assertThat(e.getStatusCode().value()).isEqualTo(400));
-        assertThatThrownBy(() -> service.extract(pdf(2, false), "scan.pdf"))
-                .isInstanceOfSatisfying(ResponseStatusException.class,
-                        e -> assertThat(e.getStatusCode().value()).isEqualTo(422));
-        verifyNoInteractions(analyzer, books);
+        var result = service.extract(pdf(2, false), "scan.pdf");
+        assertWholeBook(result, 2);
+        assertThat(result.bookDetails().getBookName()).isEqualTo("scan");
+        verifyNoInteractions(analyzer);
+        verify(books).saveAndFlush(result.bookDetails());
     }
 
     @Test
@@ -237,17 +238,19 @@ class BookMetadataExtractionServiceTests {
     }
 
     @Test
-    void discardsLocallyAccumulatedDataWhenAContinuationResponseIsInvalid() throws Exception {
+    void invalidContinuationUsesOneTopicAndPreservesEarlierBookMetadata() throws Exception {
         when(analyzer.analyze(any(), any())).thenReturn(json(new PdfBatchExtraction(new AuthorData("Author"),
                 new BookData("Book", "Description"), List.of(printed("Opening", "Basics", 1)),
                 true, null, true, false)), "invalid continuation JSON");
 
-        assertThatThrownBy(() -> service.extract(pdf(10, true), "book.pdf"))
-                .isInstanceOfSatisfying(ResponseStatusException.class,
-                        e -> assertThat(e.getStatusCode().value()).isEqualTo(502));
+        var result = service.extract(pdf(10, true), "book.pdf");
 
         verify(analyzer, times(2)).analyze(any(), any());
-        verifyNoInteractions(books);
+        assertWholeBook(result, 10);
+        assertThat(result.authorDetails().getAuthorName()).isEqualTo("Author");
+        assertThat(result.bookDetails().getBookName()).isEqualTo("Book");
+        assertThat(result.topicDetails().getFirst().getDetails()).isEqualTo("Description");
+        verify(books).saveAndFlush(result.bookDetails());
     }
 
     @Test
@@ -531,6 +534,143 @@ class BookMetadataExtractionServiceTests {
                 .isInstanceOfSatisfying(ResponseStatusException.class, failure ->
                         assertThat(failure.getStatusCode().value()).isEqualTo(422));
         verifyNoInteractions(books);
+    }
+
+    @Test
+    void missingRequiredTopicStartUsesBookMetadataForTheSingleTopic() throws Exception {
+        when(analyzer.analyze(any(), any())).thenReturn(json(new PdfBatchExtraction(
+                new AuthorData("Writer"), new BookData("Reliable Book Metadata", "Known description"),
+                List.of(new TopicData("Unknown pages", "A child", null, null, null, null)),
+                true, null, false, true)));
+
+        var result = service.extract(pdf(4, true), "source.pdf");
+
+        assertWholeBook(result, 4);
+        assertThat(result.authorDetails().getAuthorName()).isEqualTo("Writer");
+        assertThat(result.topicDetails().getFirst().getTopicName()).isEqualTo("Reliable Book Metadata");
+        assertThat(result.topicDetails().getFirst().getDetails()).isEqualTo("Known description");
+        verify(books, times(1)).saveAndFlush(result.bookDetails());
+    }
+
+    @Test
+    void emptyOrConflictingContentsCollapseBeforeSavingAnyPartialTopics() throws Exception {
+        when(analyzer.analyze(any(), any())).thenReturn(json(new PdfBatchExtraction(null,
+                new BookData("Conflicting Contents", "Description"), List.of(printed("Late", null, 17),
+                        printed("Earlier", null, 3)), true, null, false, true)));
+
+        var result = service.extract(pdf(4, true), "source.pdf");
+
+        assertWholeBook(result, 4);
+        assertThat(result.fallbackReason()).contains("decrease");
+        verify(books, times(1)).saveAndFlush(result.bookDetails());
+    }
+
+    @Test
+    void noTopicsAndMissingControlFlagsRetainAvailableFirstBatchBookDetails() throws Exception {
+        when(analyzer.analyze(any(), any())).thenReturn(json(new PdfBatchExtraction(new AuthorData("Writer"),
+                new BookData("Known Title", "Known description"), List.of(), null, null, null, null)));
+
+        var result = service.extract(pdf(3, true), "source.pdf");
+
+        assertWholeBook(result, 3);
+        assertThat(result.bookDetails().getBookName()).isEqualTo("Known Title");
+        assertThat(result.topicDetails().getFirst().getDetails()).isEqualTo("Known description");
+        assertThat(result.authorDetails().getAuthorName()).isEqualTo("Writer");
+    }
+
+    @Test
+    void emptyCompletedModelContentsAreUploadedAsOneTopic() throws Exception {
+        when(analyzer.analyze(any(), any())).thenReturn(json(new PdfBatchExtraction(null,
+                new BookData("No chapter details", "A whole book"), List.of(), true, null, false, true)));
+
+        assertWholeBook(service.extract(pdf(3, true), "source.pdf"), 3);
+    }
+
+    @Test
+    void invalidTopicNameDoesNotLoseKnownAuthorAndBookMetadata() throws Exception {
+        when(analyzer.analyze(any(), any())).thenReturn(json(new PdfBatchExtraction(new AuthorData("Writer"),
+                new BookData("Known Book", "Description"), List.of(new TopicData(null, "Missing title", null,
+                        null, 1, null)), true, null, false, true)));
+
+        var result = service.extract(pdf(3, true), "source.pdf");
+
+        assertWholeBook(result, 3);
+        assertThat(result.bookDetails().getBookName()).isEqualTo("Known Book");
+        assertThat(result.authorDetails().getAuthorName()).isEqualTo("Writer");
+    }
+
+    @Test
+    void exhaustedInvalidModelJsonIsAQualityFallbackRatherThanAProviderFailure() throws Exception {
+        when(analyzer.analyze(any(), any())).thenThrow(new UnusableContentsException(
+                "The model did not return valid extraction JSON after 2 attempts; no extraction data was saved."));
+
+        var result = service.extract(pdf(3, true), "C:\\fakepath\\Notes.PDF");
+
+        assertWholeBook(result, 3);
+        assertThat(result.bookDetails().getBookName()).isEqualTo("Notes");
+        assertThat(result.authorDetails().getAuthorName()).isNull();
+        assertThat(result.bookDetails().getBookDetails()).isNull();
+        verify(books, times(1)).saveAndFlush(result.bookDetails());
+    }
+
+    @Test
+    void operationalAiFailureIsNotMisclassifiedAsBadContents() throws Exception {
+        var failure = new ResponseStatusException(org.springframework.http.HttpStatus.BAD_GATEWAY,
+                "The model could not analyze the PDF pages.", new IllegalStateException("Connection refused"));
+        when(analyzer.analyze(any(), any())).thenThrow(failure);
+
+        assertThatThrownBy(() -> service.extract(pdf(3, true), "source.pdf")).isSameAs(failure);
+        verifyNoInteractions(books);
+    }
+
+    @Test
+    void sourceContentsAtEndOfDocumentWithoutFollowingSectionIsNotTreatedAsComplete() throws Exception {
+        when(analyzer.analyze(any(), any())).thenReturn(json(new PdfBatchExtraction(null,
+                new BookData("Contents Only", "Description"), List.of(printed("Opening", "Basics", 1)),
+                true, null, false, true)));
+
+        var result = service.extract(pdf(3, true, Map.of(1, "Contents\n1 Opening ....... 1")), "source.pdf");
+
+        assertWholeBook(result, 3);
+        assertThat(result.fallbackReason()).contains("complete contents");
+    }
+
+    @Test
+    void readablePdfWithoutExtractionPermissionUsesProtectedWholeBookCopy() throws Exception {
+        byte[] source;
+        try (PDDocument document = new PDDocument(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            document.addPage(new PDPage());
+            document.addPage(new PDPage());
+            var permission = new org.apache.pdfbox.pdmodel.encryption.AccessPermission();
+            permission.setCanExtractContent(false);
+            var policy = new org.apache.pdfbox.pdmodel.encryption.StandardProtectionPolicy("owner-password", "", permission);
+            policy.setEncryptionKeyLength(128);
+            policy.setPreferAES(true);
+            document.protect(policy);
+            document.save(output);
+            source = output.toByteArray();
+        }
+
+        var result = service.extract(source, "protected.pdf");
+
+        assertWholeBook(result, 2);
+        assertThat(result.bookDetails().getBookName()).isEqualTo("protected");
+        verifyNoInteractions(analyzer);
+        verify(books).saveAndFlush(result.bookDetails());
+    }
+
+    private static void assertWholeBook(BookExtractionResult result, int pages) {
+        assertThat(result.wholeBook()).isTrue();
+        assertThat(result.fallbackReason()).isNotBlank();
+        assertThat(result.topicDetails()).singleElement().satisfies(topic -> {
+            assertThat(topic.getTopicName()).isEqualTo(result.bookDetails().getBookName());
+            assertThat(topic.getDetails()).isEqualTo(result.bookDetails().getBookDetails());
+            assertThat(topic.getStartPage()).isEqualTo(1);
+            assertThat(topic.getEndPage()).isEqualTo(pages);
+            assertThat(topic.getPrintedStartPage()).isNull();
+            assertThat(topic.getPrintedEndPage()).isNull();
+            assertThat(topic.getPdfPath()).isNull();
+        });
     }
 
     private static byte[] pdf(int pages, boolean readable, Map<Integer, String> pageText) throws IOException {

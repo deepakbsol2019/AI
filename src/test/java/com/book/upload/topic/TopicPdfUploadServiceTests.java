@@ -36,6 +36,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.dao.DataIntegrityViolationException;
+import com.book.extraction.ContentsUnavailableException;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
@@ -116,6 +117,93 @@ class TopicPdfUploadServiceTests {
         }
         workers.shutdownNow();
         assertThat(workers.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
+    }
+
+    @Test
+    void wholeBookModeDispatchesOneOriginalCopyAndSavesOnlyItsPath() throws Exception {
+        saved = wholeBookInput();
+        byte[] original = saved.uploadedFile().getFileData().clone();
+        when(files.saveWholeBook(any(), eq(12L), eq("Original Book Name"), eq(operation))).thenAnswer(invocation -> {
+            assertThat(Thread.currentThread()).isNotSameAs(databaseOwner.get());
+            assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+            assertThat(invocation.<byte[]>getArgument(0)).containsExactly(original);
+            Path path = operation.resolve("Original Book Name.pdf");
+            Files.write(path, invocation.<byte[]>getArgument(0));
+            return new SavedTopicPdf(12L, path.toString());
+        });
+
+        BookExtractionResult result = service.uploadTopic(saved);
+
+        assertThat(result.wholeBook()).isTrue();
+        assertThat(result.fallbackReason()).isEqualTo("Contents unavailable");
+        assertThat(result.uploadedFile()).isNull();
+        assertThat(result.topicDetails()).singleElement().satisfies(topic -> {
+            assertThat(topic.getTopicName()).isEqualTo("Original Book Name");
+            assertThat(topic.getDetails()).isEqualTo("The complete book description");
+            assertThat(topic.getStartPage()).isEqualTo(1);
+            assertThat(topic.getEndPage()).isEqualTo(3);
+            assertThat(topic.getPrintedStartPage()).isNull();
+            assertThat(topic.getPrintedEndPage()).isNull();
+            assertThat(Path.of(topic.getPdfPath())).hasFileName("Original Book Name.pdf");
+        });
+        verify(files).saveWholeBook(any(), eq(12L), eq("Original Book Name"), eq(operation));
+        verify(files, never()).extractAndSave(any(), anyLong(), anyString(), anyInt(), anyInt(), any());
+        verify(files, never()).extractOffsetAndSave(any(), anyLong(), anyString(), anyInt(), any());
+        verify(topics).assignPdfPath(eq(44L), eq(12L), eq(1), eq(3), anyString());
+        finishTransaction(TransactionSynchronization.STATUS_COMMITTED);
+        verify(files).retainOperation(operation);
+    }
+
+    @Test
+    void wholeBookCopyFailureStillPropagatesAndCleansWithoutUpdatingAnyPath() {
+        saved = wholeBookInput();
+        when(files.saveWholeBook(any(), anyLong(), anyString(), any())).thenThrow(new IllegalStateException("Disk full"));
+
+        assertThatThrownBy(() -> service.uploadTopic(saved)).isInstanceOf(java.util.concurrent.CompletionException.class)
+                .hasCauseInstanceOf(IllegalStateException.class);
+
+        verify(files).cleanupOperation(operation);
+        verify(topics, never()).assignPdfPath(anyLong(), anyLong(), anyInt(), anyInt(), anyString());
+    }
+
+    @Test
+    void wholeBookModeRejectsExtraRowsAndInventedPrintedRangesBeforeIo() {
+        BookExtractionResult whole = wholeBookInput();
+        TopicDetails extra = topic(whole.bookDetails(), 99L, "Unexpected offset", 1, 0);
+        stored = List.of(stored.getFirst(), extra);
+        assertThatThrownBy(() -> service.uploadTopic(whole)).isInstanceOf(TopicPdfUploadException.class)
+                .hasMessageContaining("exactly one");
+        stored = List.of(whole.topicDetails().getFirst());
+        stored.getFirst().setPrintedStartPage(1);
+        assertThatThrownBy(() -> service.uploadTopic(whole)).isInstanceOf(TopicPdfUploadException.class)
+                .hasMessageContaining("whole-book topic");
+        verifyNoInteractions(files);
+    }
+
+    @Test
+    void splitQualityPreflightDoesNotCreateFilesOrUpdateRows() {
+        service.validateContents(saved);
+        stored.get(1).setEndPage(1);
+
+        assertThatThrownBy(() -> service.validateContents(saved)).isInstanceOf(ContentsUnavailableException.class)
+                .hasMessageContaining("gap or overlaps");
+
+        assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isTrue();
+        verifyNoInteractions(files);
+        verify(topics, never()).assignPdfPath(anyLong(), anyLong(), anyInt(), anyInt(), anyString());
+        verify(topics, never()).flush();
+    }
+
+    @Test
+    void splitQualityPreflightDoesNotDowngradeDatabaseOrExistingPathFailures() {
+        stored.get(1).setPdfPath("already-uploaded.pdf");
+        assertThatThrownBy(() -> service.validateContents(saved)).isInstanceOf(TopicPdfUploadException.class)
+                .isNotInstanceOf(ContentsUnavailableException.class).hasMessageContaining("already has a PDF path");
+        stored.get(1).setPdfPath(null);
+        when(topics.findAllLockedForBook(44L)).thenThrow(new DataIntegrityViolationException("database unavailable"));
+        assertThatThrownBy(() -> service.validateContents(saved)).isInstanceOf(DataIntegrityViolationException.class)
+                .isNotInstanceOf(ContentsUnavailableException.class);
+        verifyNoInteractions(files);
     }
 
     @Test
@@ -276,7 +364,7 @@ class TopicPdfUploadServiceTests {
     @Test
     void invalidOrIncompleteRangesFailBeforeDispatchAndExistingFilesRemainUntouched() {
         saved.topicDetails().getFirst().setEndPage(9);
-        assertThatThrownBy(() -> service.uploadTopic(saved)).isInstanceOf(TopicPdfUploadException.class);
+        assertThatThrownBy(() -> service.uploadTopic(saved)).isInstanceOf(ContentsUnavailableException.class);
         verifyNoInteractions(files);
         verify(topics, never()).assignPdfPath(anyLong(), anyLong(), anyInt(), anyInt(), anyString());
     }
@@ -313,13 +401,13 @@ class TopicPdfUploadServiceTests {
     @Test
     void missingOffsetAndSanitizedFilenameCollisionsFailBeforeIo() {
         stored = List.of(stored.get(1), stored.get(2));
-        assertThatThrownBy(() -> service.uploadTopic(saved)).isInstanceOf(TopicPdfUploadException.class)
+        assertThatThrownBy(() -> service.uploadTopic(saved)).isInstanceOf(ContentsUnavailableException.class)
                 .hasMessageContaining("exactly one saved offset");
         TopicDetails offset = saved.topicDetails().stream().filter(topic -> topic.getTopicId() == 1L).findFirst().orElseThrow();
         stored = List.of(offset, stored.get(0), stored.get(1));
         stored.get(1).setTopicName("A/B");
         stored.get(2).setTopicName("A:B");
-        assertThatThrownBy(() -> service.uploadTopic(saved)).isInstanceOf(TopicPdfUploadException.class)
+        assertThatThrownBy(() -> service.uploadTopic(saved)).isInstanceOf(ContentsUnavailableException.class)
                 .hasMessageContaining("names collide");
         verifyNoInteractions(files);
     }
@@ -327,7 +415,7 @@ class TopicPdfUploadServiceTests {
     @Test
     void gapsInPhysicalPageCoverageCannotProduceAnIncompleteReconstructedBook() {
         stored.get(1).setEndPage(1);
-        assertThatThrownBy(() -> service.uploadTopic(saved)).isInstanceOf(TopicPdfUploadException.class)
+        assertThatThrownBy(() -> service.uploadTopic(saved)).isInstanceOf(ContentsUnavailableException.class)
                 .hasMessageContaining("gap or overlaps");
         verifyNoInteractions(files);
     }
@@ -339,6 +427,18 @@ class TopicPdfUploadServiceTests {
         Path file = directory.resolve(name + ".pdf");
         Files.write(file, new byte[] {1, 2, 3});
         return new SavedTopicPdf(topicId, file.toString());
+    }
+
+    private BookExtractionResult wholeBookInput() {
+        BookDetails book = saved.bookDetails();
+        book.setBookDetails("The complete book description");
+        TopicDetails topic = topic(book, 12L, book.getBookName(), 1, 3);
+        topic.setDetails(book.getBookDetails());
+        topic.setPrintedStartPage(null);
+        topic.setPrintedEndPage(null);
+        stored = List.of(topic);
+        return new BookExtractionResult(saved.authorDetails(), book, List.of(topic), null,
+                saved.uploadedFile(), true, "Contents unavailable");
     }
 
     private void assertDatabaseThread() {

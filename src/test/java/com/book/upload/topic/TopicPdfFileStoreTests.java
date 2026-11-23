@@ -23,6 +23,77 @@ class TopicPdfFileStoreTests {
     @TempDir Path root;
 
     @Test
+    void wholeBookIsSavedByteForByteWithoutRewritingAnyPages() throws Exception {
+        TopicPdfFileStore store = new TopicPdfFileStore(root.toString(), 3) {
+            @Override
+            protected void writeTopicPdf(byte[] source, int start, int end, Path output) {
+                throw new AssertionError("A whole book must not be split or rewritten");
+            }
+        };
+        Path operation = store.createOperationDirectory(7L, "Entire Book");
+        byte[] source = pdf(4);
+
+        var saved = store.saveWholeBook(source, 12L, "Entire Book", operation);
+
+        assertThat(Path.of(saved.pdfPath())).hasFileName("Entire Book.pdf");
+        assertThat(Files.readAllBytes(Path.of(saved.pdfPath()))).containsExactly(source);
+        try (PDDocument document = Loader.loadPDF(Path.of(saved.pdfPath()).toFile())) {
+            assertThat(document.getNumberOfPages()).isEqualTo(4);
+        }
+        store.cleanupOperation(operation);
+        assertThat(operation).doesNotExist();
+    }
+
+    @Test
+    void wholeBookCopyRetriesOnlyItsFileIoAndCleansFailedAttempts() throws Exception {
+        AtomicInteger attempts = new AtomicInteger();
+        TopicPdfFileStore store = new TopicPdfFileStore(root.toString(), 3) {
+            @Override
+            protected void writeWholeBookPdf(byte[] source, Path output) throws IOException {
+                if (attempts.incrementAndGet() < 3) {
+                    Files.writeString(output, "Incomplete original document");
+                    throw new IOException("Transient whole-book copy failure");
+                }
+                super.writeWholeBookPdf(source, output);
+            }
+        };
+        Path operation = store.createOperationDirectory(7L, "Entire Book");
+        byte[] source = pdf(2);
+
+        var result = store.saveWholeBook(source, 12L, "Entire Book", operation);
+
+        assertThat(attempts).hasValue(3);
+        assertThat(Files.readAllBytes(Path.of(result.pdfPath()))).containsExactly(source);
+        try (var paths = Files.list(operation)) {
+            assertThat(paths.toList()).containsExactly(Path.of(result.pdfPath()));
+        }
+    }
+
+    @Test
+    void wholeBookExhaustionLeavesNoPartialFileAndDoesNotRemoveAnotherBook() throws Exception {
+        AtomicInteger attempts = new AtomicInteger();
+        Path other = Files.createDirectory(root.resolve("Existing Book"));
+        Path previousPdf = Files.writeString(other.resolve("Existing Book.pdf"), "Previously committed");
+        TopicPdfFileStore store = new TopicPdfFileStore(root.toString(), 2) {
+            @Override
+            protected void writeWholeBookPdf(byte[] source, Path output) throws IOException {
+                attempts.incrementAndGet();
+                Files.writeString(output, "Partial original document");
+                throw new IOException("Persistent whole-book copy failure");
+            }
+        };
+        Path operation = store.createOperationDirectory(7L, "Entire Book");
+        byte[] source = pdf(2);
+
+        assertThatThrownBy(() -> store.saveWholeBook(source, 12L, "Entire Book", operation))
+                .isInstanceOf(TopicPdfFileStore.TopicPdfStorageException.class).hasMessageContaining("2 attempt(s)");
+        assertThat(attempts).hasValue(2);
+        store.cleanupOperation(operation);
+        assertThat(operation).doesNotExist();
+        assertThat(previousPdf).hasContent("Previously committed");
+    }
+
+    @Test
     void extractsTheInclusiveOneBasedRangeWithoutChangingTheSource() throws Exception {
         TopicPdfFileStore store = new TopicPdfFileStore(root.toString(), 3);
         Path operation = store.createOperationDirectory(7L, "Book");

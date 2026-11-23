@@ -192,7 +192,7 @@ class ExtractionAccumulatorTests {
     }
 
     @Test
-    void noIndexFallbackDoesNotInventPhysicalOrPrintedPagesFromPdfLength() {
+    void noIndexFallbackSpansTheWholePdfWithoutInventingPrintedPages() {
         ExtractionAccumulator accumulator = new ExtractionAccumulator();
         accumulator.merge(new PdfBatchExtraction(new AuthorData("Author"), new BookData("Book", "Description"),
                 List.of(new TopicData("Model fallback", "Ignored", 1, 372, 1, 372)),
@@ -203,8 +203,8 @@ class ExtractionAccumulatorTests {
         assertThat(topics).hasSize(1);
         assertThat(topics.getFirst().getTopicName()).isEqualTo("Book");
         assertThat(topics.getFirst().getDetails()).isEqualTo("Description");
-        assertThat(topics.getFirst().getStartPage()).isNull();
-        assertThat(topics.getFirst().getEndPage()).isNull();
+        assertThat(topics.getFirst().getStartPage()).isEqualTo(1);
+        assertThat(topics.getFirst().getEndPage()).isEqualTo(372);
         assertThat(topics.getFirst().getPrintedStartPage()).isNull();
         assertThat(topics.getFirst().getPrintedEndPage()).isNull();
         assertThat(topics.getFirst().getPdfPath()).isNull();

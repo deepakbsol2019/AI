@@ -28,8 +28,19 @@ final class ExtractionAccumulator {
     private Integer lastPrintedPage;
     private boolean indexFound;
     private boolean contentsComplete;
+    private String fallbackReason;
 
     void merge(PdfBatchExtraction response, boolean firstBatch) {
+        captureMetadata(response, firstBatch);
+        indexFound |= Boolean.TRUE.equals(response.indexFound());
+        contentsComplete |= Boolean.TRUE.equals(response.contentsComplete());
+        if (!indexFound || response.topicDetails() == null) {
+            return;
+        }
+        mergeTopics(response);
+    }
+
+    void captureMetadata(PdfBatchExtraction response, boolean firstBatch) {
         if (firstBatch) {
             if (response.authorDetails() != null) {
                 authorName = known(response.authorDetails().authorName(), null);
@@ -39,11 +50,9 @@ final class ExtractionAccumulator {
                 bookDescription = known(response.bookDetails().bookDetails(), null);
             }
         }
-        indexFound |= Boolean.TRUE.equals(response.indexFound());
-        contentsComplete |= Boolean.TRUE.equals(response.contentsComplete());
-        if (!indexFound || response.topicDetails() == null) {
-            return;
-        }
+    }
+
+    private void mergeTopics(PdfBatchExtraction response) {
         String previousLastKey = topics.isEmpty() ? null : new ArrayList<>(topics.keySet()).getLast();
         int position = 0;
         for (TopicData incoming : response.topicDetails()) {
@@ -56,7 +65,7 @@ final class ExtractionAccumulator {
                     && previousLastKey != null) {
                 name = topics.get(previousLastKey).topicName();
             }
-            checkName(name);
+            checkTopicName(name);
             Integer printedStart = incoming.printedStartPage();
             if (printedStart != null && printedStart < 1) {
                 throw invalid("A printed parent start page must be positive.");
@@ -127,6 +136,14 @@ final class ExtractionAccumulator {
         contentsComplete = true;
     }
 
+    void useWholeBook(String reason) {
+        fallbackReason = reason == null || reason.isBlank() ? "Contents are unavailable or unusable." : reason;
+        topics.clear();
+        explicitSourceEnds.clear();
+        indexFound = false;
+        contentsComplete = true;
+    }
+
     void applyContentsReferences(List<ContentsPageReferenceParser.Entry> references) {
         if (references.isEmpty()) {
             return;
@@ -167,22 +184,37 @@ final class ExtractionAccumulator {
         author.setAuthorName(authorName);
         BookDetails book = new BookDetails();
         book.setExtractionId(extractionId);
-        book.setBookName(bookName == null || bookName.isBlank() ? fileName : bookName);
+        boolean wholeBook = !indexFound || fallbackReason != null;
+        book.setBookName((bookName == null || bookName.isBlank()
+                ? wholeBook ? fallbackBookName(fileName) : fileName : bookName).trim());
         book.setBookDetails(bookDescription);
         book.setTotalPages(totalPages);
         book.setAuthorDetails(author);
         checkName(book.getBookName());
+        if (book.getBookName().length() > BookDetails.MAX_BOOK_NAME_LENGTH) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "The book name must contain 1 to " + BookDetails.MAX_BOOK_NAME_LENGTH + " characters.");
+        }
         if (authorName != null) {
             checkName(authorName);
         }
-        if (!indexFound) {
-            // PDF length does not establish its printed numbering or physical topic range.
-            book.addTopic(topic(book.getBookName(), bookDescription));
+        if (wholeBook) {
+            TopicDetails topic = topic(book.getBookName(), bookDescription);
+            topic.setStartPage(1);
+            topic.setEndPage(totalPages);
+            book.addTopic(topic);
         }
         else {
             resolvePrintedRanges(book);
         }
-        return new BookExtractionResult(author, book, List.copyOf(book.getTopics()));
+        return new BookExtractionResult(author, book, List.copyOf(book.getTopics()), null, null, wholeBook,
+                wholeBook ? fallbackReason == null ? "No usable contents were found in the first batch." : fallbackReason : null);
+    }
+
+    private static String fallbackBookName(String fileName) {
+        String name = fileName == null ? "" : fileName.replace('\\', '/');
+        name = name.substring(name.lastIndexOf('/') + 1).replaceFirst("(?i)\\.pdf$", "").strip();
+        return name.isBlank() ? "Untitled book" : name;
     }
 
     private void resolvePrintedRanges(BookDetails book) {
@@ -223,7 +255,7 @@ final class ExtractionAccumulator {
     }
 
     private static TopicDetails topic(String name, String details) {
-        checkName(name);
+        checkTopicName(name);
         TopicDetails topic = new TopicDetails();
         topic.setTopicName(name);
         topic.setDetails(details);
@@ -273,7 +305,13 @@ final class ExtractionAccumulator {
         }
     }
 
-    static ResponseStatusException invalid(String message) {
-        return new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Invalid model extraction: " + message);
+    private static void checkTopicName(String value) {
+        if (value == null || value.isBlank() || value.length() > TopicDetails.MAX_TOPIC_NAME_LENGTH) {
+            throw invalid("A topic name is missing or exceeds the supported length.");
+        }
+    }
+
+    static UnusableContentsException invalid(String message) {
+        return new UnusableContentsException("Invalid model extraction: " + message);
     }
 }

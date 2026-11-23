@@ -87,7 +87,7 @@ public class BookPageAnalyzer {
                 logger.warn("Model returned invalid extraction JSON for PDF pages {}-{} (attempt {}/{})",
                         batch.startPage(), batch.endPage(), attempt, maxAttempts);
             }
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+            throw new UnusableContentsException(
                     "The model did not return valid extraction JSON after " + maxAttempts
                             + " attempts; no extraction data was saved.");
         }

@@ -26,7 +26,7 @@ class FileUploadServiceTests {
         var offsets = mock(BookPageOffsetService.class);
         var topicPdfs = mock(TopicPdfUploadService.class);
         var uploadStatuses = mock(BookUploadStatusService.class);
-        var service = new FileUploadServiceImpl(extraction, offsets, topicPdfs, uploadStatuses);
+        var service = new FileUploadServiceImpl(extraction, offsets, topicPdfs, uploadStatuses, mock(WholeBookFallbackService.class));
         var upload = new UploadFileDtlsDto();
         byte[] bytes = {1, 2, 3};
         upload.setFileData(bytes);
@@ -57,7 +57,7 @@ class FileUploadServiceTests {
         var offsets = mock(BookPageOffsetService.class);
         var topicPdfs = mock(TopicPdfUploadService.class);
         var uploadStatuses = mock(BookUploadStatusService.class);
-        var service = new FileUploadServiceImpl(extraction, offsets, topicPdfs, uploadStatuses);
+        var service = new FileUploadServiceImpl(extraction, offsets, topicPdfs, uploadStatuses, mock(WholeBookFallbackService.class));
         var upload = new UploadFileDtlsDto();
         byte[] bytes = {1};
         upload.setFileData(bytes);
@@ -80,7 +80,7 @@ class FileUploadServiceTests {
         var offsets = mock(BookPageOffsetService.class);
         var topicPdfs = mock(TopicPdfUploadService.class);
         var uploadStatuses = mock(BookUploadStatusService.class);
-        var service = new FileUploadServiceImpl(extraction, offsets, topicPdfs, uploadStatuses);
+        var service = new FileUploadServiceImpl(extraction, offsets, topicPdfs, uploadStatuses, mock(WholeBookFallbackService.class));
         var upload = new UploadFileDtlsDto();
         byte[] bytes = {1, 2, 3};
         upload.setFileData(bytes);
@@ -112,7 +112,7 @@ class FileUploadServiceTests {
         var offsets = mock(BookPageOffsetService.class);
         var topicPdfs = mock(TopicPdfUploadService.class);
         var uploadStatuses = mock(BookUploadStatusService.class);
-        var service = new FileUploadServiceImpl(extraction, offsets, topicPdfs, uploadStatuses);
+        var service = new FileUploadServiceImpl(extraction, offsets, topicPdfs, uploadStatuses, mock(WholeBookFallbackService.class));
         var upload = new UploadFileDtlsDto();
         byte[] bytes = {1};
         upload.setFileData(bytes);

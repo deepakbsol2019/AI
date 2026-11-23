@@ -30,20 +30,20 @@ public class TopicPageOffsetWriter {
         this.entityManager = entityManager;
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = ContentsMappingException.class)
     public WriterResult apply(Long bookId, String bookName, Set<Long> expectedRealTopicIds,
             int offset, int actualPdfPageCount) {
         return apply(bookId, bookName, expectedRealTopicIds, offset, actualPdfPageCount, null, offset);
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = ContentsMappingException.class)
     public WriterResult apply(Long bookId, String bookName, Set<Long> expectedRealTopicIds,
             int offset, int actualPdfPageCount, Map<Long, SourceSnapshot> expectedSources) {
         return apply(bookId, bookName, expectedRealTopicIds, offset, actualPdfPageCount, expectedSources, offset);
     }
 
     /** Prefix length and printed-number translation coincide only when the selected chapter starts on printed page 1. */
-    @Transactional
+    @Transactional(noRollbackFor = ContentsMappingException.class)
     public WriterResult apply(Long bookId, String bookName, Set<Long> expectedRealTopicIds,
             int prefixLength, int actualPdfPageCount, Map<Long, SourceSnapshot> expectedSources,
             int printedPageOffset) {
@@ -70,8 +70,8 @@ public class TopicPageOffsetWriter {
             issues.add(issue(null, "pdf_page_count_mismatch", "The uploaded PDF page count differs from the saved book."));
         }
         String offsetName = bookName + "_offset";
-        if (offsetName.length() > 100) {
-            issues.add(issue(null, "offset_name_too_long", "The required offset topic name exceeds topic_details.topic_name length 100."));
+        if (offsetName.length() > TopicDetails.MAX_TOPIC_NAME_LENGTH) {
+            issues.add(issue(null, "offset_name_too_long", "The required offset topic name exceeds topic_details.topic_name capacity."));
         }
 
         List<TopicDetails> saved = topics.findAllLockedForBook(bookId);
@@ -146,7 +146,16 @@ public class TopicPageOffsetWriter {
             }
         }
         // No DML is permitted until the complete book and reserved entry have passed validation.
-        if (!issues.isEmpty()) throw new OffsetWriteException(issues);
+        if (!issues.isEmpty()) {
+            if (issues.stream().allMatch(issue -> switch (issue.code()) {
+                case "invalid_printed_pages", "invalid_page_range", "prefix_mapping_mismatch", "offset_name_too_long" -> true;
+                default -> false;
+            })) {
+                // No DML has happened: the caller may safely replace unusable contents in this transaction.
+                throw new ContentsMappingException(issues);
+            }
+            throw new OffsetWriteException(issues);
+        }
 
         for (PageAssignment assignment : assignments) {
             int changed = topics.fillMissingPdfPages(bookId, assignment.topic().getTopicId(),
@@ -217,5 +226,9 @@ public class TopicPageOffsetWriter {
             this.issues = List.copyOf(issues);
         }
         public List<ValidationIssue> issues() { return issues; }
+    }
+
+    public static class ContentsMappingException extends OffsetWriteException {
+        public ContentsMappingException(List<ValidationIssue> issues) { super(issues); }
     }
 }

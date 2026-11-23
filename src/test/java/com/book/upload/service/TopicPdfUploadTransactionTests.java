@@ -64,7 +64,7 @@ import tools.jackson.databind.json.JsonMapper;
         "logging.level.org.hibernate.SQL=INFO" })
 @Import({ FileUploadServiceImpl.class, BookMetadataExtractionService.class, BookPageOffsetService.class,
         SavedBookTopicSelector.class, ChapterOpeningDetector.class, PageOffsetAssumptionValidator.class,
-        TopicPageOffsetWriter.class, TopicPdfUploadService.class, BookUploadStatusService.class,
+        TopicPageOffsetWriter.class, TopicPdfUploadService.class, BookUploadStatusService.class, WholeBookFallbackService.class,
         TopicPdfUploadTransactionTests.Configuration.class })
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class TopicPdfUploadTransactionTests {

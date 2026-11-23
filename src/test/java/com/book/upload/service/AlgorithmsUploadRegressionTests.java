@@ -58,7 +58,8 @@ import tools.jackson.databind.json.JsonMapper;
 @Import({FileUploadServiceImpl.class, BookMetadataExtractionService.class, BookPageOffsetService.class,
         SavedBookTopicSelector.class, ChapterOpeningDetector.class, PageOffsetAssumptionValidator.class,
         TopicPageOffsetWriter.class, TopicPdfUploadService.class, BookUploadStatusService.class,
-        BookUploadSubmissionService.class, BackgroundBookUploadService.class, AlgorithmsUploadRegressionTests.Configuration.class})
+        BookUploadSubmissionService.class, BackgroundBookUploadService.class, WholeBookFallbackService.class,
+        AlgorithmsUploadRegressionTests.Configuration.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @EnabledIfSystemProperty(named = "book.algorithms.fixture", matches = ".+")
 class AlgorithmsUploadRegressionTests {

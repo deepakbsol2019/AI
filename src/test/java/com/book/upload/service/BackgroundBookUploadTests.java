@@ -65,7 +65,8 @@ import tools.jackson.databind.json.JsonMapper;
 @Import({ FileUploadServiceImpl.class, BookMetadataExtractionService.class, BookPageOffsetService.class,
         SavedBookTopicSelector.class, ChapterOpeningDetector.class, PageOffsetAssumptionValidator.class,
         TopicPageOffsetWriter.class, TopicPdfUploadService.class, BookUploadStatusService.class,
-        BookUploadSubmissionService.class, BackgroundBookUploadService.class, BackgroundBookUploadTests.Configuration.class })
+        BookUploadSubmissionService.class, BackgroundBookUploadService.class, WholeBookFallbackService.class,
+        BackgroundBookUploadTests.Configuration.class })
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class BackgroundBookUploadTests {
     private static final Path STORAGE_ROOT = temporaryDirectory();
