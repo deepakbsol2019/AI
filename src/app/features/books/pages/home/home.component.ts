@@ -20,6 +20,11 @@ import { Book, BookSearchCriteria, BookSearchResponse } from '../../models/book.
 import { BookUploadService } from '../../services/book-upload.service';
 import type { ReaderRequest } from '../../models/reader.models';
 import { NotificationService } from '../../../../shared/services/notification.service';
+import type { BookTopicDescriptionComponent } from '../../components/book-topic-description/book-topic-description.component';
+import { mergeMetadataSave } from '../../models/metadata-save';
+import type { MetadataSave } from '../../models/metadata-save';
+
+const DEFAULT_PAGE_SIZE = 5;
 
 @Component({
   selector: 'app-home',
@@ -33,20 +38,20 @@ export class HomeComponent {
   readonly downloads = inject(BookDownloadService);
   readonly upload = inject(BookUploadService);
   private readonly notifications = inject(NotificationService);
-  readonly searchMinimized = signal(false);
+  readonly searchMinimized = signal(true);
   readonly collectionMinimized = signal(false);
   readonly results = signal<BookSearchResponse | null>(null);
   readonly loading = signal(true);
   readonly error = signal<string | null>(null);
   readonly dialogLoading = signal(false);
   readonly dialogError = signal<string | null>(null);
-  readonly pageSize = signal(20);
+  readonly pageSize = signal(DEFAULT_PAGE_SIZE);
   readonly activeFilterCount = signal(0);
   private criteria: BookSearchCriteria = {};
   private currentPage = 0;
   private readonly requests = new Subject<BookSearchCriteria>();
   private readonly dialogHost = viewChild.required('dialogHost', { read: ViewContainerRef });
-  private activeDialog: ComponentRef<unknown> | null = null;
+  private activeDialog: ComponentRef<BookTopicDescriptionComponent> | null = null;
   private dialogSelection = 0;
   private activeReader: ComponentRef<unknown> | null = null;
   private readerSelection = 0;
@@ -54,7 +59,7 @@ export class HomeComponent {
   constructor() {
     this.requests
       .pipe(
-        startWith({} as BookSearchCriteria),
+        startWith({ size: DEFAULT_PAGE_SIZE } as BookSearchCriteria),
         switchMap((criteria) => {
           this.loading.set(true);
           this.error.set(null);
@@ -72,8 +77,19 @@ export class HomeComponent {
         this.error.set(result.error);
         if (result.data) {
           this.results.set(result.data);
+          const popup = this.activeDialog;
+          if (popup) {
+            const refreshed = result.data.books.find(
+              (book) => book.bookId === popup.instance.book().bookId,
+            );
+            if (refreshed) popup.setInput('book', refreshed);
+          }
           this.currentPage = result.data.page;
           this.pageSize.set(result.data.size);
+          if (result.data.page > 0 && result.data.page >= result.data.totalPages) {
+            this.currentPage = Math.max(0, result.data.totalPages - 1);
+            this.reload();
+          }
         }
       });
     this.upload.completed$.pipe(takeUntilDestroyed()).subscribe(() => this.reload());
@@ -99,14 +115,13 @@ export class HomeComponent {
     this.criteria = {};
     this.activeFilterCount.set(0);
     this.currentPage = 0;
-    this.pageSize.set(20);
-    this.requests.next({});
+    this.reload();
   }
 
   reload(): void {
     const request = { ...this.criteria };
     if (this.currentPage > 0) request.page = this.currentPage;
-    if (this.pageSize() !== 20) request.size = this.pageSize();
+    request.size = this.pageSize();
     this.requests.next(request);
   }
 
@@ -119,6 +134,28 @@ export class HomeComponent {
   changeSize(event: Event): void {
     this.pageSize.set(Number((event.target as HTMLSelectElement).value));
     this.currentPage = 0;
+    this.reload();
+  }
+
+  onMetadataSaved(save: MetadataSave): void {
+    const book = save.book;
+    this.results.update((current) =>
+      current
+        ? {
+            ...current,
+            books: current.books.map((stored) =>
+              stored.bookId === book.bookId ? mergeMetadataSave(stored, save) : stored,
+            ),
+          }
+        : current,
+    );
+    if (this.activeDialog?.instance.book().bookId === book.bookId) {
+      this.activeDialog.setInput(
+        'book',
+        mergeMetadataSave(this.activeDialog.instance.book(), save),
+      );
+    }
+    // Reapply the server's full-value matching and stable book ordering after a confirmed edit.
     this.reload();
   }
 
@@ -140,6 +177,7 @@ export class HomeComponent {
       this.activeDialog = ref;
       ref.setInput('book', book);
       ref.instance.readRequested.subscribe((request) => void this.openReader(request));
+      ref.instance.metadataSaved.subscribe((saved) => this.onMetadataSaved(saved));
       ref.instance.closed.subscribe(() => {
         ref.destroy();
         if (this.activeDialog === ref) this.activeDialog = null;

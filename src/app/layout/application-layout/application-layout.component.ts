@@ -40,13 +40,19 @@ import { FooterComponent } from '../footer/footer.component';
       flex: 0 0 auto;
     }
     .library-scroll-region {
+      display: flex;
+      flex-direction: column;
       flex: 1 1 0;
       min-height: 0;
       min-width: 0;
       overflow-x: hidden;
-      overflow-y: auto;
+      overflow-y: hidden;
       overscroll-behavior-y: contain;
-      scrollbar-gutter: stable;
+    }
+    @media (max-height: 359px) {
+      .library-scroll-region {
+        overflow-y: auto;
+      }
     }
   `,
 })

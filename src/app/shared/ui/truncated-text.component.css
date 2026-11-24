@@ -1,0 +1,72 @@
+:host {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+}
+.truncated-value {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+}
+.truncated-value[role='button'] {
+  cursor: help;
+}
+.full-text-preview {
+  position: fixed;
+  inset: auto;
+  z-index: 2147482000;
+  display: block;
+  margin: 0;
+  padding: 0.75rem 1rem 1rem;
+  box-sizing: border-box;
+  max-width: calc(100vw - 16px);
+  max-height: min(360px, calc(100dvh - 16px));
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid #9aa9bb;
+  border-radius: 0.65rem;
+  box-shadow: 0 8px 32px #11182733;
+  background: #fff;
+  color: #111827;
+  text-shadow: none;
+  font-family: var(--bs-body-font-family, system-ui, sans-serif);
+  font-size: 0.85rem;
+  font-weight: 500;
+  line-height: 1.65;
+  text-align: left;
+}
+.full-text-preview[hidden] {
+  display: none !important;
+}
+.preview-controls {
+  position: sticky;
+  top: -0.75rem;
+  display: flex;
+  justify-content: flex-end;
+  background: #fff;
+  padding: 0.25rem 0 0.5rem;
+}
+.preview-controls .btn {
+  min-height: 30px;
+  font-size: 0.72rem;
+  padding: 0.25rem 0.65rem;
+}
+.preview-content {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+@media (forced-colors: active) {
+  .full-text-preview,
+  .preview-controls {
+    background: Canvas;
+    color: CanvasText;
+    border-color: CanvasText;
+  }
+}

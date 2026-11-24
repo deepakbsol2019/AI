@@ -25,11 +25,11 @@ const storedBook = (id: number): Book => ({
 const page = (index: number): BookSearchResponse => ({
   books:
     index === 0
-      ? Array.from({ length: 20 }, (_, position) => storedBook(position + 1))
-      : [storedBook(21)],
+      ? Array.from({ length: 5 }, (_, position) => storedBook(position + 1))
+      : [storedBook(6)],
   page: index,
-  size: 20,
-  totalElements: 21,
+  size: 5,
+  totalElements: 6,
   totalPages: 2,
 });
 
@@ -51,7 +51,7 @@ describe('Home section visibility', () => {
   for (const first of ['search', 'collection'] as const) {
     it(`preserves inputs, applied criteria and pagination when restoring ${first} first`, async () => {
       const fixture = TestBed.createComponent(HomeComponent);
-      http.expectOne('/api/search/books').flush(page(0));
+      http.expectOne('/api/search/books?size=5').flush(page(0));
       fixture.detectChanges();
       await fixture.whenStable();
       const element = fixture.nativeElement as HTMLElement;
@@ -70,10 +70,29 @@ describe('Home section visibility', () => {
       const minimizeCollection = element.querySelector(
         '[aria-label="Minimize Book Collection"]',
       ) as HTMLButtonElement;
-      expect(searchSection.hidden).toBe(false);
+      expect(searchSection.hidden).toBe(true);
       expect(collectionSection.hidden).toBe(false);
-      expect(restoreSearch.disabled).toBe(true);
+      expect(restoreSearch.disabled).toBe(false);
       expect(restoreCollection.disabled).toBe(true);
+      const main = element.querySelector('main')!;
+      expect(main.classList.contains('collection-only')).toBe(true);
+      expect(main.classList.contains('search-only')).toBe(false);
+      expect(element.querySelectorAll('app-book-table tbody tr')).toHaveLength(5);
+      const pageSize = element.querySelector<HTMLSelectElement>('#page-size')!;
+      expect(pageSize.value).toBe('5');
+      expect(Array.from(pageSize.options, (option) => option.value)).toEqual([
+        '5',
+        '10',
+        '20',
+        '50',
+        '100',
+      ]);
+      http.expectNone(() => true);
+      restoreSearch.click();
+      fixture.detectChanges();
+      expect(searchSection.hidden).toBe(false);
+      expect(restoreSearch.disabled).toBe(true);
+      expect(main.classList.contains('collection-only')).toBe(false);
 
       query.value = '  Java  ';
       query.dispatchEvent(new Event('input', { bubbles: true }));
@@ -108,12 +127,14 @@ describe('Home section visibility', () => {
       expect(collectionSection.hidden).toBe(false);
       expect(restoreSearch.disabled).toBe(false);
       expect(restoreCollection.disabled).toBe(true);
+      expect(main.classList.contains('collection-only')).toBe(true);
       http.expectNone(() => true);
 
       restoreSearch.click();
       fixture.detectChanges();
       expect(searchSection.hidden).toBe(false);
       expect(restoreSearch.disabled).toBe(true);
+      expect(main.classList.contains('collection-only')).toBe(false);
       expect(element.querySelector('#library-query')).toBe(query);
 
       minimizeCollection.click();
@@ -121,12 +142,16 @@ describe('Home section visibility', () => {
       expect(searchSection.hidden).toBe(false);
       expect(collectionSection.hidden).toBe(true);
       expect(restoreCollection.disabled).toBe(false);
+      expect(main.classList.contains('search-only')).toBe(true);
+      expect(main.classList.contains('collection-only')).toBe(false);
       minimizeSearch.click();
       fixture.detectChanges();
       expect(searchSection.hidden).toBe(true);
       expect(collectionSection.hidden).toBe(true);
       expect(restoreSearch.disabled).toBe(false);
       expect(restoreCollection.disabled).toBe(false);
+      expect(main.classList.contains('search-only')).toBe(false);
+      expect(main.classList.contains('collection-only')).toBe(false);
       expect(element.querySelectorAll('main > :not([hidden]):not(.visually-hidden)')).toHaveLength(
         0,
       );
@@ -139,10 +164,14 @@ describe('Home section visibility', () => {
       fixture.detectChanges();
       expect(restoreFirst.disabled).toBe(true);
       expect(restoreSecond.disabled).toBe(false);
+      expect(main.classList.contains('search-only')).toBe(first === 'search');
+      expect(main.classList.contains('collection-only')).toBe(first === 'collection');
       restoreSecond.click();
       fixture.detectChanges();
       expect(restoreSearch.disabled).toBe(true);
       expect(restoreCollection.disabled).toBe(true);
+      expect(main.classList.contains('search-only')).toBe(false);
+      expect(main.classList.contains('collection-only')).toBe(false);
       expect(searchSection.hidden).toBe(false);
       expect(collectionSection.hidden).toBe(false);
       expect(

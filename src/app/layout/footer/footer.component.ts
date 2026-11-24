@@ -29,8 +29,8 @@ import { IconComponent } from '../../shared/ui/icon.component';
       align-items: center;
       justify-content: space-between;
       gap: 1rem;
-      min-height: 65px;
-      padding: 1rem 1.75rem;
+      min-height: 48px;
+      padding: 0.625rem 1.75rem;
       font-size: 0.69rem;
       color: var(--muted);
       font-weight: 500;
@@ -54,10 +54,10 @@ import { IconComponent } from '../../shared/ui/icon.component';
     }
     @media (max-width: 650px) {
       .footer-content {
-        padding: 1rem;
+        padding: 0.5rem 1rem;
         flex-direction: column;
         justify-content: center;
-        gap: 0.5rem;
+        gap: 0.25rem;
       }
       .footer-brand {
         font-size: 0.63rem;

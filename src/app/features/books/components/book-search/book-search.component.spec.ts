@@ -35,6 +35,50 @@ describe('BookSearchComponent', () => {
     expect(search).not.toHaveBeenCalled();
   });
 
+  it('submits partial names without escaping literal wildcard text or filtering browser results', () => {
+    const component = TestBed.runInInjectionContext(() => new BookSearchComponent());
+    const submitted = vi.fn();
+    component.searchSubmitted.subscribe(submitted);
+    component.form.patchValue({
+      bookName: ' Java ',
+      authorName: ' Bloch ',
+      topicName: ' stream%_ ',
+      query: ' 0 ',
+    });
+    component.submit();
+    expect(submitted).toHaveBeenCalledExactlyOnceWith({
+      bookName: 'Java',
+      authorName: 'Bloch',
+      topicName: 'stream%_',
+      query: '0',
+    });
+  });
+
+  it('explains case-insensitive contains matching for names and the unchanged topic filter grouping', () => {
+    TestBed.configureTestingModule({ imports: [BookSearchComponent] });
+    const fixture = TestBed.createComponent(BookSearchComponent);
+    fixture.detectChanges();
+    const element = fixture.nativeElement as HTMLElement;
+    expect(
+      Array.from(element.querySelectorAll('.field-note'), (note) => note.textContent?.trim()),
+    ).toEqual(['Contains', 'Contains', 'Contains']);
+    expect(element.querySelector('.filter-help')?.textContent).toContain(
+      'case-insensitive contains',
+    );
+    expect(element.querySelector('.filter-help')?.textContent).toContain('same topic');
+    expect(element.querySelector('#query-help')?.textContent).toContain('literal text');
+    expect(element.textContent).not.toContain('Exact');
+    expect((element.querySelector('#book-name') as HTMLInputElement).placeholder).toBe(
+      'Part of a book name',
+    );
+    expect((element.querySelector('#author-name') as HTMLInputElement).placeholder).toBe(
+      'Part of an author name',
+    );
+    expect((element.querySelector('#topic-name') as HTMLInputElement).placeholder).toBe(
+      'Part of a topic name',
+    );
+  });
+
   it('requests minimization without submitting, resetting, or changing entered filters', () => {
     TestBed.configureTestingModule({ imports: [BookSearchComponent] });
     const fixture = TestBed.createComponent(BookSearchComponent);

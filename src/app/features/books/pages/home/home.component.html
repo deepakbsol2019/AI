@@ -6,7 +6,13 @@
   (restoreCollection)="collectionMinimized.set(false)"
   (fileSelected)="upload.upload($event)"
 >
-  <main id="main-content" class="container library-main" tabindex="-1">
+  <main
+    id="main-content"
+    class="container library-main"
+    [class.search-only]="!searchMinimized() && collectionMinimized()"
+    [class.collection-only]="searchMinimized() && !collectionMinimized()"
+    tabindex="-1"
+  >
     <h1 class="visually-hidden">Book library</h1>
     @if (upload.validationError(); as validation) {
       <p class="alert alert-danger" role="alert">{{ validation }}</p>
@@ -119,6 +125,7 @@
             [busy]="loading()"
             (viewBook)="viewBook($event)"
             (viewTopics)="viewTopics($event)"
+            (metadataSaved)="onMetadataSaved($event)"
           />
         } @placeholder {
           <div class="section-placeholder" role="status">Opening the collection…</div>
@@ -152,6 +159,7 @@
             [disabled]="loading()"
             (change)="changeSize($event)"
           >
+            <option value="5">5</option>
             <option value="10">10</option>
             <option value="20">20</option>
             <option value="50">50</option>

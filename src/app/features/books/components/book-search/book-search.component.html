@@ -27,7 +27,7 @@
           class="form-control"
           type="search"
           formControlName="query"
-          placeholder="What would you like to explore?"
+          placeholder="Search names, authors, topics, or descriptions"
           aria-describedby="query-help"
         />
       </div>
@@ -39,8 +39,8 @@
       </button>
     </div>
     <p class="form-text" id="query-help">
-      Matches complete book, author, or topic names, and text within descriptions. All matching
-      ignores case.
+      Finds text anywhere in book, author, or topic names and descriptions. Matching ignores case;
+      percent and underscore characters are treated as literal text.
     </p>
     <details class="search-details">
       <summary>
@@ -48,41 +48,41 @@
         <span class="summary-note">Optional filters</span>
       </summary>
       <p class="filter-help">
-        Filters are combined. Names require a complete match; description filters match literal
-        text. Topic filters must match the same topic.
+        All entered filters are combined. Names and descriptions use case-insensitive contains
+        matching. Topic name and description must match the same topic.
       </p>
       <div class="row g-3">
         <div class="col-md-4">
           <label class="form-label" for="book-name"
-            >Book name <span class="field-note">Exact</span></label
+            >Book name <span class="field-note">Contains</span></label
           >
           <input
             class="form-control"
             id="book-name"
             formControlName="bookName"
-            placeholder="Complete book name"
+            placeholder="Part of a book name"
           />
         </div>
         <div class="col-md-4">
           <label class="form-label" for="author-name"
-            >Author name <span class="field-note">Exact</span></label
+            >Author name <span class="field-note">Contains</span></label
           >
           <input
             class="form-control"
             id="author-name"
             formControlName="authorName"
-            placeholder="Complete credited author name"
+            placeholder="Part of an author name"
           />
         </div>
         <div class="col-md-4">
           <label class="form-label" for="topic-name"
-            >Topic name <span class="field-note">Exact</span></label
+            >Topic name <span class="field-note">Contains</span></label
           >
           <input
             class="form-control"
             id="topic-name"
             formControlName="topicName"
-            placeholder="Complete topic name"
+            placeholder="Part of a topic name"
           />
         </div>
         <div class="col-md-6">

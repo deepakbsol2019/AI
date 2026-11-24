@@ -1,0 +1,42 @@
+<span
+  #trigger
+  class="truncated-value"
+  [attr.tabindex]="truncated() ? 0 : null"
+  [attr.role]="truncated() ? 'button' : null"
+  [attr.aria-haspopup]="truncated() ? 'dialog' : null"
+  [attr.aria-controls]="truncated() ? previewId : null"
+  [attr.aria-expanded]="truncated() ? previewOpen() : null"
+  (pointerenter)="pointerEnter()"
+  (pointerleave)="pointerLeave()"
+  (focus)="focused()"
+  (blur)="focusLeft()"
+  (click)="activate($event)"
+  (keydown)="triggerKey($event)"
+  >{{ fullText() }}</span
+>
+<div
+  #preview
+  class="full-text-preview"
+  [id]="previewId"
+  popover="manual"
+  role="dialog"
+  aria-modal="false"
+  aria-label="Full text preview"
+  tabindex="-1"
+  hidden
+  (pointerenter)="previewEnter()"
+  (pointerleave)="pointerLeave()"
+  (focusout)="focusLeft()"
+>
+  <div class="preview-controls">
+    <button
+      type="button"
+      class="btn btn-primary btn-sm"
+      (click)="dismiss($event)"
+      aria-label="Close full text preview"
+    >
+      Close
+    </button>
+  </div>
+  <div class="preview-content">{{ fullText() }}</div>
+</div>

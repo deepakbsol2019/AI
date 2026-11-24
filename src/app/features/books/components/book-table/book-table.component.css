@@ -1,14 +1,24 @@
 :host {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
 }
-.table-responsive {
-  /* Vertical scrolling belongs to the homepage's middle region. */
-  max-height: none;
-  overflow-y: hidden;
+.table-responsive,
+.book-scroll-area {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 .book-table {
+  table-layout: fixed;
+  width: 100%;
   font-size: 0.83rem;
-  min-width: 1080px;
+  min-width: 1040px;
   --bs-table-bg: transparent;
   --bs-table-bg-state: transparent;
   --bs-table-bg-type: transparent;
@@ -16,20 +26,39 @@
   --bs-table-border-color: #e5e5e5;
   color: var(--ink);
 }
+.book-name-col {
+  width: 22%;
+}
+.book-type-col {
+  width: 12%;
+}
+.book-author-col {
+  width: 14%;
+}
+.book-description-col {
+  width: auto;
+}
+.book-action-col {
+  width: 128px;
+}
 .book-table thead th {
-  background: transparent;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--panel-background);
   color: var(--ink);
   text-transform: uppercase;
   letter-spacing: 0.065em;
   font-size: 0.65rem;
   font-weight: 700;
-  padding: 1rem 1.25rem;
+  padding: 0.75rem;
   border-top: 1px solid #e5e5e5;
   white-space: nowrap;
 }
 .book-table tbody td {
-  padding: 1.25rem;
-  vertical-align: top;
+  padding: 0.65rem 0.75rem;
+  vertical-align: middle;
+  line-height: 1.45;
 }
 .book-table tbody tr:last-child td {
   border-bottom: 0;
@@ -38,37 +67,34 @@
   background: transparent;
   border-bottom-color: var(--muted);
 }
-.name-cell {
-  width: 23%;
-}
 .type-cell {
-  width: 12%;
   font-size: 0.8rem;
   line-height: 1.7;
   overflow-wrap: anywhere;
 }
 .author-cell {
-  width: 15%;
   font-size: 0.8rem;
   line-height: 1.7;
   overflow-wrap: anywhere;
 }
-.description-cell {
-  width: 29%;
-}
 .description-cell p {
   font-size: 0.79rem;
-  line-height: 1.75;
+  line-height: 1.45;
   color: var(--muted);
   font-weight: 500;
   margin: 0;
-  white-space: pre-line;
-  overflow-wrap: anywhere;
+  white-space: normal;
 }
 .book-identity {
   display: flex;
-  gap: 0.8rem;
-  align-items: flex-start;
+  gap: 0.55rem;
+  align-items: center;
+  min-width: 0;
+}
+.book-name-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
 }
 .book-tile {
   width: 39px;
@@ -97,6 +123,7 @@
   margin-top: 0.35rem;
 }
 .action-cell {
+  width: 128px;
   white-space: nowrap;
 }
 .action-cell .btn {

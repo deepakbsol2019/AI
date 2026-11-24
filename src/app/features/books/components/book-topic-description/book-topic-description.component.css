@@ -21,7 +21,6 @@
   flex: 0 0 auto;
   padding: 1rem 1.4rem 0.8rem;
   border-bottom: 1px solid #e5e5e5;
-  background: transparent;
 }
 .heading-row {
   display: flex;
@@ -112,7 +111,6 @@
   flex: 1 1 auto;
   min-height: 0;
   padding: 0 1.4rem;
-  background: transparent;
   overflow: hidden;
 }
 .topics-scroll {
@@ -123,13 +121,27 @@
   scrollbar-gutter: stable;
 }
 .topics-table {
+  table-layout: fixed;
+  width: 100%;
   font-size: 0.8rem;
-  min-width: 660px;
+  min-width: 760px;
   --bs-table-bg: transparent;
   --bs-table-bg-state: transparent;
   --bs-table-bg-type: transparent;
   --bs-table-accent-bg: transparent;
   --bs-table-border-color: #e5e5e5;
+}
+.topic-select-col {
+  width: 44px;
+}
+.topic-name-col {
+  width: 27%;
+}
+.topic-description-col {
+  width: auto;
+}
+.topic-actions-col {
+  width: 236px;
 }
 .topics-table th {
   position: sticky;
@@ -143,11 +155,8 @@
   background: var(--panel-background);
 }
 .topics-table td {
-  padding: 1rem 0.7rem;
-  vertical-align: top;
-}
-.selection-cell {
-  width: 44px;
+  padding: 0.7rem;
+  vertical-align: middle;
 }
 .form-check-input {
   width: 1rem;
@@ -161,18 +170,15 @@
 .topic-name {
   font-weight: 600;
   color: var(--ink);
-  width: 25%;
   overflow-wrap: anywhere;
 }
 .topic-description {
-  width: 50%;
   color: var(--muted);
   font-weight: 500;
-  line-height: 1.75;
-  white-space: pre-line;
-  overflow-wrap: anywhere;
+  line-height: 1.45;
 }
 .topic-action {
+  width: 236px;
   white-space: nowrap;
 }
 .topic-action button + button {
@@ -188,7 +194,6 @@
   justify-content: space-between;
   align-items: center;
   border-top: 1px solid #e5e5e5;
-  background: transparent;
 }
 .topics-footer > span {
   font-size: 0.72rem;

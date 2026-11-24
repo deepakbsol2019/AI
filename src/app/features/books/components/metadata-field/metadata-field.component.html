@@ -1,0 +1,137 @@
+﻿<div
+  class="metadata-field"
+  [class.description-field]="description()"
+  (click)="$event.stopPropagation()"
+>
+  <div class="metadata-row">
+    @if (editing() && !description()) {
+      <form class="metadata-inline" (submit)="save($event)">
+        <label class="visually-hidden" [for]="editorId()">{{ label() }}</label>
+        <input
+          #editorControl
+          class="form-control metadata-input"
+          [id]="editorId()"
+          type="text"
+          [value]="draft()"
+          [attr.maxlength]="limit()"
+          [readOnly]="pending()"
+          (input)="updateDraft($event)"
+          (keydown.escape)="cancel($event)"
+          [attr.aria-label]="'Edit ' + label()"
+          [attr.aria-required]="field() === 'bookName' || field() === 'topicName'"
+          [attr.aria-invalid]="!!error()"
+          [attr.aria-describedby]="error() ? editorId() + '-error' : null"
+        />
+        <div class="metadata-actions">
+          <button
+            type="submit"
+            class="btn metadata-button metadata-save"
+            [disabled]="pending()"
+            [attr.aria-label]="'Save ' + label()"
+            title="Save"
+          >
+            {{ pending() ? '…' : '✓' }}
+          </button>
+          <button
+            type="button"
+            class="btn metadata-button metadata-cancel"
+            [disabled]="pending()"
+            (click)="cancel($event)"
+            [attr.aria-label]="'Cancel editing ' + label()"
+            title="Cancel"
+          >
+            ×
+          </button>
+        </div>
+      </form>
+    } @else {
+      <app-truncated-text class="metadata-value" [value]="displayValue()" [fallback]="fallback()" />
+    }
+    @if (!editing()) {
+      <button
+        type="button"
+        class="btn metadata-button metadata-pencil"
+        [disabled]="pending() || !!readOnlyReason()"
+        (click)="beginEdit($event)"
+        [attr.aria-label]="'Edit ' + label()"
+        [title]="readOnlyReason() || 'Edit ' + label()"
+        [attr.aria-describedby]="readOnlyReason() ? editorId() + '-readonly' : null"
+      >
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15Zm0 0h6" />
+        </svg>
+      </button>
+    }
+  </div>
+  @if (readOnlyReason(); as reason) {
+    <span class="visually-hidden" [id]="editorId() + '-readonly'">{{ reason }}</span>
+  }
+  @if (editing() && !description() && error(); as message) {
+    <p class="metadata-error" [id]="editorId() + '-error'" role="alert">{{ message }}</p>
+  }
+  @if (editing() && pending()) {
+    <span class="visually-hidden" role="status">Saving {{ label() }}…</span>
+  }
+  @if (description() && editing()) {
+    <dialog
+      #descriptionDialog
+      class="description-editor"
+      [attr.aria-labelledby]="editorId() + '-title'"
+      (cancel)="onDialogCancel($event)"
+      (close)="onDialogClosed()"
+      (click)="$event.stopPropagation()"
+    >
+      <app-notifications />
+      <header class="description-header">
+        <h2 [id]="editorId() + '-title'">Edit {{ label() }}</h2>
+        <button
+          type="button"
+          class="btn metadata-button"
+          [disabled]="pending()"
+          (click)="cancel($event)"
+          [attr.aria-label]="'Cancel editing ' + label()"
+        >
+          ×
+        </button>
+      </header>
+      <form class="description-form" (submit)="save($event)">
+        <label class="visually-hidden" [for]="editorId()">{{ label() }}</label>
+        <textarea
+          #editorControl
+          class="form-control metadata-textarea"
+          [id]="editorId()"
+          [value]="draft()"
+          [readOnly]="pending()"
+          (input)="updateDraft($event)"
+          [attr.aria-invalid]="!!error()"
+          [attr.aria-describedby]="error() ? editorId() + '-error' : null"
+        ></textarea>
+        @if (error(); as message) {
+          <p class="metadata-error" [id]="editorId() + '-error'" role="alert">{{ message }}</p>
+        }
+        <footer class="description-footer">
+          <button type="button" class="btn btn-sm" [disabled]="pending()" (click)="cancel($event)">
+            Cancel</button
+          ><button
+            type="submit"
+            class="btn btn-sm metadata-description-save"
+            [disabled]="pending()"
+          >
+            {{ pending() ? 'Saving…' : 'Save' }}
+          </button>
+        </footer>
+      </form>
+    </dialog>
+  }
+</div>

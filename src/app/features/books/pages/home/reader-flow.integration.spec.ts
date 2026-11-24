@@ -33,12 +33,12 @@ const book: Book = {
     updatedAt: null,
   })),
 };
-const results = (page = 0): BookSearchResponse => ({
+const results = (page = 0, size = 10): BookSearchResponse => ({
   books: [book],
   page,
-  size: 20,
-  totalElements: 42,
-  totalPages: 3,
+  size,
+  totalElements: 21,
+  totalPages: Math.ceil(21 / size),
 });
 
 describe('Reader origin and Back state', () => {
@@ -89,14 +89,20 @@ describe('Reader origin and Back state', () => {
     const fixture = TestBed.createComponent(HomeComponent);
     const home = fixture.componentInstance;
     const http = TestBed.inject(HttpTestingController);
-    http.expectOne('/api/search/books').flush(results());
+    http.expectOne('/api/search/books?size=5').flush(results(0, 5));
     fixture.detectChanges();
     await fixture.whenStable();
+    // A deliberate larger page size and restored Search survive every reader/Back path.
+    home.changeSize({ target: { value: '10' } } as unknown as Event);
+    http.expectOne('/api/search/books?size=10').flush(results());
+    home.searchMinimized.set(false);
     home.search({ bookName: 'Actual PDF book' });
-    http.expectOne('/api/search/books?bookName=Actual%20PDF%20book').flush(results());
+    http.expectOne('/api/search/books?bookName=Actual%20PDF%20book&size=10').flush(results());
     home.changePage(1);
     const savedResults = results(1);
-    http.expectOne('/api/search/books?bookName=Actual%20PDF%20book&page=1').flush(savedResults);
+    http
+      .expectOne('/api/search/books?bookName=Actual%20PDF%20book&page=1&size=10')
+      .flush(savedResults);
     fixture.detectChanges();
     await home.viewTopics(book);
     await fixture.whenStable();
@@ -130,6 +136,8 @@ describe('Reader origin and Back state', () => {
       expect(filter.value).toBe('Other');
       expect(popup.querySelector('#selection-count')?.textContent).toContain('2 selected');
       expect(home.results()).toEqual(savedResults);
+      expect(home.pageSize()).toBe(10);
+      expect(home.searchMinimized()).toBe(false);
       http.expectNone(() => true);
     };
     await openReader('/api/read/topics?bookId=5&topicIds=21&topicIds=76');
@@ -166,6 +174,8 @@ describe('Reader origin and Back state', () => {
     await fixture.whenStable();
     expect(home.results()).toEqual(savedResults);
     expect(home.activeFilterCount()).toBe(1);
+    expect(home.pageSize()).toBe(10);
+    expect(home.searchMinimized()).toBe(false);
     expect(element.querySelector('.page-label')?.textContent).toContain('2 / 3');
     expect(engine.load).toHaveBeenCalledTimes(3);
     expect(destroy).toHaveBeenCalledTimes(3);

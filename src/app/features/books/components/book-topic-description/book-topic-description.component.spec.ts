@@ -1,5 +1,7 @@
 ﻿import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { BookDownloadService } from '../../data-access/book-download.service';
 import type { Book } from '../../models/book.models';
 import { BookTopicDescriptionComponent } from './book-topic-description.component';
@@ -73,9 +75,14 @@ describe('BookTopicDescriptionComponent', () => {
     });
     TestBed.configureTestingModule({
       imports: [BookTopicDescriptionComponent],
-      providers: [{ provide: BookDownloadService, useValue: downloads }],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: BookDownloadService, useValue: downloads },
+      ],
     });
   });
+  afterEach(() => TestBed.inject(HttpTestingController).verify());
 
   function create(book = selectedBook): ComponentFixture<BookTopicDescriptionComponent> {
     const fixture = TestBed.createComponent(BookTopicDescriptionComponent);
@@ -260,6 +267,27 @@ describe('BookTopicDescriptionComponent', () => {
     const reopened = create();
     expect(reopened.componentInstance.selectedCount()).toBe(0);
     expect(reopened.componentInstance.filterText()).toBe('');
+  });
+
+  it('keeps filter and stable selected IDs when confirmed metadata changes on the same book', () => {
+    const fixture = create();
+    select(fixture, 12);
+    filter(fixture, 'Memory');
+    fixture.componentRef.setInput('book', {
+      ...selectedBook,
+      topics: selectedBook.topics.map((topic) =>
+        topic.topicId === 12
+          ? { ...topic, topicName: 'Renamed topic', topicDetails: 'A changed full description.' }
+          : topic,
+      ),
+    });
+    fixture.detectChanges();
+    expect(fixture.componentInstance.filterText()).toBe('Memory');
+    expect(fixture.componentInstance.selectedIds().has(12)).toBe(true);
+    expect(fixture.componentInstance.selectedCount()).toBe(1);
+    expect(fixture.componentInstance.filteredTopics()).toHaveLength(0);
+    expect(fixture.nativeElement.textContent).toContain('No matching topics');
+    TestBed.inject(HttpTestingController).expectNone(() => true);
   });
 
   it('requests complete topic reading in original order without clearing popup state or downloading', () => {

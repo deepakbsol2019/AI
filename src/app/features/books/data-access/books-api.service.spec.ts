@@ -33,12 +33,12 @@ describe('BooksApiService — backend contract', () => {
   });
 
   it('lists books with one GET, no criteria, and no request body', () => {
-    api.search().subscribe((response) => expect(response.size).toBe(20));
+    api.search().subscribe((response) => expect(response.size).toBe(5));
     const request = http.expectOne('/api/search/books');
     expect(request.request.method).toBe('GET');
     expect(request.request.body).toBeNull();
     expect(request.request.params.keys()).toEqual([]);
-    request.flush({ books: [], page: 0, size: 20, totalElements: 0, totalPages: 0 });
+    request.flush({ books: [], page: 0, size: 5, totalElements: 0, totalPages: 0 });
   });
 
   it('serializes actual filter names, omits empty values, and preserves page zero', () => {

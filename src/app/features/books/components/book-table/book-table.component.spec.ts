@@ -1,4 +1,6 @@
 import { TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { BookDownloadService } from '../../data-access/book-download.service';
 import type { Book } from '../../models/book.models';
 import { BookTableComponent } from './book-table.component';
@@ -25,9 +27,14 @@ describe('BookTableComponent', () => {
     vi.clearAllMocks();
     TestBed.configureTestingModule({
       imports: [BookTableComponent],
-      providers: [{ provide: BookDownloadService, useValue: downloads }],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: BookDownloadService, useValue: downloads },
+      ],
     });
   });
+  afterEach(() => TestBed.inject(HttpTestingController).verify());
 
   it('places Book Type after Book Name and keeps the existing book actions', () => {
     const fixture = TestBed.createComponent(BookTableComponent);
@@ -47,7 +54,9 @@ describe('BookTableComponent', () => {
       'View Book',
       'View Topic',
     ]);
-    expect(element.querySelector('tbody .type-cell')?.textContent?.trim()).toBe('Reference');
+    expect(element.querySelector('tbody .type-cell .truncated-value')?.textContent?.trim()).toBe(
+      'Reference',
+    );
     expect(element.querySelectorAll('tbody td')).toHaveLength(7);
     (element.querySelector('tbody .btn-outline-primary') as HTMLButtonElement).click();
     expect(downloads.downloadBook).toHaveBeenCalledWith(selectedBook);
@@ -72,7 +81,9 @@ describe('BookTableComponent', () => {
     fixture.detectChanges();
     const element = fixture.nativeElement as HTMLElement;
     expect(
-      Array.from(element.querySelectorAll('.type-cell'), (cell) => cell.textContent?.trim()),
+      Array.from(element.querySelectorAll('.type-cell .truncated-value'), (cell) =>
+        cell.textContent?.trim(),
+      ),
     ).toEqual(['Unknown', 'Unknown', 'Unknown', 'Unknown', 'Science & Technology']);
   });
 

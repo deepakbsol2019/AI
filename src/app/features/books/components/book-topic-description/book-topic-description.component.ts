@@ -20,10 +20,12 @@ import type { Book } from '../../models/book.models';
 import type { BookTopic } from '../../models/book.models';
 import type { ReaderRequest } from '../../models/reader.models';
 import { NotificationOutletComponent } from '../../../../shared/ui/notification-outlet.component';
+import { MetadataFieldComponent } from '../metadata-field/metadata-field.component';
+import type { MetadataSave } from '../../models/metadata-save';
 
 @Component({
   selector: 'app-book-topic-description',
-  imports: [IconComponent, NotificationOutletComponent],
+  imports: [IconComponent, NotificationOutletComponent, MetadataFieldComponent],
   templateUrl: './book-topic-description.component.html',
   styleUrl: './book-topic-description.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -32,6 +34,7 @@ export class BookTopicDescriptionComponent implements OnDestroy {
   readonly book = input.required<Book>();
   readonly closed = output<void>();
   readonly readRequested = output<ReaderRequest>();
+  readonly metadataSaved = output<MetadataSave>();
   readonly downloads = inject(BookDownloadService);
   readonly filterText = signal('');
   readonly selectedIds = signal<ReadonlySet<number>>(new Set());
@@ -59,11 +62,15 @@ export class BookTopicDescriptionComponent implements OnDestroy {
   private readonly tableRegion = viewChild<ElementRef<HTMLElement>>('tableRegion');
   private releaseScroll: (() => void) | null = null;
   private finished = false;
+  private stateBookId: number | null = null;
 
   constructor() {
     effect(() => {
-      this.book();
-      this.resetState();
+      const id = this.book().bookId;
+      if (id !== this.stateBookId) {
+        this.stateBookId = id;
+        this.resetState();
+      }
     });
     afterNextRender(() => {
       this.releaseScroll = lockLibraryScroll(this.document);

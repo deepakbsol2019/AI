@@ -1,0 +1,148 @@
+﻿:host {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+}
+.metadata-field {
+  min-width: 0;
+  max-width: 100%;
+}
+.metadata-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  min-width: 0;
+  max-width: 100%;
+}
+.metadata-value {
+  flex: 1;
+  min-width: 0;
+  max-width: 100%;
+  white-space: inherit;
+}
+.description-field .metadata-value {
+  white-space: pre-line;
+}
+.metadata-inline {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.25rem;
+  flex: 1;
+  min-width: 0;
+  max-width: 100%;
+}
+.metadata-input {
+  flex: 1 1 0;
+  width: 0;
+  min-width: 0;
+  min-height: 30px;
+  padding: 0.3rem 0.4rem;
+  font-size: inherit;
+}
+.metadata-actions {
+  display: flex;
+  gap: 0.2rem;
+  flex: none;
+}
+.metadata-actions .metadata-button.btn {
+  width: 24px;
+}
+.metadata-button.btn {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  min-height: 28px;
+  width: 28px;
+  padding: 0.15rem;
+  border-radius: 4px;
+  line-height: 1;
+  font-size: 1rem;
+}
+.metadata-pencil {
+  margin-top: 0.1rem;
+}
+.metadata-error {
+  color: #9f2030;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  margin: 0.4rem 0 0;
+  overflow-wrap: anywhere;
+}
+.description-editor {
+  padding: 0;
+  border: 1px solid #b9c5d3;
+  border-radius: 12px;
+  background: #fff;
+  color: #172b46;
+  width: min(900px, calc(100vw - 2rem));
+  height: min(80dvh, 720px);
+  max-height: calc(100dvh - 1rem);
+  overflow: hidden;
+}
+.description-editor[open] {
+  display: flex;
+  flex-direction: column;
+}
+.description-editor::backdrop {
+  background: #14294399;
+}
+.description-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex: none;
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid #dce3eb;
+}
+.description-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.description-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: 1rem;
+}
+.metadata-textarea {
+  flex: 1;
+  min-height: 0;
+  resize: none;
+  white-space: pre-wrap;
+  font-size: 0.9rem;
+  line-height: 1.7;
+  overflow: auto;
+}
+.description-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  flex: none;
+  padding-top: 0.8rem;
+}
+@media (max-width: 600px) {
+  .description-editor {
+    width: calc(100vw - 1rem);
+    max-width: calc(100vw - 1rem);
+    height: calc(100dvh - 1rem);
+  }
+  .description-header,
+  .description-form {
+    padding: 0.7rem;
+  }
+  .description-header h2 {
+    font-size: 1rem;
+  }
+  .metadata-row {
+    gap: 0.2rem;
+  }
+  .metadata-button.btn {
+    width: 26px;
+    min-height: 26px;
+  }
+}

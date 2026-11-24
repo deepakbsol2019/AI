@@ -1,5 +1,5 @@
 <div
-  class="table-responsive"
+  class="table-responsive book-scroll-area"
   tabindex="0"
   role="region"
   aria-label="Library books"
@@ -11,6 +11,15 @@
     </p>
   }
   <table class="table book-table align-middle mb-0">
+    <colgroup>
+      <col class="book-name-col" />
+      <col class="book-type-col" />
+      <col class="book-author-col" />
+      <col class="book-description-col" />
+      <col class="book-action-col" />
+      <col class="book-action-col" />
+      <col class="book-action-col" />
+    </colgroup>
     <caption class="visually-hidden">
       Books matching your search. Read or download a book, or explore its topics.
     </caption>
@@ -31,19 +40,50 @@
           <td class="name-cell">
             <div class="book-identity">
               <span class="book-tile" aria-hidden="true"><app-icon name="book" /></span>
-              <div>
-                <span class="book-title">{{ book.bookName || 'Untitled book' }}</span>
-                <span class="book-meta"
-                  >{{ book.topicCount }} {{ book.topicCount === 1 ? 'topic' : 'topics' }} ·
-                  {{ book.totalPages }} pages</span
-                >
+              <div class="book-name-content">
+                <app-metadata-field
+                  [book]="book"
+                  field="bookName"
+                  label="Book name"
+                  (saved)="metadataSaved.emit({ book: $event, field: 'bookName' })"
+                />
+                <span class="book-meta">
+                  <app-truncated-text
+                    [value]="
+                      book.topicCount +
+                      (book.topicCount === 1 ? ' topic' : ' topics') +
+                      ' · ' +
+                      book.totalPages +
+                      ' pages'
+                    "
+                  />
+                </span>
               </div>
             </div>
           </td>
-          <td class="type-cell">{{ book.bookType?.trim() || 'Unknown' }}</td>
-          <td class="author-cell">{{ book.authorName || 'Author not provided' }}</td>
+          <td class="type-cell">
+            <app-metadata-field
+              [book]="book"
+              field="bookType"
+              label="Book type"
+              (saved)="metadataSaved.emit({ book: $event, field: 'bookType' })"
+            />
+          </td>
+          <td class="author-cell">
+            <app-metadata-field
+              [book]="book"
+              field="authorName"
+              label="Author name"
+              (saved)="metadataSaved.emit({ book: $event, field: 'authorName' })"
+            />
+          </td>
           <td class="description-cell">
-            <p>{{ book.bookDetails || 'No description available.' }}</p>
+            <app-metadata-field
+              [book]="book"
+              field="bookDetails"
+              label="Book description"
+              (saved)="metadataSaved.emit({ book: $event, field: 'bookDetails' })"
+            />
           </td>
           <td class="action-cell">
             <button

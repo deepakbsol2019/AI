@@ -103,6 +103,12 @@
       aria-label="Book topics"
     >
       <table class="table topics-table align-middle mb-0">
+        <colgroup>
+          <col class="topic-select-col" />
+          <col class="topic-name-col" />
+          <col class="topic-description-col" />
+          <col class="topic-actions-col" />
+        </colgroup>
         <caption class="visually-hidden">
           Topics in
           {{
@@ -133,9 +139,31 @@
                   [attr.aria-label]="'Select topic: ' + (topic.topicName || 'Untitled topic')"
                 />
               </td>
-              <td class="topic-name">{{ topic.topicName || 'Untitled topic' }}</td>
+              <td class="topic-name">
+                <app-metadata-field
+                  [book]="book()"
+                  [topic]="topic"
+                  field="topicName"
+                  label="Topic name"
+                  (saved)="
+                    metadataSaved.emit({ book: $event, field: 'topicName', topicId: topic.topicId })
+                  "
+                />
+              </td>
               <td class="topic-description">
-                {{ topic.topicDetails || 'No description available.' }}
+                <app-metadata-field
+                  [book]="book()"
+                  [topic]="topic"
+                  field="topicDetails"
+                  label="Topic description"
+                  (saved)="
+                    metadataSaved.emit({
+                      book: $event,
+                      field: 'topicDetails',
+                      topicId: topic.topicId,
+                    })
+                  "
+                />
               </td>
               <td class="topic-action">
                 <button

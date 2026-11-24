@@ -36,7 +36,7 @@ const book: Book = {
 const result: BookSearchResponse = {
   books: [book],
   page: 0,
-  size: 20,
+  size: 5,
   totalElements: 1,
   totalPages: 1,
 };
@@ -71,7 +71,7 @@ describe('Home rendered integration', () => {
   it('renders deferred search/table and preserves results and focus across the dynamic topics modal', async () => {
     const fixture = TestBed.createComponent(HomeComponent);
     const http = TestBed.inject(HttpTestingController);
-    http.expectOne('/api/search/books').flush(result);
+    http.expectOne('/api/search/books?size=5').flush(result);
     fixture.detectChanges();
     await fixture.whenStable();
     const element = fixture.nativeElement as HTMLElement;
@@ -93,9 +93,9 @@ describe('Home rendered integration', () => {
     const table = scrollRegion.querySelector('app-book-table') as HTMLElement;
     expect(search.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(element.querySelectorAll('app-book-table thead th')).toHaveLength(7);
-    expect(element.querySelector('app-book-table .type-cell')?.textContent?.trim()).toBe(
-      'Programming',
-    );
+    expect(
+      element.querySelector('app-book-table .type-cell .truncated-value')?.textContent?.trim(),
+    ).toBe('Programming');
     const opener = element.querySelector('app-book-table .view-topics-button') as HTMLButtonElement;
     opener.focus();
     await fixture.componentInstance.viewTopics(book);
@@ -116,7 +116,7 @@ describe('Home rendered integration', () => {
     const pending = harness.navigateByUrl('/a-route-that-does-not-exist', HomeComponent);
     // Lazy routing must resolve before Home subscribes to its one initial search.
     await vi.waitFor(() => {
-      const requests = TestBed.inject(HttpTestingController).match('/api/search/books');
+      const requests = TestBed.inject(HttpTestingController).match('/api/search/books?size=5');
       expect(requests).toHaveLength(1);
       requests[0].flush(result);
     });

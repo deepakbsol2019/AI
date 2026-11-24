@@ -4,6 +4,15 @@
 .search-panel {
   padding: 1.65rem 1.85rem;
 }
+:host-context(.search-only) {
+  display: flex;
+  flex-direction: column;
+  flex: 1 0 auto;
+  min-width: 0;
+}
+:host-context(.search-only) .search-panel {
+  flex: 1 0 auto;
+}
 .section-heading {
   display: flex;
   justify-content: space-between;
