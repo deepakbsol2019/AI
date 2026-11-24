@@ -264,16 +264,17 @@ class WholeBookUploadFallbackTests {
         assertThat(jdbc.queryForObject("select a.author_name from author_details a join book_details b on b.author_id=a.aouthor_id where b.book_id=?",
                 String.class, bookId)).isEqualTo("Fallback Writer");
         List<TopicDetails> saved = topics.findAllByBookDetailsBookIdOrderByTopicIdAsc(bookId);
-        assertThat(saved).hasSize(1);
-        TopicDetails only = saved.getFirst();
-        assertThat(only.getTopicName()).isEqualTo(bookName);
-        assertThat(only.getDetails()).isEqualTo(DESCRIPTION);
-        assertThat(only.getStartPage()).isEqualTo(1);
-        assertThat(only.getEndPage()).isEqualTo(pages);
-        assertThat(only.getPrintedStartPage()).isNull();
-        assertThat(only.getPrintedEndPage()).isNull();
-        Path output = Path.of(only.getPdfPath());
-        assertThat(output).isRegularFile().hasParent(STORAGE_ROOT.resolve(bookName)).hasFileName(bookName + ".pdf");
+        assertThat(saved).singleElement().satisfies(topic -> {
+            assertThat(topic.getTopicName()).isEqualTo(bookName + "_offset");
+            assertThat(topic.getDetails()).isEqualTo(bookName + "_offset detail");
+            assertThat(topic.getStartPage()).isEqualTo(1);
+            assertThat(topic.getEndPage()).isEqualTo(pages);
+            assertThat(topic.getPrintedStartPage()).isNull();
+            assertThat(topic.getPrintedEndPage()).isNull();
+            assertThat(topic.getBookDetails().getBookId()).isEqualTo(bookId);
+        });
+        Path output = Path.of(saved.getFirst().getPdfPath());
+        assertThat(output).isRegularFile().hasParent(STORAGE_ROOT.resolve(bookName)).hasFileName(bookName + "_offset.pdf");
         assertThat(Files.readAllBytes(output)).isEqualTo(original);
         try (PDDocument document = Loader.loadPDF(output.toFile())) {
             assertThat(document.getNumberOfPages()).isEqualTo(pages);

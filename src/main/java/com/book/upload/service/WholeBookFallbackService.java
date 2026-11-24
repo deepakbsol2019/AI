@@ -17,7 +17,7 @@ import com.book.repository.TopicDetailsRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 
-/** Replaces this upload's unusable, still-unpublished chapter metadata with one full-book topic. */
+/** Replaces unusable, unpublished chapters with the reserved original-PDF metadata row. */
 @Service
 public class WholeBookFallbackService {
     private static final Logger logger = LoggerFactory.getLogger(WholeBookFallbackService.class);
@@ -58,15 +58,18 @@ public class WholeBookFallbackService {
         topics.deleteAll(current);
         topics.flush();
 
-        TopicDetails fullBook = new TopicDetails();
-        fullBook.setTopicName(book.getBookName());
-        fullBook.setDetails(book.getBookDetails());
-        fullBook.setStartPage(1);
-        fullBook.setEndPage(book.getTotalPages());
-        book.addTopic(fullBook);
-        topics.saveAndFlush(fullBook);
+        TopicDetails original = new TopicDetails();
+        original.setTopicName(book.getBookName() + "_offset");
+        original.setDetails(book.getBookName() + "_offset detail");
+        original.setStartPage(1);
+        original.setEndPage(expectedPages);
+        original.setPrintedStartPage(null);
+        original.setPrintedEndPage(null);
+        book.addTopic(original);
+        TopicDetails savedOriginal = topics.saveAndFlush(original);
+
         logger.info("Book {} will upload as one complete PDF: {}", bookId, reason);
-        return new BookExtractionResult(saved.authorDetails(), book, List.of(fullBook.responseCopy()),
+        return new BookExtractionResult(saved.authorDetails(), book, List.of(savedOriginal.responseCopy()),
                 saved.pageOffset(), saved.uploadedFile(), true, reason);
     }
 }

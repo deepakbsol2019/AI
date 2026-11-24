@@ -256,16 +256,24 @@ public class TopicPdfUploadService {
             byte[] pdfBytes, int totalPages) {
         if (responseEntries.size() != 1 || persistedEntries.size() != 1
                 || !responseEntries.keySet().equals(persistedEntries.keySet())) {
-            throw new TopicPdfUploadException("A whole-book upload must contain exactly one saved topic and no offset metadata.");
+            throw new TopicPdfUploadException("A whole-book upload must contain exactly one saved original-PDF topic.");
         }
         TopicDetails response = responseEntries.values().iterator().next();
         TopicDetails persisted = persistedEntries.get(response.getTopicId());
+        if (!Objects.equals(response.getTopicName(), persisted.getTopicName())
+                || !Objects.equals(response.getDetails(), persisted.getDetails())) {
+            throw new TopicPdfUploadException("The saved whole-book topic metadata changed before PDF generation.");
+        }
+        String bookName = saved.bookDetails().getBookName();
         for (TopicDetails topic : List.of(response, persisted)) {
-            if (!Objects.equals(topic.getTopicName(), saved.bookDetails().getBookName())
-                    || !Objects.equals(topic.getDetails(), saved.bookDetails().getBookDetails())
+            boolean canonicalOffset = Objects.equals(topic.getTopicName(), bookName + "_offset")
+                    && Objects.equals(topic.getDetails(), bookName + "_offset detail");
+            boolean legacyWholeBook = Objects.equals(topic.getTopicName(), bookName)
+                    && Objects.equals(topic.getDetails(), saved.bookDetails().getBookDetails());
+            if ((!canonicalOffset && !legacyWholeBook)
                     || !Objects.equals(topic.getStartPage(), 1) || !Objects.equals(topic.getEndPage(), totalPages)
                     || topic.getPrintedStartPage() != null || topic.getPrintedEndPage() != null) {
-                throw new TopicPdfUploadException("The whole-book topic must match the book details and cover physical pages 1 through the final page.");
+                throw new TopicPdfUploadException("The whole-book topic must use the reserved offset metadata or legacy book details and cover physical pages 1 through the final page.");
             }
             if (topic.getPdfPath() != null) {
                 throw new TopicPdfUploadException("The whole-book topic already has a PDF path; existing files are preserved.");

@@ -88,7 +88,7 @@ public class SearchServiceImpl implements SearchService {
                 .map(topic -> new TopicResult(topic.getTopicId(), topic.getTopicName(), topic.getDetails(),
                         topic.getStartPage(), topic.getEndPage(), topic.getPrintedStartPage(), topic.getPrintedEndPage(),
                         topic.getCreatedAt(), topic.getUpdatedAt())).toList();
-        return new BookResult(book.getBookId(), book.getBookName(), author == null ? null : author.getAuthorName(),
+        return new BookResult(book.getBookId(), book.getBookName(), book.getBookType(), author == null ? null : author.getAuthorName(),
                 book.getBookDetails(), book.getTotalPages(), book.getBookUploadId(), book.getCreatedAt(),
                 book.getUpdatedAt(), authorDetails, topics.size(), topics);
     }

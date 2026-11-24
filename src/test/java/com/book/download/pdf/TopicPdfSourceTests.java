@@ -24,6 +24,19 @@ class TopicPdfSourceTests {
     }
 
     @Test
+    void fullBookOffsetSourcesUseTheSameStorageConfinement() throws Exception {
+        Path root = Files.createDirectory(directory.resolve("book-storage"));
+        Path stored = Files.writeString(root.resolve("original.pdf"), "fixture");
+        TopicDetails offset = topic(stored.toString());
+        offset.setTopicName("Book_offset");
+        TopicPdfSource source = new TopicPdfSource(root.toString());
+        assertThat(source.resolve(offset)).isEqualTo(stored.toRealPath());
+        offset.setPdfPath("../private.pdf");
+        assertThatThrownBy(() -> source.resolve(offset)).isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("outside");
+    }
+
+    @Test
     void relativeStoredPathsResolveInsideStorageRoot() throws Exception {
         Path root = Files.createDirectory(directory.resolve("storage"));
         Path folder = Files.createDirectory(root.resolve("Book"));

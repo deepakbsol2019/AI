@@ -93,6 +93,7 @@ class SearchServiceTests {
         BookDetails book = new BookDetails();
         book.setBookId(101L);
         book.setBookName("JaVa");
+        book.setBookType("Java Programming");
         book.setBookDetails("Original Description");
         book.setTotalPages(10);
         book.setExtractionId("internal-extraction-id");
@@ -112,6 +113,7 @@ class SearchServiceTests {
 
         var stored = result.books().getFirst();
         assertThat(stored.bookName()).isEqualTo("JaVa");
+        assertThat(stored.bookType()).isEqualTo("Java Programming");
         assertThat(stored.bookDetails()).isEqualTo("Original Description");
         assertThat(stored.authorName()).isEqualTo("Asha Sharma, Meera Rao");
         assertThat(stored.authorDetails().authorId()).isEqualTo(55L);
@@ -122,7 +124,8 @@ class SearchServiceTests {
         assertThat(stored.topics()).extracting(BookSearchResponse.TopicResult::topicId).containsExactly(201L, 202L, 203L);
         String json = JsonMapper.builder().build().writeValueAsString(result);
         assertThat(json).contains("\"topicDetails\":\"Lists and Maps\"")
-                .doesNotContain("internal-extraction-id", "extractionId", "pdfPath", "private-server-path", "bookUploadStatus");
+                .contains("\"bookType\":\"Java Programming\"")
+                .doesNotContain("internal-extraction-id", "extractionId", "pdfPath", "private-server-path", "private-server-source-path", "sourcePdfPath", "bookUploadStatus");
     }
 
     @Test
@@ -136,6 +139,7 @@ class SearchServiceTests {
 
         assertThat(result.books()).singleElement().satisfies(stored -> {
             assertThat(stored.authorName()).isNull();
+            assertThat(stored.bookType()).isEqualTo("Unknown");
             assertThat(stored.authorDetails()).isNull();
             assertThat(stored.bookDetails()).isNull();
             assertThat(stored.topics()).isEmpty();

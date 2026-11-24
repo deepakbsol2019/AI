@@ -192,7 +192,7 @@ class ExtractionAccumulatorTests {
     }
 
     @Test
-    void noIndexFallbackSpansTheWholePdfWithoutInventingPrintedPages() {
+    void noIndexFallbackCreatesOnlyTheExistingReservedOffsetStorageRow() {
         ExtractionAccumulator accumulator = new ExtractionAccumulator();
         accumulator.merge(new PdfBatchExtraction(new AuthorData("Author"), new BookData("Book", "Description"),
                 List.of(new TopicData("Model fallback", "Ignored", 1, 372, 1, 372)),
@@ -200,14 +200,39 @@ class ExtractionAccumulatorTests {
 
         var topics = finish(accumulator);
 
-        assertThat(topics).hasSize(1);
-        assertThat(topics.getFirst().getTopicName()).isEqualTo("Book");
-        assertThat(topics.getFirst().getDetails()).isEqualTo("Description");
-        assertThat(topics.getFirst().getStartPage()).isEqualTo(1);
-        assertThat(topics.getFirst().getEndPage()).isEqualTo(372);
-        assertThat(topics.getFirst().getPrintedStartPage()).isNull();
-        assertThat(topics.getFirst().getPrintedEndPage()).isNull();
-        assertThat(topics.getFirst().getPdfPath()).isNull();
+        assertThat(topics).singleElement().satisfies(offset -> {
+            assertThat(offset.getTopicName()).isEqualTo("Book_offset");
+            assertThat(offset.getDetails()).isEqualTo("Book_offset detail");
+            assertThat(offset.getStartPage()).isEqualTo(1);
+            assertThat(offset.getEndPage()).isEqualTo(372);
+            assertThat(offset.getPrintedStartPage()).isNull();
+            assertThat(offset.getPrintedEndPage()).isNull();
+            assertThat(offset.getPdfPath()).isNull();
+        });
+        assertThat(accumulator.snapshot().topicDetails()).isEmpty();
+    }
+
+    @Test
+    void firstNonblankBookMetadataIsRetainedAndBookTypeDefaultsToUnknown() {
+        ExtractionAccumulator accumulator = new ExtractionAccumulator();
+        accumulator.captureMetadata(new PdfBatchExtraction(new AuthorData("Author"),
+                new BookData("Book", "  Original description.  ", "Java Programming"),
+                List.of(), false, null, false, false), true);
+        accumulator.captureMetadata(new PdfBatchExtraction(new AuthorData("Replacement"),
+                new BookData("Replacement", "Regenerated description", "Story"),
+                List.of(), false, null, false, false), true);
+        var result = accumulator.toEntities("id", "source.pdf", 5);
+        assertThat(result.bookDetails().getBookName()).isEqualTo("Book");
+        assertThat(result.authorDetails().getAuthorName()).isEqualTo("Author");
+        assertThat(result.bookDetails().getBookDetails()).isEqualTo("  Original description.  ");
+        assertThat(result.bookDetails().getBookType()).isEqualTo("Java Programming");
+        assertThat(result.topicDetails()).singleElement().satisfies(offset -> {
+            assertThat(offset.getTopicName()).isEqualTo("Book_offset");
+            assertThat(offset.getDetails()).isEqualTo("Book_offset detail");
+            assertThat(offset.getBookDetails()).isSameAs(result.bookDetails());
+        });
+        assertThat(new ExtractionAccumulator().toEntities("id", "source.pdf", 5)
+                .bookDetails().getBookType()).isEqualTo("Unknown");
     }
 
     private static PdfBatchExtraction batch(TopicData... topics) {

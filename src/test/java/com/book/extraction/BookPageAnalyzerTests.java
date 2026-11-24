@@ -71,13 +71,94 @@ class BookPageAnalyzerTests {
         String schema = instructions.substring(instructions.indexOf("JSON schema and formatting requirements:"));
         assertThat(instructions).contains("Is this the first batch: true");
         assertThat(schema).contains("\"authorDetails\"", "\"bookDetails\"", "\"topicDetails\"",
-                "\"contentsComplete\"");
+                "\"contentsComplete\"", "\"bookType\"");
         assertThat(instructions).contains("ALL credited authors/writers", "short factual",
                 "Brief Contents", "Detailed Contents", "Contents at a Glance",
                 "contents has started but is incomplete",
                 "Stop at ANY such following section", "do not wait",
                 "firstTopicStartPage is never a condition for stopping",
                 "printedEndPage MUST be null", "17-32");
+        assertThat(instructions).contains("SAME first-batch response", "introduction, preface",
+                "Computer", "Java Programming", "Story", "History", "Physics", "Chemistry", "Math",
+                "\"Unknown\"", "topicDetails=[]")
+                .doesNotContain("Return one topic:");
+        assertThat(instructions).contains("SAME existing extraction JSON response",
+                "bookDetails.bookType, bookDetails.bookDetails, and topicDetails[].details",
+                "no later description-enrichment request", "only a general description of that category",
+                "never replace them with a regenerated summary", "only unfinished contents requires one");
+    }
+
+    @Test
+    void successfulInitialBatchReturnsTypeAndBothDescriptionsFromExactlyOneModelCall() {
+        String response = """
+                {"authorDetails":{"authorName":"A Writer"},
+                 "bookDetails":{"bookName":"Java Basics","bookType":"Java Programming",
+                    "bookDetails":"An introduction to Java programming."},
+                 "topicDetails":[{"topicName":"Variables","details":"Names, Types, Assignment",
+                    "startPage":null,"endPage":null,"printedStartPage":1,"printedEndPage":null}],
+                 "indexFound":true,"firstTopicStartPage":null,
+                 "contentsComplete":false,"requiredNextPageSet":true}
+                """;
+        ChatModel model = mock(ChatModel.class);
+        when(model.getOptions()).thenReturn(ChatOptions.builder().build());
+        when(model.call(any(Prompt.class))).thenReturn(new ChatResponse(
+                List.of(new Generation(new AssistantMessage(response)))));
+        JsonMapper mapper = JsonMapper.builder().build();
+        BookPageAnalyzer analyzer = new BookPageAnalyzer(ChatClient.builder(model).build(), mapper,
+                new ClassPathResource("prompts/book-extraction-system.st"), 16384, 4096, 2, "qwen2.5-coder:7b");
+
+        String returned = analyzer.analyze(new PdfPageBatch(1, 5, 40,
+                "Java Basics\nIntroduction to Java programming\nContents\n1 Variables 1\nNames, Types, Assignment"), null);
+
+        PdfBatchExtraction extracted = mapper.readValue(returned, PdfBatchExtraction.class);
+        assertThat(extracted.bookDetails().bookType()).isEqualTo("Java Programming");
+        assertThat(extracted.bookDetails().bookDetails()).isEqualTo("An introduction to Java programming.");
+        assertThat(extracted.topicDetails().getFirst().details()).isEqualTo("Names, Types, Assignment");
+        verify(model, times(1)).call(any(Prompt.class));
+    }
+
+    @Test
+    void noContentsStillReturnsTypeAndGeneralBookDescriptionInTheSameSingleCall() {
+        String response = """
+                {"authorDetails":null,"bookDetails":{"bookName":"Poems","bookType":"Poetry",
+                    "bookDetails":"Poetry uses expressive language, imagery and rhythm."},
+                 "topicDetails":[],"indexFound":false,"firstTopicStartPage":null,
+                 "contentsComplete":false,"requiredNextPageSet":false}
+                """;
+        ChatModel model = mock(ChatModel.class);
+        when(model.getOptions()).thenReturn(ChatOptions.builder().build());
+        when(model.call(any(Prompt.class))).thenReturn(new ChatResponse(
+                List.of(new Generation(new AssistantMessage(response)))));
+        JsonMapper mapper = JsonMapper.builder().build();
+        BookPageAnalyzer analyzer = new BookPageAnalyzer(ChatClient.builder(model).build(), mapper,
+                new ClassPathResource("prompts/book-extraction-system.st"), 16384, 4096, 2, "qwen2.5-coder:7b");
+
+        String returned = analyzer.analyze(new PdfPageBatch(1, 1, 1, "Poems\nA poetry collection."), null);
+
+        PdfBatchExtraction extracted = mapper.readValue(returned, PdfBatchExtraction.class);
+        assertThat(extracted.bookDetails().bookType()).isEqualTo("Poetry");
+        assertThat(extracted.bookDetails().bookDetails()).contains("Poetry");
+        assertThat(extracted.topicDetails()).isEmpty();
+        verify(model, times(1)).call(any(Prompt.class));
+    }
+
+    @Test
+    void insufficientEvidenceCanReturnUnknownAndNullDescriptionWithoutAnyEnrichmentRetry() {
+        String response = """
+                {"authorDetails":null,"bookDetails":{"bookName":"Notes","bookType":"Unknown","bookDetails":null},
+                 "topicDetails":[],"indexFound":false,"firstTopicStartPage":null,
+                 "contentsComplete":false,"requiredNextPageSet":false}
+                """;
+        ChatModel model = mock(ChatModel.class);
+        when(model.getOptions()).thenReturn(ChatOptions.builder().build());
+        when(model.call(any(Prompt.class))).thenReturn(new ChatResponse(
+                List.of(new Generation(new AssistantMessage(response)))));
+        BookPageAnalyzer analyzer = new BookPageAnalyzer(ChatClient.builder(model).build(), JsonMapper.builder().build(),
+                new ClassPathResource("prompts/book-extraction-system.st"), 16384, 4096, 2, "qwen2.5-coder:7b");
+
+        assertThat(analyzer.analyze(new PdfPageBatch(1, 1, 1, "Notes"), null)).isEqualTo(response);
+
+        verify(model, times(1)).call(any(Prompt.class));
     }
 
     @Test

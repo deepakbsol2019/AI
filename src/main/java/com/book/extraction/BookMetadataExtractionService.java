@@ -31,7 +31,6 @@ public class BookMetadataExtractionService {
     private final BookPageAnalyzer analyzer;
     private final BookDetailsRepository bookRepository;
     private final ObjectMapper objectMapper;
-
     public BookMetadataExtractionService(BookPageAnalyzer analyzer, BookDetailsRepository bookRepository,
             ObjectMapper objectMapper) {
         this.analyzer = analyzer;
@@ -82,7 +81,7 @@ public class BookMetadataExtractionService {
                     return save(merged, extractionId, sourceName, totalPages, bookUploadId);
                 }
                 if (read.boundaryFound()) {
-                    logger.info("Book {}: Contents/Index heading changed; no pages after the boundary will be sent to AI",
+                    logger.info("Book {}: Contents/Index heading changed; later contents batches stop at this boundary",
                             extractionId);
                 }
                 PdfPageBatch batch = read.pages();
@@ -94,7 +93,7 @@ public class BookMetadataExtractionService {
                     continue;
                 }
                 logger.info("Extracting book {} from PDF pages {}-{}", extractionId, batch.startPage(), batch.endPage());
-                pageReferences.accept(batch.text());
+                pageReferences.accept(read.contentsText());
                 String rawJson = analyzer.analyze(batch, merged.snapshot());
 
                 boolean firstBatch = start == 1;
@@ -136,7 +135,8 @@ public class BookMetadataExtractionService {
             }
             catch (UnusableContentsException exception) {
                 merged.useWholeBook(exception.getReason());
-                logger.info("Book {} will be uploaded as one topic: {}", extractionId, exception.getReason());
+                logger.info("Book {} will retain the complete PDF in its reserved offset row: {}", extractionId,
+                        exception.getReason());
                 return save(merged, extractionId, sourceName, totalPages, bookUploadId);
             }
         }
@@ -229,13 +229,15 @@ public class BookMetadataExtractionService {
         return false;
     }
 
-    private record ReadBatch(PdfPageBatch pages, boolean boundaryFound, boolean contentsSeen, boolean readable) { }
+    private record ReadBatch(PdfPageBatch pages, String contentsText, boolean boundaryFound,
+            boolean contentsSeen, boolean readable) { }
 
     private ReadBatch readBatch(PDDocument document, int start, int end, ContentsBoundaryDetector detector,
             PdfBatchExtraction previous) throws IOException {
         PDFTextStripper stripper = new PDFTextStripper();
         stripper.setSortByPosition(true);
         StringBuilder text = new StringBuilder();
+        StringBuilder metadataText = new StringBuilder();
         boolean readable = false;
         boolean boundaryFound = false;
         boolean contentsSeen = false;
@@ -246,6 +248,13 @@ public class BookMetadataExtractionService {
             stripper.setEndPage(page);
             String pageText = stripper.getText(document);
             readable |= !pageText.isBlank();
+            if (start == 1 && !pageText.isBlank()) {
+                metadataText.append("--- PDF PAGE ").append(page).append(" ---\n")
+                        .append(pageText).append("\n");
+            }
+            // Initial metadata/classification uses all of pages 1-5, including
+            // preface/introduction after Contents. Those pages never become topics.
+            if (boundaryFound) continue;
             ContentsBoundaryDetector.PageScan scan = detector.scanPage(page, pageText, knownTopics);
             contentsSeen = scan.contentsSeen();
             if (!scan.textBeforeBoundary().isBlank()) {
@@ -255,11 +264,13 @@ public class BookMetadataExtractionService {
             }
             if (scan.boundaryFound()) {
                 boundaryFound = true;
-                break;
+                if (start != 1) break;
             }
         }
-        PdfPageBatch pages = text.isEmpty() ? null
-                : new PdfPageBatch(start, lastIncludedPage, document.getNumberOfPages(), text.toString());
-        return new ReadBatch(pages, boundaryFound, contentsSeen, readable);
+        String batchText = start == 1 ? metadataText.toString() : text.toString();
+        PdfPageBatch pages = batchText.isEmpty() ? null
+                : new PdfPageBatch(start, start == 1 ? end : lastIncludedPage,
+                        document.getNumberOfPages(), batchText);
+        return new ReadBatch(pages, text.toString(), boundaryFound, contentsSeen, readable);
     }
 }

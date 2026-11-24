@@ -24,35 +24,39 @@ public class TopicPdfSource {
     }
 
     public Path resolve(TopicDetails topic) {
-        if (topic.getPdfPath() == null || topic.getPdfPath().isBlank()) {
-            throw unavailable(topic, "has no saved PDF", null);
+        return resolveStoredPath(topic.getPdfPath(), "Topic " + topic.getTopicId());
+    }
+
+    private Path resolveStoredPath(String pdfPath, String label) {
+        if (pdfPath == null || pdfPath.isBlank()) {
+            throw unavailable(label, "has no saved PDF", null);
         }
         try {
             Path root = configuredRoot.toRealPath();
-            Path storedPath = Path.of(topic.getPdfPath());
+            Path storedPath = Path.of(pdfPath);
             Path candidate = (storedPath.isAbsolute() ? storedPath : configuredRoot.resolve(storedPath))
                     .toAbsolutePath().normalize();
             // The upload store persists real paths, including when the configured root is a junction.
             if (!candidate.startsWith(configuredRoot) && !candidate.startsWith(root)) {
-                throw unavailable(topic, "has a PDF outside the configured storage folder", null);
+                throw unavailable(label, "has a PDF outside the configured storage folder", null);
             }
             // Resolve symlinks/junctions as well as '..'; never serve another local file through a stored path.
             Path actual = candidate.toRealPath();
             if (!actual.startsWith(root)) {
-                throw unavailable(topic, "has a PDF outside the configured storage folder", null);
+                throw unavailable(label, "has a PDF outside the configured storage folder", null);
             }
             if (!Files.isRegularFile(actual) || !Files.isReadable(actual)) {
-                throw unavailable(topic, "has an unavailable PDF in storage", null);
+                throw unavailable(label, "has an unavailable PDF in storage", null);
             }
             return actual;
         }
         catch (IOException | InvalidPathException | SecurityException exception) {
-            throw unavailable(topic, "has a missing or unreadable PDF in storage", exception);
+            throw unavailable(label, "has a missing or unreadable PDF in storage", exception);
         }
     }
 
-    private static ResponseStatusException unavailable(TopicDetails topic, String message, Exception cause) {
+    private static ResponseStatusException unavailable(String label, String message, Exception cause) {
         return new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                "Topic " + topic.getTopicId() + " " + message + ".", cause);
+                label + " " + message + ".", cause);
     }
 }

@@ -176,6 +176,7 @@ class BookSearchControllerTests {
             BookDetails book = new BookDetails();
             book.setBookId(101L);
             book.setBookName("Java");
+            book.setBookType("Java Programming");
             book.setBookDetails("Introduction to Java programming.");
             book.setTotalPages(100);
             AuthorDetails author = new AuthorDetails();
@@ -191,6 +192,7 @@ class BookSearchControllerTests {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.books[0].bookId").value(101))
                     .andExpect(jsonPath("$.books[0].bookName").value("Java"))
+                    .andExpect(jsonPath("$.books[0].bookType").value("Java Programming"))
                     .andExpect(jsonPath("$.books[0].authorName").value("Asha Sharma"))
                     .andExpect(jsonPath("$.books[0].bookDetails").value("Introduction to Java programming."))
                     .andExpect(jsonPath("$.books[0].totalPages").value(100))

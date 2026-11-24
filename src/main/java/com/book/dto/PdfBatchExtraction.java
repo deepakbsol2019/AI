@@ -4,15 +4,22 @@ import java.util.List;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 public record PdfBatchExtraction(@Schema(nullable = true) AuthorData authorDetails,
-        @Schema(nullable = true) BookData bookDetails,
+        @Schema(nullable = true, description = "Initial-page metadata, category and description supplied together in this existing extraction response, including when there are no contents topics.") BookData bookDetails,
         List<TopicData> topicDetails, Boolean indexFound,
         @Schema(nullable = true, description = "Always null during contents extraction; physical pages are assigned later.")
         Integer firstTopicStartPage,
         Boolean requiredNextPageSet, Boolean contentsComplete) {
     public record AuthorData(@Schema(nullable = true) String authorName) { }
     public record BookData(@Schema(nullable = true) String bookName,
-            @Schema(nullable = true) String bookDetails) { }
-    public record TopicData(String topicName, @Schema(nullable = true) String details,
+            @Schema(nullable = true, description = "Short factual book description generated in this same initial extraction JSON. Ground in the supplied title, category and PDF text; known category alone permits only a general category description. No invented chapters, characters or events; null if insufficient evidence.") String bookDetails,
+            @Schema(nullable = true, description = "Book category grounded in the supplied initial PDF pages, such as Computer Programming, Story, Poetry, Physics, Chemistry or Math. Unknown when evidence is insufficient; these examples are not an enum. Provide alongside bookDetails in the same response.")
+            String bookType) {
+        public BookData(String bookName, String bookDetails) {
+            this(bookName, bookDetails, null);
+        }
+    }
+    public record TopicData(String topicName,
+            @Schema(nullable = true, description = "Topic description/details in this same extraction response: preserve observed comma-separated subtopic names; otherwise give only a factual explanation grounded in this actual topic name and related supplied text. Continuations add newly observed subtopics without regenerating existing details. Null if evidence is insufficient.") String details,
             @Schema(nullable = true, description = "Always null during extraction. This is not the printed book page.")
             Integer startPage,
             @Schema(nullable = true, description = "Always null during extraction; physical PDF positions are assigned later.")

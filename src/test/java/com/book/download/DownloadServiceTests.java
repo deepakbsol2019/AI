@@ -75,6 +75,21 @@ class DownloadServiceTests {
     }
 
     @Test
+    void fullBookOffsetDownloadsEveryOriginalPageWithoutGeneratingACover() throws Exception {
+        TopicDetails offset = stored(70L, book.getBookName() + "_offset", "STANDALONE", "SECOND");
+        offset.setDetails(book.getBookName() + "_offset detail");
+        offset.setStartPage(1);
+        offset.setEndPage(2);
+        offset.setPrintedStartPage(null);
+        offset.setPrintedEndPage(null);
+        book.setTotalPages(2);
+        when(topics.findAllByBookDetailsBookIdOrderByTopicIdAsc(1L)).thenReturn(List.of(offset));
+
+        assertThat(pageTexts(service.downloadBook(1L))).containsExactly("STANDALONE", "SECOND");
+        verifyNoInteractions(frontMatter);
+    }
+
+    @Test
     void fullBookRejectsAmbiguousOffsetRowsInsteadOfPickingOne() throws Exception {
         when(topics.findAllByBookDetailsBookIdOrderByTopicIdAsc(1L)).thenReturn(List.of(
                 stored(10L, "First_offset", "FIRST"), stored(11L, "Second_offset", "SECOND")));

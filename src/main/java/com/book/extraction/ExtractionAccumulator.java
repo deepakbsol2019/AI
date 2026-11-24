@@ -23,6 +23,7 @@ final class ExtractionAccumulator {
     private String authorName;
     private String bookName;
     private String bookDescription;
+    private String bookType;
     private final Map<String, TopicData> topics = new LinkedHashMap<>();
     private final Map<String, Integer> explicitSourceEnds = new LinkedHashMap<>();
     private Integer lastPrintedPage;
@@ -43,11 +44,12 @@ final class ExtractionAccumulator {
     void captureMetadata(PdfBatchExtraction response, boolean firstBatch) {
         if (firstBatch) {
             if (response.authorDetails() != null) {
-                authorName = known(response.authorDetails().authorName(), null);
+                authorName = known(authorName, known(response.authorDetails().authorName(), null));
             }
             if (response.bookDetails() != null) {
-                bookName = known(response.bookDetails().bookName(), null);
-                bookDescription = known(response.bookDetails().bookDetails(), null);
+                bookName = known(bookName, known(response.bookDetails().bookName(), null));
+                bookDescription = known(bookDescription, known(response.bookDetails().bookDetails(), null));
+                bookType = known(bookType, known(response.bookDetails().bookType(), null));
             }
         }
     }
@@ -128,7 +130,7 @@ final class ExtractionAccumulator {
 
     PdfBatchExtraction snapshot() {
         // Batch ends are deliberately unknown until every parent has been merged.
-        return new PdfBatchExtraction(new AuthorData(authorName), new BookData(bookName, bookDescription),
+        return new PdfBatchExtraction(new AuthorData(authorName), new BookData(bookName, bookDescription, bookType),
                 List.copyOf(topics.values()), indexFound, null, indexFound && !contentsComplete, contentsComplete);
     }
 
@@ -188,6 +190,7 @@ final class ExtractionAccumulator {
         book.setBookName((bookName == null || bookName.isBlank()
                 ? wholeBook ? fallbackBookName(fileName) : fileName : bookName).trim());
         book.setBookDetails(bookDescription);
+        book.setBookType(bookType == null || bookType.isBlank() ? "Unknown" : bookType.strip());
         book.setTotalPages(totalPages);
         book.setAuthorDetails(author);
         checkName(book.getBookName());
@@ -199,10 +202,17 @@ final class ExtractionAccumulator {
             checkName(authorName);
         }
         if (wholeBook) {
-            TopicDetails topic = topic(book.getBookName(), bookDescription);
-            topic.setStartPage(1);
-            topic.setEndPage(totalPages);
-            book.addTopic(topic);
+            // Reuse the existing reserved storage row; this is not a model-invented chapter.
+            String offsetName = book.getBookName() + "_offset";
+            if (offsetName.length() > TopicDetails.MAX_TOPIC_NAME_LENGTH) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                        "The book name is too long for its reserved _offset topic; maximum "
+                                + (TopicDetails.MAX_TOPIC_NAME_LENGTH - "_offset".length()) + " characters.");
+            }
+            TopicDetails offset = topic(offsetName, book.getBookName() + "_offset detail");
+            offset.setStartPage(1);
+            offset.setEndPage(totalPages);
+            book.addTopic(offset);
         }
         else {
             resolvePrintedRanges(book);

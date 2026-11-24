@@ -10,6 +10,8 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
         @UniqueConstraint(name = "uk_book_details_book_name", columnNames = "book_name"))
 public class BookDetails extends AuditedEntity {
     public static final int MAX_BOOK_NAME_LENGTH = 255;
+    public static final int MAX_BOOK_TYPE_LENGTH = 120;
+    public static final String UNKNOWN_BOOK_TYPE = "Unknown";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -20,6 +22,9 @@ public class BookDetails extends AuditedEntity {
 
     @Column(name = "book_name", nullable = false, length = MAX_BOOK_NAME_LENGTH)
     private String bookName;
+
+    @Column(name = "book_type", nullable = false, length = MAX_BOOK_TYPE_LENGTH)
+    private String bookType = UNKNOWN_BOOK_TYPE;
 
     @Lob
     @Column(columnDefinition = "LONGTEXT")
@@ -51,6 +56,14 @@ public class BookDetails extends AuditedEntity {
     public void setExtractionId(String extractionId) { this.extractionId = extractionId; }
     public String getBookName() { return bookName; }
     public void setBookName(String bookName) { this.bookName = bookName; }
+    public String getBookType() { return normalizeBookType(bookType); }
+    public void setBookType(String bookType) { this.bookType = normalizeBookType(bookType); }
+    private static String normalizeBookType(String value) {
+        if (value == null || value.isBlank()) return UNKNOWN_BOOK_TYPE;
+        String normalized = value.strip();
+        return normalized.length() > MAX_BOOK_TYPE_LENGTH || UNKNOWN_BOOK_TYPE.equalsIgnoreCase(normalized)
+                ? UNKNOWN_BOOK_TYPE : normalized;
+    }
     public String getBookDetails() { return bookDetails; }
     public void setBookDetails(String bookDetails) { this.bookDetails = bookDetails; }
     public int getTotalPages() { return totalPages; }

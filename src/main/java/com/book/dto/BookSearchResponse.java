@@ -9,7 +9,7 @@ public record BookSearchResponse(List<BookResult> books, int page, int size, lon
         books = List.copyOf(books);
     }
 
-    public record BookResult(Long bookId, String bookName, String authorName, String bookDetails,
+    public record BookResult(Long bookId, String bookName, String bookType, String authorName, String bookDetails,
             int totalPages, Long bookUploadId, LocalDateTime createdAt, LocalDateTime updatedAt,
             AuthorResult authorDetails, int topicCount, List<TopicResult> topics) {
         public BookResult {

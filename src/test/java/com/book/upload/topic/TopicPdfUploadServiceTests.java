@@ -155,6 +155,54 @@ class TopicPdfUploadServiceTests {
     }
 
     @Test
+    void canonicalOffsetMetadataStoresTheOriginalPdfOnlyInItsTopicPath() throws Exception {
+        saved = wholeBookInput();
+        TopicDetails metadata = saved.topicDetails().getFirst();
+        String reservedName = saved.bookDetails().getBookName() + "_offset";
+        metadata.setTopicName(reservedName);
+        metadata.setDetails(reservedName + " detail");
+        byte[] original = saved.uploadedFile().getFileData().clone();
+        when(files.saveWholeBook(any(), eq(12L), eq(reservedName), eq(operation))).thenAnswer(invocation -> {
+            Path path = operation.resolve(reservedName + ".pdf");
+            Files.write(path, invocation.<byte[]>getArgument(0));
+            return new SavedTopicPdf(12L, path.toString());
+        });
+
+        BookExtractionResult result = service.uploadTopic(saved);
+
+        assertThat(result.wholeBook()).isTrue();
+        assertThat(result.bookDetails().getBookDetails()).isEqualTo("The complete book description");
+        assertThat(result.topicDetails()).singleElement().satisfies(topic -> {
+            assertThat(topic.getTopicName()).isEqualTo(reservedName);
+            assertThat(topic.getDetails()).isEqualTo(reservedName + " detail");
+            assertThat(topic.getStartPage()).isEqualTo(1);
+            assertThat(topic.getEndPage()).isEqualTo(3);
+            assertThat(topic.getPrintedStartPage()).isNull();
+            assertThat(topic.getPrintedEndPage()).isNull();
+            assertThat(Path.of(topic.getPdfPath())).isRegularFile().hasFileName(reservedName + ".pdf");
+        });
+        assertThat(Files.readAllBytes(Path.of(result.topicDetails().getFirst().getPdfPath()))).containsExactly(original);
+        verify(topics).assignPdfPath(eq(44L), eq(12L), eq(1), eq(3), anyString());
+        verify(topics, never()).save(any());
+        verify(files, never()).extractOffsetAndSave(any(), anyLong(), anyString(), anyInt(), any());
+        verify(files, never()).extractAndSave(any(), anyLong(), anyString(), anyInt(), anyInt(), any());
+    }
+
+    @Test
+    void wholeBookWithoutOriginalPdfMetadataIsRejectedBeforeWritingFiles() {
+        BookDetails book = saved.bookDetails();
+        book.getTopics().clear();
+        stored = List.of();
+        saved = new BookExtractionResult(saved.authorDetails(), book, List.of())
+                .withUploadedFile(saved.uploadedFile()).withWholeBook("No detected contents");
+
+        assertThatThrownBy(() -> service.uploadTopic(saved)).isInstanceOf(TopicPdfUploadException.class)
+                .hasMessageContaining("exactly one saved original-PDF topic");
+        verifyNoInteractions(files);
+        verify(topics, never()).assignPdfPath(anyLong(), anyLong(), anyInt(), anyInt(), anyString());
+    }
+
+    @Test
     void wholeBookCopyFailureStillPropagatesAndCleansWithoutUpdatingAnyPath() {
         saved = wholeBookInput();
         when(files.saveWholeBook(any(), anyLong(), anyString(), any())).thenThrow(new IllegalStateException("Disk full"));
@@ -432,6 +480,7 @@ class TopicPdfUploadServiceTests {
     private BookExtractionResult wholeBookInput() {
         BookDetails book = saved.bookDetails();
         book.setBookDetails("The complete book description");
+        book.getTopics().clear();
         TopicDetails topic = topic(book, 12L, book.getBookName(), 1, 3);
         topic.setDetails(book.getBookDetails());
         topic.setPrintedStartPage(null);

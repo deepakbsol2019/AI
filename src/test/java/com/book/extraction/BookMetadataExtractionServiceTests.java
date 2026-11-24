@@ -13,6 +13,9 @@ import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -104,15 +107,10 @@ class BookMetadataExtractionServiceTests {
         BookExtractionResult result = service.extract(pdf(7, true), "book.pdf");
 
         verify(analyzer).analyze(any(), any());
-        assertThat(result.topicDetails()).hasSize(1);
-        var topic = result.topicDetails().getFirst();
-        assertThat(topic.getTopicName()).isEqualTo("No Contents");
-        assertThat(topic.getDetails()).isEqualTo("Description");
+        assertWholeBook(result, 7);
+        assertThat(result.bookDetails().getBookDetails()).isEqualTo("Description");
         assertThat(result.wholeBook()).isTrue();
-        assertThat(topic.getStartPage()).isEqualTo(1);
-        assertThat(topic.getEndPage()).isEqualTo(7);
-        assertThat(topic.getPrintedStartPage()).isNull();
-        assertThat(topic.getPrintedEndPage()).isNull();
+        assertThat(result.bookDetails().getTotalPages()).isEqualTo(7);
         verify(books).saveAndFlush(result.bookDetails());
         verify(books).existsByCanonicalBookName(result.bookDetails().getBookName());
     }
@@ -238,7 +236,7 @@ class BookMetadataExtractionServiceTests {
     }
 
     @Test
-    void invalidContinuationUsesOneTopicAndPreservesEarlierBookMetadata() throws Exception {
+    void invalidContinuationUsesWholeBookAndPreservesEarlierBookMetadata() throws Exception {
         when(analyzer.analyze(any(), any())).thenReturn(json(new PdfBatchExtraction(new AuthorData("Author"),
                 new BookData("Book", "Description"), List.of(printed("Opening", "Basics", 1)),
                 true, null, true, false)), "invalid continuation JSON");
@@ -249,18 +247,18 @@ class BookMetadataExtractionServiceTests {
         assertWholeBook(result, 10);
         assertThat(result.authorDetails().getAuthorName()).isEqualTo("Author");
         assertThat(result.bookDetails().getBookName()).isEqualTo("Book");
-        assertThat(result.topicDetails().getFirst().getDetails()).isEqualTo("Description");
+        assertThat(result.bookDetails().getBookDetails()).isEqualTo("Description");
         verify(books).saveAndFlush(result.bookDetails());
     }
 
     @Test
     void laterBatchCannotOverwriteAuthorAndBookFromFirstBatch() throws Exception {
         String first = json(new PdfBatchExtraction(new AuthorData("First Author"),
-                new BookData("First Book", "First description"), List.of(printed("Opening", "Basics", 1)),
+                new BookData("First Book", "First description", "Java Programming"), List.of(printed("Opening", "Basics", 1)),
                 true, null, true, false));
         // Even if the model repeats metadata against instructions, later schemas discard it.
         String later = json(new PdfBatchExtraction(new AuthorData("Wrong Author"),
-                new BookData("Wrong Book", "Wrong description"), List.of(printed("Opening", "Setup", 1)),
+                new BookData("Wrong Book", "Wrong description", "Story"), List.of(printed("Opening", "Setup", 1)),
                 true, 6, false, true));
         when(analyzer.analyze(any(), any())).thenReturn(first, later);
 
@@ -269,7 +267,10 @@ class BookMetadataExtractionServiceTests {
         assertThat(result.authorDetails().getAuthorName()).isEqualTo("First Author");
         assertThat(result.bookDetails().getBookName()).isEqualTo("First Book");
         assertThat(result.bookDetails().getBookDetails()).isEqualTo("First description");
+        assertThat(result.bookDetails().getBookType()).isEqualTo("Java Programming");
         assertThat(result.topicDetails().getFirst().getDetails()).isEqualTo("Basics, Setup");
+        verify(analyzer, times(2)).analyze(any(), any());
+        verifyNoMoreInteractions(analyzer);
         verify(books).saveAndFlush(result.bookDetails());
         verify(books).existsByCanonicalBookName(result.bookDetails().getBookName());
     }
@@ -537,7 +538,21 @@ class BookMetadataExtractionServiceTests {
     }
 
     @Test
-    void missingRequiredTopicStartUsesBookMetadataForTheSingleTopic() throws Exception {
+    void wholeBookNameThatCannotFitItsExactReservedOffsetFailsClearlyBeforeDatabaseWork() throws Exception {
+        when(analyzer.analyze(any(), any())).thenReturn(json(new PdfBatchExtraction(null,
+                new BookData("B".repeat(249), "Description", "Story"),
+                List.of(), false, null, false, false)));
+
+        assertThatThrownBy(() -> service.extract(pdf(1, true), "source.pdf"))
+                .isInstanceOfSatisfying(ResponseStatusException.class, failure -> {
+                    assertThat(failure.getStatusCode().value()).isEqualTo(422);
+                    assertThat(failure.getReason()).contains("reserved _offset", "248");
+                });
+        verifyNoInteractions(books);
+    }
+
+    @Test
+    void missingRequiredTopicStartRetainsBookMetadataAndUsesReservedStorageOffset() throws Exception {
         when(analyzer.analyze(any(), any())).thenReturn(json(new PdfBatchExtraction(
                 new AuthorData("Writer"), new BookData("Reliable Book Metadata", "Known description"),
                 List.of(new TopicData("Unknown pages", "A child", null, null, null, null)),
@@ -547,8 +562,7 @@ class BookMetadataExtractionServiceTests {
 
         assertWholeBook(result, 4);
         assertThat(result.authorDetails().getAuthorName()).isEqualTo("Writer");
-        assertThat(result.topicDetails().getFirst().getTopicName()).isEqualTo("Reliable Book Metadata");
-        assertThat(result.topicDetails().getFirst().getDetails()).isEqualTo("Known description");
+        assertThat(result.bookDetails().getBookDetails()).isEqualTo("Known description");
         verify(books, times(1)).saveAndFlush(result.bookDetails());
     }
 
@@ -574,12 +588,12 @@ class BookMetadataExtractionServiceTests {
 
         assertWholeBook(result, 3);
         assertThat(result.bookDetails().getBookName()).isEqualTo("Known Title");
-        assertThat(result.topicDetails().getFirst().getDetails()).isEqualTo("Known description");
+        assertThat(result.bookDetails().getBookDetails()).isEqualTo("Known description");
         assertThat(result.authorDetails().getAuthorName()).isEqualTo("Writer");
     }
 
     @Test
-    void emptyCompletedModelContentsAreUploadedAsOneTopic() throws Exception {
+    void emptyCompletedModelContentsUseOnlyReservedStorageOffset() throws Exception {
         when(analyzer.analyze(any(), any())).thenReturn(json(new PdfBatchExtraction(null,
                 new BookData("No chapter details", "A whole book"), List.of(), true, null, false, true)));
 
@@ -656,21 +670,184 @@ class BookMetadataExtractionServiceTests {
         assertWholeBook(result, 2);
         assertThat(result.bookDetails().getBookName()).isEqualTo("protected");
         verifyNoInteractions(analyzer);
+        assertThat(result.bookDetails().getBookType()).isEqualTo("Unknown");
+        assertThat(result.bookDetails().getBookDetails()).isNull();
         verify(books).saveAndFlush(result.bookDetails());
+    }
+
+    @Test
+    void initialIntroductionWithoutContentsClassifiesInSameCallAndUsesReservedStorageOffset() throws Exception {
+        byte[] source = pdf(8, true, Map.of(
+                1, "A River of Stories\nBy Mira Author",
+                2, "Introduction\nThis collection presents short fictional stories.",
+                3, "Preface\nThe stories explore ordinary life.",
+                6, "DO_NOT_READ_LATER_FOR_CLASSIFICATION"));
+        when(analyzer.analyze(any(), any())).thenReturn(json(new PdfBatchExtraction(new AuthorData("Mira Author"),
+                new BookData("A River of Stories", "A collection of short stories.", "Story"),
+                List.of(), false, null, false, false)));
+
+        var result = service.extract(source, "upload.pdf");
+
+        ArgumentCaptor<PdfPageBatch> batch = ArgumentCaptor.forClass(PdfPageBatch.class);
+        verify(analyzer).analyze(batch.capture(), any());
+        assertThat(batch.getValue().text()).contains("Introduction", "fictional stories", "Preface", "--- PDF PAGE 5 ---")
+                .doesNotContain("DO_NOT_READ_LATER_FOR_CLASSIFICATION");
+        assertThat(result.bookDetails().getBookType()).isEqualTo("Story");
+        assertThat(result.bookDetails().getBookDetails()).isEqualTo("A collection of short stories.");
+        assertWholeBook(result, 8);
+        var order = inOrder(books);
+        order.verify(books).existsByCanonicalBookName("A River of Stories");
+        order.verify(books).saveAndFlush(result.bookDetails());
+        verifyNoMoreInteractions(analyzer, books);
+    }
+
+    @Test
+    void initialMetadataIncludesPrefaceAfterContentsButOnlyContentsEntriesBecomeTopics() throws Exception {
+        when(analyzer.analyze(any(), any())).thenReturn(json(new PdfBatchExtraction(new AuthorData("Author"),
+                new BookData("Java Basics", "A programming guide.", "Java Programming"),
+                List.of(printed("Opening", "Basics", 1), printed("Invented prose topic", "Not a topic", 2)),
+                true, null, true, false)));
+        byte[] source = pdf(8, true, Map.of(
+                1, "Java Basics",
+                2, "Contents\n1 Opening ........ 1\n1.1 Basics ........ 1\nPreface\nThis book teaches Java programming.",
+                3, "Introduction\nClasses and methods are explained.",
+                6, "DO_NOT_SEND_LATER_BODY"));
+
+        var result = service.extract(source, "source.pdf");
+
+        ArgumentCaptor<PdfPageBatch> batch = ArgumentCaptor.forClass(PdfPageBatch.class);
+        verify(analyzer).analyze(batch.capture(), any());
+        assertThat(batch.getValue().text()).contains("Preface", "teaches Java", "Introduction", "Classes and methods")
+                .doesNotContain("DO_NOT_SEND_LATER_BODY");
+        assertThat(result.topicDetails()).extracting(topic -> topic.getTopicName()).containsExactly("Opening");
+        assertThat(result.bookDetails().getBookType()).isEqualTo("Java Programming");
+    }
+
+    @Test
+    void insufficientPrimaryMetadataLeavesUnknownTypeAndMissingDescriptionWithoutAnotherModelCall() throws Exception {
+        byte[] source = pdf(2, true, Map.of(1, "Notes\nIntroduction"));
+        when(analyzer.analyze(any(), any())).thenReturn(json(new PdfBatchExtraction(null,
+                new BookData("Notes", " ", null), List.of(), false, null, false, false)));
+        var result = service.extract(source, "source.pdf");
+
+        assertThat(result.bookDetails().getBookType()).isEqualTo("Unknown");
+        assertThat(result.bookDetails().getBookDetails() == null || result.bookDetails().getBookDetails().isBlank()).isTrue();
+        assertWholeBook(result, 2);
+        verify(analyzer).analyze(any(), any());
+        verify(books).saveAndFlush(result.bookDetails());
+        verify(books).existsByCanonicalBookName("Notes");
+        verifyNoMoreInteractions(analyzer, books);
+    }
+
+    @Test
+    void existingPrimaryDescriptionsAreSavedWithoutAdditionalModelCalls() throws Exception {
+        when(analyzer.analyze(any(), any())).thenReturn(json(new PdfBatchExtraction(null,
+                new BookData("Known Book", "  Keep this exact description.  ", "History"),
+                List.of(printed("Opening", "Existing topic details", 1)), true, null, false, true)));
+        var result = service.extract(pdf(3, true), "source.pdf");
+
+        assertThat(result.bookDetails().getBookDetails()).isEqualTo("  Keep this exact description.  ");
+        assertThat(result.topicDetails().getFirst().getDetails()).isEqualTo("Existing topic details");
+        assertThat(result.bookDetails().getBookType()).isEqualTo("History");
+        verify(analyzer).analyze(any(), any());
+        verify(books).saveAndFlush(result.bookDetails());
+        verify(books).existsByCanonicalBookName("Known Book");
+        verifyNoMoreInteractions(analyzer, books);
+    }
+
+    @Test
+    void combinedFirstBatchJsonSuppliesBookTypeAndAllDescriptionsBeforeOneSave() throws Exception {
+        String bookDescription = "A programming guide explaining classes and methods.";
+        String topicDescription = "Introduces classes, objects and method calls.";
+        String combinedJson = json(new PdfBatchExtraction(new AuthorData("Primary Writer"),
+                new BookData("A Programming Guide", bookDescription, "Java Programming"),
+                List.of(printed("Classes and Objects", topicDescription, 1)), true, null, false, true));
+        when(analyzer.analyze(any(), any())).thenAnswer(call -> {
+            verifyNoInteractions(books);
+            return combinedJson;
+        });
+
+        var result = service.extract(pdf(4, true), "guide.pdf");
+
+        assertThat(result.wholeBook()).isFalse();
+        assertThat(result.authorDetails().getAuthorName()).isEqualTo("Primary Writer");
+        assertThat(result.bookDetails().getBookName()).isEqualTo("A Programming Guide");
+        assertThat(result.bookDetails().getBookType()).isEqualTo("Java Programming");
+        assertThat(result.bookDetails().getBookDetails()).isEqualTo(bookDescription);
+        assertThat(result.topicDetails()).singleElement().satisfies(topic -> {
+            assertThat(topic.getTopicName()).isEqualTo("Classes and Objects");
+            assertThat(topic.getDetails()).isEqualTo(topicDescription);
+        });
+        verify(analyzer, times(1)).analyze(any(), any());
+        verify(books, times(1)).existsByCanonicalBookName("A Programming Guide");
+        verify(books, times(1)).saveAndFlush(result.bookDetails());
+        verifyNoMoreInteractions(analyzer, books);
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {" ", "\t\n"})
+    void missingPrimaryDescriptionsDoNotTriggerAnotherModelCallOrInventFallbackText(String missing) throws Exception {
+        when(analyzer.analyze(any(), any())).thenReturn(json(new PdfBatchExtraction(new AuthorData("Writer"),
+                new BookData("Known History Book", missing, "History"),
+                List.of(printed("Opening", missing, 1)), true, null, false, true)));
+
+        var result = service.extract(pdf(3, true), "source.pdf");
+
+        assertThat(result.wholeBook()).isFalse();
+        assertThat(result.bookDetails().getBookType()).isEqualTo("History");
+        assertThat(result.bookDetails().getBookDetails() == null || result.bookDetails().getBookDetails().isBlank()).isTrue();
+        assertThat(result.topicDetails()).singleElement().satisfies(topic -> {
+            assertThat(topic.getTopicName()).isEqualTo("Opening");
+            assertThat(topic.getDetails() == null || topic.getDetails().isBlank()).isTrue();
+        });
+        verify(analyzer, times(1)).analyze(any(), any());
+        verify(books, times(1)).existsByCanonicalBookName("Known History Book");
+        verify(books, times(1)).saveAndFlush(result.bookDetails());
+        verifyNoMoreInteractions(analyzer, books);
+    }
+
+    @Test
+    void successfulTwoBatchExtractionPreservesPrimaryDescriptionsAndMakesOnlyTwoCalls() throws Exception {
+        String primaryBookDescription = "  Preserve the primary book description exactly.  ";
+        String primaryTopicDescription = "Preserve the first topic description exactly.";
+        String first = json(new PdfBatchExtraction(new AuthorData("Primary Author"),
+                new BookData("Primary Book", primaryBookDescription, "History"),
+                List.of(printed("Opening", primaryTopicDescription, 1)), true, null, true, false));
+        String second = json(new PdfTopicBatchExtraction(List.of(printed("Later", "Later topic details.", 5)),
+                true, null, false, true));
+        when(analyzer.analyze(any(), any())).thenReturn(first, second);
+
+        var result = service.extract(pdf(8, true), "source.pdf");
+
+        assertThat(result.wholeBook()).isFalse();
+        assertThat(result.bookDetails().getBookType()).isEqualTo("History");
+        assertThat(result.bookDetails().getBookDetails()).isEqualTo(primaryBookDescription);
+        assertThat(result.topicDetails()).extracting(topic -> topic.getDetails())
+                .containsExactly(primaryTopicDescription, "Later topic details.");
+        ArgumentCaptor<PdfPageBatch> batches = ArgumentCaptor.forClass(PdfPageBatch.class);
+        verify(analyzer, times(2)).analyze(batches.capture(), any());
+        assertThat(batches.getAllValues()).extracting(PdfPageBatch::startPage).containsExactly(1, 6);
+        verify(books, times(1)).existsByCanonicalBookName("Primary Book");
+        verify(books, times(1)).saveAndFlush(result.bookDetails());
+        verifyNoMoreInteractions(analyzer, books);
     }
 
     private static void assertWholeBook(BookExtractionResult result, int pages) {
         assertThat(result.wholeBook()).isTrue();
         assertThat(result.fallbackReason()).isNotBlank();
-        assertThat(result.topicDetails()).singleElement().satisfies(topic -> {
-            assertThat(topic.getTopicName()).isEqualTo(result.bookDetails().getBookName());
-            assertThat(topic.getDetails()).isEqualTo(result.bookDetails().getBookDetails());
-            assertThat(topic.getStartPage()).isEqualTo(1);
-            assertThat(topic.getEndPage()).isEqualTo(pages);
-            assertThat(topic.getPrintedStartPage()).isNull();
-            assertThat(topic.getPrintedEndPage()).isNull();
-            assertThat(topic.getPdfPath()).isNull();
+        assertThat(result.topicDetails()).singleElement().satisfies(offset -> {
+            assertThat(offset.getTopicName()).isEqualTo(result.bookDetails().getBookName() + "_offset");
+            assertThat(offset.getDetails()).isEqualTo(result.bookDetails().getBookName() + "_offset detail");
+            assertThat(offset.getStartPage()).isEqualTo(1);
+            assertThat(offset.getEndPage()).isEqualTo(pages);
+            assertThat(offset.getPrintedStartPage()).isNull();
+            assertThat(offset.getPrintedEndPage()).isNull();
+            assertThat(offset.getPdfPath()).isNull();
+            assertThat(offset.getBookDetails()).isSameAs(result.bookDetails());
         });
+        assertThat(result.bookDetails().getTopics()).containsExactlyElementsOf(result.topicDetails());
+        assertThat(result.bookDetails().getTotalPages()).isEqualTo(pages);
     }
 
     private static byte[] pdf(int pages, boolean readable, Map<Integer, String> pageText) throws IOException {

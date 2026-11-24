@@ -166,12 +166,15 @@ public class DownloadServiceImpl implements DownloadService {
         return topic.getTopicName() != null && topic.getTopicName().endsWith("_offset");
     }
 
-    /** Uploads without usable contents persist one whole-book topic, with no offset row. */
+    /** A full-range reserved offset holds the original book; keep legacy saved rows readable. */
     private static boolean isWholeBookFallback(BookDetails book, List<TopicDetails> found) {
         if (found.size() != 1 || book.getTotalPages() <= 0) return false;
         TopicDetails topic = found.getFirst();
-        return Objects.equals(topic.getTopicName(), book.getBookName())
-                && Objects.equals(topic.getDetails(), book.getBookDetails())
+        boolean canonicalOffset = Objects.equals(topic.getTopicName(), book.getBookName() + "_offset")
+                && Objects.equals(topic.getDetails(), book.getBookName() + "_offset detail");
+        boolean legacyWholeBook = Objects.equals(topic.getTopicName(), book.getBookName())
+                && Objects.equals(topic.getDetails(), book.getBookDetails());
+        return (canonicalOffset || legacyWholeBook)
                 && Objects.equals(topic.getStartPage(), 1)
                 && Objects.equals(topic.getEndPage(), book.getTotalPages())
                 && topic.getPrintedStartPage() == null && topic.getPrintedEndPage() == null;
