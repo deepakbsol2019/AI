@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 import { API_CONFIG } from '../../../core/configuration/api.config';
+import { NotificationService } from '../../../shared/services/notification.service';
 import { UploadStatus } from '../models/book.models';
 import { BookUploadService } from './book-upload.service';
 
@@ -16,6 +17,7 @@ describe('BookUploadService', () => {
   };
   let service: BookUploadService;
   let http: HttpTestingController;
+  let notifications: NotificationService;
 
   function pdf(name = 'book.pdf', contents = '%PDF-1.7'): File {
     return new File([contents], name, { type: 'application/pdf' });
@@ -39,10 +41,12 @@ describe('BookUploadService', () => {
     });
     service = TestBed.inject(BookUploadService);
     http = TestBed.inject(HttpTestingController);
+    notifications = TestBed.inject(NotificationService);
   });
 
   afterEach(() => {
     http.verify();
+    TestBed.resetTestingModule();
     vi.useRealTimers();
   });
 
@@ -58,9 +62,11 @@ describe('BookUploadService', () => {
       expect(service.phase()).toBe('error');
       expect(service.busy()).toBe(false);
       expect(service.message()).toBeTruthy();
+      expect(service.validationError()).toBeTruthy();
       http.expectNone('/api/upload-file');
     }
     expect(service.receiptId()).toBeNull();
+    expect(notifications.items()).toEqual([]);
   });
 
   it('uploads, polls through inprogress, emits completion once, and stops polling at Success', () => {
@@ -74,6 +80,7 @@ describe('BookUploadService', () => {
     upload.flush(pending, { status: 202, statusText: 'Accepted' });
     expect(service.phase()).toBe('processing');
     expect(service.receiptId()).toBe(41);
+    expect(notifications.items()).toEqual([]);
     http.expectNone('/api/upload-status/41');
     vi.advanceTimersByTime(pollInterval);
     http.expectOne('/api/upload-status/41').flush(pending);
@@ -86,6 +93,7 @@ describe('BookUploadService', () => {
     expect(service.message()).toBe('Book ready');
     expect(service.busy()).toBe(false);
     expect(completed).toHaveBeenCalledTimes(1);
+    expect(notifications.items()).toMatchObject([{ message: 'Book ready', severity: 'success' }]);
     vi.advanceTimersByTime(pollInterval * 10);
     http.expectNone('/api/upload-status/41');
   });
@@ -116,6 +124,7 @@ describe('BookUploadService', () => {
       .flush({ ...pending, status: 'failed', message: 'Unreadable PDF' });
     expect(service.phase()).toBe('error');
     expect(service.message()).toBe('Unreadable PDF');
+    expect(notifications.items()).toMatchObject([{ message: 'Unreadable PDF', severity: 'error' }]);
     expect(completed).not.toHaveBeenCalled();
     vi.advanceTimersByTime(pollInterval * 3);
     http.expectNone('/api/upload-status/41');
@@ -133,6 +142,7 @@ describe('BookUploadService', () => {
     expect(service.receiptId()).toBe(41);
     expect(service.busy()).toBe(true);
     expect(service.message()).toContain('server may still be processing');
+    expect(notifications.items()).toEqual([]);
     service.upload(pdf('same.pdf'));
     http.expectNone('/api/upload-file');
     service.retryStatus();
@@ -155,6 +165,9 @@ describe('BookUploadService', () => {
     await Promise.resolve();
     expect(service.phase()).toBe('error');
     expect(service.message()).toBe('Upload queue is full');
+    expect(notifications.items()).toMatchObject([
+      { message: 'Upload queue is full', severity: 'error' },
+    ]);
     expect(service.receiptId()).toBeNull();
     service.upload(file);
     http

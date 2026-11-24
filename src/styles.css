@@ -5,14 +5,16 @@ dialog::backdrop {
   --library-background-position: 50% 50%;
 }
 :root {
-  --ink: #172b46;
-  --muted: #596b80;
+  --ink: #111827;
+  --muted: #283443;
   --blue: #225eb4;
   --blue-dark: #174783;
   --line: #dce3eb;
   --warm: #ba8c41;
-  /* Opaque white surfaces keep panels consistent without fading text or controls. */
-  --panel-background: #ffffff;
+  /* Surface alpha affects only the background, keeping text and actions fully opaque. */
+  --panel-background: rgba(255, 255, 255, 0.96);
+  --surface-text-shadow: none;
+  --notification-background: rgba(255, 255, 255, 0.97);
   --bs-body-font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
   --bs-body-color: var(--ink);
   --bs-primary: #225eb4;
@@ -74,14 +76,16 @@ a {
 }
 .glass-panel {
   background: var(--panel-background);
-  border: 1px solid rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.55);
   border-radius: 1rem;
   box-shadow:
     0 8px 32px rgba(12, 28, 46, 0.1),
     0 1px 2px rgba(12, 28, 46, 0.04);
+  color: var(--ink);
+  text-shadow: var(--surface-text-shadow);
 }
 .eyebrow {
-  color: var(--blue);
+  color: var(--ink);
   font-size: 0.68rem;
   font-weight: 750;
   letter-spacing: 0.16em;
@@ -108,29 +112,54 @@ a {
   justify-content: center;
   gap: 0.5rem;
 }
-.btn-primary {
+.btn,
+.icon-action {
+  --bs-btn-color: #fff;
   --bs-btn-bg: var(--blue);
   --bs-btn-border-color: var(--blue);
+  --bs-btn-hover-color: #fff;
   --bs-btn-hover-bg: var(--blue-dark);
   --bs-btn-hover-border-color: var(--blue-dark);
+  --bs-btn-active-color: #fff;
   --bs-btn-active-bg: var(--blue-dark);
   --bs-btn-active-border-color: var(--blue-dark);
-  box-shadow: 0 3px 8px #225eb424;
+  --bs-btn-disabled-color: #374151;
+  --bs-btn-disabled-bg: #d1d5db;
+  --bs-btn-disabled-border-color: #9ca3af;
+  --bs-btn-disabled-opacity: 1;
+  color: #fff !important;
+  background: var(--blue) !important;
+  border: 1px solid var(--blue) !important;
+  opacity: 1 !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  text-decoration: none !important;
 }
-.btn-outline-primary {
-  --bs-btn-color: var(--blue);
-  --bs-btn-border-color: #c1d3ec;
-  --bs-btn-hover-bg: #edf3fc;
-  --bs-btn-hover-color: var(--blue-dark);
-  --bs-btn-hover-border-color: #91afd6;
-  --bs-btn-active-bg: #e7effa;
-  --bs-btn-active-color: var(--blue-dark);
+.icon-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  min-height: 2.25rem;
+  padding: 0.35rem;
+  border-radius: 0.5rem;
+  flex-shrink: 0;
 }
-.btn-light {
-  --bs-btn-bg: #f4f6f9;
-  --bs-btn-border-color: #dce3eb;
-  --bs-btn-color: #465a74;
-  --bs-btn-hover-bg: #e8edf4;
+:is(.btn, .icon-action):not(:disabled):not([aria-disabled='true']):is(:hover, :active, .active) {
+  background: var(--blue-dark) !important;
+  border-color: var(--blue-dark) !important;
+}
+:is(.btn, .icon-action):is(:disabled, [aria-disabled='true']) {
+  color: #374151 !important;
+  background: #d1d5db !important;
+  border-color: #9ca3af !important;
+  cursor: not-allowed;
+}
+:is(.btn, .icon-action)[aria-disabled='true'] {
+  pointer-events: none;
+}
+:is(.btn, .icon-action) app-icon {
+  color: inherit !important;
 }
 .btn-sm {
   min-height: 35px;
@@ -138,7 +167,7 @@ a {
   font-size: 0.76rem;
 }
 .form-label {
-  color: #344963;
+  color: var(--ink);
   font-size: 0.77rem;
   font-weight: 650;
   margin-bottom: 0.45rem;
@@ -152,7 +181,7 @@ a {
   background-color: #fff;
 }
 .form-control::placeholder {
-  color: #7a8799;
+  color: #374151;
 }
 .form-control:focus,
 .form-select:focus {
@@ -160,14 +189,15 @@ a {
   box-shadow: 0 0 0 0.2rem #225eb419;
 }
 .table {
-  --bs-table-bg: var(--panel-background);
+  --bs-table-bg: transparent !important;
+  --bs-table-accent-bg: transparent;
   --bs-table-color: var(--ink);
   --bs-table-border-color: #e5eaf0;
   margin-bottom: 0;
 }
 .table > thead > tr > th {
   background: var(--panel-background);
-  color: #53657d;
+  color: var(--ink);
   font-size: 0.66rem;
   font-weight: 750;
   letter-spacing: 0.07em;
@@ -176,6 +206,8 @@ a {
   vertical-align: middle;
 }
 .table > tbody > tr > td {
+  background-color: transparent;
+  box-shadow: none;
   padding: 1.25rem;
   vertical-align: middle;
   font-size: 0.825rem;
@@ -193,7 +225,7 @@ a {
   color: var(--muted);
 }
 .empty-state app-icon {
-  color: #8da3bf;
+  color: var(--ink);
   margin-bottom: 0.75rem;
 }
 .empty-state h3 {
@@ -211,19 +243,19 @@ a {
   font-size: 0.85rem;
 }
 .alert-danger {
-  color: #862c32;
-  background: #fff3f3;
-  border-color: #efd5d8;
+  color: #651f26;
+  background: rgba(255, 235, 235, 0.3);
+  border-color: #b47b80;
 }
 .alert-success {
-  color: #235944;
-  background: #f0faf4;
-  border-color: #cce7d7;
+  color: #154b34;
+  background: rgba(231, 255, 240, 0.3);
+  border-color: #719c81;
 }
 .alert-info {
-  color: #365775;
-  background: #eef6fc;
-  border-color: #d5e5f3;
+  color: #172e42;
+  background: rgba(234, 246, 255, 0.3);
+  border-color: #7893aa;
 }
 dialog {
   color: var(--ink);

@@ -2,19 +2,27 @@
 
 Standalone Angular UI connected to the sibling `Book-Search-Download` Spring backend. Home opens directly; unknown routes redirect to Home. No authentication, sidebar, mock mode, or silent mock fallback.
 
-Book listings show **Book Type immediately after Book Name**, using the backend's persisted `bookType`. Missing, null, empty, or whitespace-only legacy values display **Unknown**. Remaining author, description, full-download, and View Book actions are preserved. The existing SVG/icon and background image are unchanged by the book-type feature; there are no type-based icons or theme fields.
+Book listings show **Book Type immediately after Book Name**, using the backend's persisted `bookType`. Missing legacy values display **Unknown**. **View Book** now reads the complete PDF; the separate **View Topic** action opens the existing topics popup. Existing downloads, the book SVG and the supplied Gurukul background asset remain intact.
 
 ## Homepage and topic popup
 
-Home retains this order: header, search, book listing, main footer. The welcome hero and the narrow pre-footer tagline are removed. The viewport shell uses `100vh` with `100dvh` support; header and main footer are outside its single flexible, scrollable middle region. The body does not scroll on Home. The book table retains horizontal scrolling on narrow screens and leaves vertical scrolling to the middle region. Opaque white panels and the supplied Gurukul background remain unchanged.
+Home retains this order: header, search, book listing, main footer. The viewport shell uses `100vh` with `100dvh` support; header and footer are outside its single flexible, scrollable middle region. The body does not scroll on Home. Each section has an accessible minimize button; the header always shows **Search** and **Book Collection** restore buttons. Restore is natively disabled/grey while its section is visible and enabled/blue while minimized. Persistent hidden wrappers remove all section layout space while preserving form instances, draft input, applied criteria, results and pagination. Restoring either section never reorders it or makes a request. Both minimized leaves the background visible.
 
-View Book uses the topics already present in the current search result. Its header, filter, download controls, selected count and close controls remain outside the scrolling topic-table container. Opening the native dialog locks document/body and the Home scroll region; close, native close/Escape, and component destruction restore their previous overflow declarations, priorities and scroll positions.
+View Topic uses the topics already present in the current search result. Its header, filter, download/view controls, selected count and close controls remain outside the scrolling topic-table container. Native dialogs share a reference-counted document/Home scroll lock: the original overflow declarations, priorities and scroll positions return after the final dialog closes, even if Angular destroys nested views in a different order.
 
 The popup's local filter updates while typing and when **Filter** is pressed. It trims the query and matches a case-insensitive substring in the topic name **or** description, safely handling null values. Filtering and clearing issue no HTTP requests and never alter the original topic list. The main search API and its exact-name matching behavior are unchanged.
 
-Selection uses stable topic IDs and survives filtering, including hidden rows. The count always includes hidden selections. With zero or one selected, individual topic downloads remain available; with two or more, they are disabled and **Download Selected Topic** becomes available. An active topic download prevents duplicate bulk submissions; a bulk download locks that book's topic download controls until success or failure. Whole-book downloads remain independent. Closing or changing books clears filter and selection state.
+Selection uses stable topic IDs and includes hidden rows in its count. With zero or one selected, individual View/Download buttons are enabled and selected View/Download buttons are disabled. With two or more, those states reverse. Shared action styles use solid blue/white when enabled and contrasting grey when disabled, including hover states. Native disabled properties prevent activation. Existing in-progress download guards remain independent of whole-book downloads. Explicitly closing the popup or changing books clears its filter/selection; reading and returning with Back preserves them.
 
-Selected topics use the existing backend output: **one combined PDF**, with its existing cover/contents and only the chosen topic source PDFs, ordered as listed in the book. There is no unresolved output-format decision or new backend endpoint.
+Selected downloads retain the existing output: **one combined PDF**, with its cover/contents and chosen topic source PDFs in the existing supplied order. There is no unresolved output-format decision. Reader selections additionally use persisted physical source order, so a front-matter `_offset` row appears before later chapters even if inserted last in the database. Multi-topic reading returns a clear 409 limitation if saved physical boundaries are missing or invalid; it does not guess. Individual stored-topic reading remains available.
+
+## Reusable PDF reader and notifications
+
+One dynamically loaded reader handles explicit `book`, `topic`, and `selected-topics` modes. Inline endpoints supply actual complete PDFs, preserving source formatting and authoritative topic files. View never calls the attachment-saving service or creates a download link. The reader provides loading/empty/error/retry states, page number/total, Previous/Next, fit width, zoom, Back and a Download action for the current scope. Only one page is rendered at a time; render tasks, PDF documents, workers, canvas buffers, resize handlers and HTTP subscriptions are released on replacement/close. Home and the originating topics popup stay mounted beneath it, preserving state and focus on Back.
+
+The reader opens in **Light mode (original PDF)** with an opaque white background and original PDF colors. It fills the viewport (`100vh`/`100dvh`), with a compact heading/toolbar/footer and a flexible, independently scrolling document region. The dropdown also offers **Dark mode**, which changes only the reader surroundings and applies `invert(1) hue-rotate(180deg)` to its canvas. PDF.js always renders the original page onto white; its previous SVG-based high-contrast `pageColors` path is no longer used. Switching modes does not refetch or redraw the PDF, change the page/zoom/scroll position, or modify saved/downloaded files. A compact help disclosure explains that dark display also recolors scans/photos; Light mode preserves original colors.
+
+Shared non-modal notifications appear below the active fixed header so restore/upload/Back controls remain accessible. Each stable notification ID has its own **15000 ms** lifetime and manual close action; previous timers cannot dismiss newer messages. The active native dialog hosts the outlet while open, without duplicate app-level overlays. Empty stacks leave no overlay. Success/error severity has appropriate live announcements and does not move focus. Confirmed upload completion/failure and download handoff/errors use notifications; upload progress, interrupted-status recovery, input validation and content errors requiring Retry remain inline. Timers and observers are cleaned up on teardown.
 
 ## Run
 
@@ -33,13 +41,14 @@ Verified installed versions on 24 November 2026: Node **24.16.0**, npm **11.13.0
 
 - `src/app/core/configuration/api.config.ts`: API prefix `/api`, 100 MiB upload validation limit, 2-second status interval, matching backend defaults.
 - `proxy.conf.json`: development target `http://localhost:9090`; restart the dev server after changing it.
-- `src/styles.css`: `--library-background-image` in the shared `:root, dialog::backdrop` rule references the exact supplied `public/assets/Flowering-Gurukul-by-the-River.png`. The page and native pop-up backdrop share this local asset, with centered `cover` positioning and no stretching, warm tint, or image filter. A fixed viewport background layer keeps the central scene centered on long mobile pages. Neutral white overlays support readability; content and pop-up panels remain `#FFFFFF`, with the image outside the pop-up content. Reduced-transparency/contrast preferences use solid backgrounds. [Asset notes](public/assets/README.md).
+- `src/styles.css`: the exact supplied `public/assets/Flowering-Gurukul-by-the-River.png` remains the centered, unstretched `cover` background for Home and the topic-dialog backdrop. No image or backdrop blur is applied. [Asset notes](public/assets/README.md).
 - `src/bootstrap.scss`: selective Bootstrap layout, forms, tables, buttons, feedback, and utilities. No Bootstrap JavaScript or competing modal controllers.
-- `--panel-background` in `src/styles.css` is opaque white (`#FFFFFF`) and shared by base Home/header/footer/modal/table surfaces. It changes background color only; text/buttons/icons do not inherit container opacity. No image or backdrop blur is applied. An attached visual reference was not present in the available files, so the explicit pure-white requirement is used as the target.
+- `--panel-background` is shared white **alpha 0.96** (4% transparency), increased after the earlier highly transparent panels proved hard to read. Near-black text has no outlined text shadow, and form fields use solid white backgrounds. The supplied background remains clear around the panels. Reader surfaces are opaque white by default, optionally black in Dark mode. No parent opacity fades text/buttons, and no image/backdrop blur is applied. Reduced-transparency/contrast preferences retain their accessibility overrides.
+- `pdfjs-dist` **6.5.438** is loaded only when reading. `angular.json` copies the matching worker, CMaps, standard fonts, WASM, ICC profiles and license to `assets/pdfjs/`. Restart `ng serve` after asset-configuration changes. These are local assets, with no CDN dependency.
 
 Build with `npm run build`. Deploy **`dist/Book-Search-Download-UI/browser/`**, with history fallback to `index.html` and `/api/**` reverse-proxied to the backend. The development proxy is not included in the production bundle.
 
-For a separately hosted API, set `baseUrl` to its complete API prefix, for example `https://books.example.com/api`. The existing backend declares no CORS policy. Allow the UI origin, GET/POST and necessary request headers, and expose **`Content-Disposition`** to preserve server filenames in downloads. Same-origin deployment needs no CORS changes. Backend files were left unchanged.
+For a separately hosted API, set `baseUrl` to its complete API prefix, for example `https://books.example.com/api`. The existing backend declares no CORS policy. Allow the UI origin, GET/POST and necessary request headers, and expose **`Content-Disposition`** to preserve server filenames in downloads. Same-origin deployment needs no CORS changes. New reader controllers reuse the existing PDF assembly, ownership checks and storage confinement; existing download/search endpoints are unchanged. No database migration was required.
 
 ## Actual API integration
 
@@ -54,6 +63,8 @@ Contracts were read from backend controllers, DTOs, entities, and tests.
 | Complete book          | `GET /api/download/book-download?bookId={id}`                                  |
 | Selected topic         | `GET /api/download/book-topic-download?bookId={id}&topicIds={selectedId}`      |
 | Multiple topics        | Same GET with repeated IDs: `?bookId={id}&topicIds={firstId}&topicIds={secondId}` |
+| Read complete book     | `GET /api/read/book?bookId={id}` (`Content-Disposition: inline`) |
+| Read one/many topics   | `GET /api/read/topics?bookId={id}&topicIds={id}...` (inline; authoritative source order for multiple IDs) |
 
 Six search controls match `query`, `bookName`, `authorName`, `topicName`, `bookDetailsContains`, and `topicDetailsContains`. Names use case-insensitive complete matches. Description filters use literal substrings, including literal `%` and `_`. Broad query combines complete names and description substrings with OR; explicit filters combine with AND. Both topic filters must match the same topic. The form explains these rules; no enum options are invented.
 
@@ -63,7 +74,7 @@ Upload needs no metadata, so selecting a valid file starts it directly without a
 
 Home and modal share the full-book download service. It prevents duplicate active downloads while allowing unrelated downloads, reads binary Blobs and MIME type, honors safe `filename*`/`filename`, revokes temporary object URLs, and decodes JSON errors returned as Blobs. Binary download activity is indeterminate. One-topic PDFs contain only the selected topic content plus the backend-generated cover/contents pages.
 
-The native HTML dialog provides modal semantics, focus containment and Escape behavior. Visible header/footer close controls restore focus to the View Book trigger. Complete topics are already available; dynamic module loading, empty topics, and download failures have visible feedback. Closing preserves Home state. Search failures, topic-module failures, and upload status have independent feedback.
+Native HTML dialogs provide modal semantics and default focus containment/Escape behavior. Popup close returns focus to View Topic; reader Back returns focus to its originating action without resetting the still-mounted popup or list. Browser keyboard behavior still requires manual verification.
 
 ## Structure
 
@@ -80,14 +91,17 @@ src/app/
     pages/home/                       orchestration and dynamic modal import
     components/
       book-search/                    typed reactive form
-      book-table/                     six Home columns; Book Type second
-      book-topic-description/         selection, name, description, download columns
+      book-table/                     seven columns; Book Type second, View Book and View Topic
+      book-topic-description/         local filter, selection, View/Download actions
+      book-reader/                    reusable opaque dark, single-page PDF canvas
     models/book.models.ts
-    data-access/                      HTTP and shared download services
+    models/reader*.ts                 reader contract and verified source-order helper
+    data-access/                      HTTP, download and lazy PDF-engine services
     services/book-upload.service.ts   transfer and processing lifecycle
   shared/
-    ui/icon.component.ts
-    utils/                            HTTP errors, safe filenames, scoped scroll locking
+    ui/                               existing icons and shared notification outlet
+    services/notification.service.ts  stable IDs and independent 15-second timers
+    utils/                            HTTP errors, filenames, reference-counted scroll locking
 src/bootstrap.scss
 src/styles.css
 ```
@@ -98,15 +112,17 @@ Production build output and `browser-stats.json` show separate dynamic imports:
 
 | Load time                                        | Chunk                                                  | Raw size, rounded |
 | ------------------------------------------------ | ------------------------------------------------------ | ----------------: |
-| Initial                                          | Angular/router/HTTP bootstrap JavaScript               |          279.5 kB |
-| Initial                                          | Bootstrap subset and global CSS                        |          151.3 kB |
+| Initial                                          | Angular/router/HTTP/notification bootstrap JavaScript  |          285.7 kB |
+| Initial                                          | Bootstrap subset and global CSS                        |          152.1 kB |
 | Root route                                       | Books routes via `loadChildren`                        |             175 B |
-| Root route                                       | Home via `loadComponent`, including its shell/services |           27.2 kB |
-| After first Home render, `@defer (on immediate)` | Search and reactive forms                              |           43.8 kB |
-| After first Home render, `@defer (on immediate)` | Books table                                            |            6.1 kB |
-| Only after View Book click, dynamic `import()`   | Topics modal                                           |           14.9 kB |
+| Root route                                       | Home via `loadComponent`, including its shell/services |           31.4 kB |
+| After first Home render, `@defer (on immediate)` | Search and reactive forms                              |           44.4 kB |
+| After first Home render, `@defer (on immediate)` | Books table                                            |            6.6 kB |
+| Only after View Topic                            | Topics modal                                           |           14.8 kB |
+| Only after a View/reader action                   | Reader component                                       |           19.3 kB |
+| Only when loading an actual PDF                   | PDF.js engine (worker separate local asset)            |          449.6 kB |
 
-Initial total: **~430.7 kB raw / 91.6 kB estimated transfer**, below the original 500 kB warning budget. Header/footer/layout/icons/services load **with their lazy Home parent**; they are not independently deferred. Search/table are referenced only inside defer boundaries. Home starts its one initial search immediately, independently of deferred rendering. No modal prefetch. Development HMR may consolidate deferred chunks; production output is the verified loading source.
+Initial total: **~437.8 kB raw / 94.0 kB estimated transfer**, below the original 500 kB warning budget. Header/footer/layout load with their lazy Home parent. Search/table retain defer boundaries. Home starts one initial search independently of rendering. Reader/PDF.js are not eagerly included in the initial bundle. Development HMR can consolidate chunks; production output is the verified loading source.
 
 ## Checks and remaining verification
 
@@ -115,18 +131,24 @@ npm run build -- --stats-json
 npm test -- --watch=false
 ```
 
-Production compilation passes with strict TypeScript/templates, no warnings or budget failures. **50 Angular tests pass**. They cover section order/removal and shell projection; unchanged main search serialization; local filter input/apply/clear with zero HTTP requests; name-or-description and null/no-match cases; selection transitions **0 → 1 → 2 → 1 → 0**; hidden selections and original-order dispatch; selected-only HTTP IDs; duplicate suppression and success/error recovery; close/changed-book reset; scroll-lock restoration; and the retained upload, individual/whole-book download, filename, Blob-error, dynamic-modal/focus, Book Type and pagination checks. DOM tests emulate native dialog open/close and do not prove browser scroll geometry.
+Production compilation passes with strict TypeScript/templates and **no warnings or budget failures**. **95 Angular tests pass** across 21 files. Coverage includes independent minimize/restore in both sequences, native disabled controls, preserved draft forms/results/criteria/pagination without requests, unchanged main search, local filter and hidden selections, View/Download transitions **0 → 1 → 2 → 1 → 0**, all reader scopes and Back-state preservation, source ordering, one-page rendering/navigation/cancellation/error/empty states, no automatic attachment saving on View, nested/out-of-order scroll-lock teardown, and independent 15000 ms notification lifetimes/manual close/teardown. Readability regressions verify original light rendering by default, no `pageColors` engine argument in any theme, and a local dark-mode switch without network requests, PDF redraw, downloads or page/zoom/scroll resets. DOM tests emulate native dialogs and the PDF engine.
 
-The existing backend download regression suite also passed **34 tests** (`DownloadControllerTests`, `DownloadPipelineTests`, `DownloadServiceTests`). Live requests through the Angular `/api` proxy returned HTTP 200, `application/pdf`, and attachment filenames for selected topics, an individual topic and a whole book. For Think Java topic IDs **1 and 3**, PDFBox verified all **34 selected source pages** against their original topic files, in the requested order, plus exactly two existing front-matter pages; there were no extra source pages. The whole-book check retained all 14 pages. Default search still returns the four existing books, and the frontend main search method was compared directly with its original implementation and is unchanged. No database migration or backend source change was needed for this request.
+The targeted backend suite passed **68 tests**: reader controller/service, existing download controller/service/PDF pipeline and application startup. It verifies inline disposition, exact PDF bytes, source-order sorting including later-ID front matter, invalid/missing boundaries, ownership/duplicate validation and unchanged download behavior. Live inline requests through the Angular proxy returned HTTP 200 and `application/pdf` for all three reading scopes. PDFBox verified the complete book at **372 pages**, the smaller whole book at **14 pages**, and the selected result as exactly **34 requested source pages plus two existing front-matter pages**. A reversed selected-read request (`3,1`) was delivered in physical source order (`1,3`) and matched the original topic PDFs page for page. The frontend main search method was compared with its original implementation and is unchanged. The exact supplied image and existing SVG hashes are unchanged. The local PDF worker is served with HTTP 200. No database migration was required.
 
-The computer-use skill was used to inspect the updated desktop homepage and topic popup in Edge. Both retained white panels and the clear Gurukul image; the popup's header/controls and table container fit within the desktop viewport. Further browser interaction was interrupted by active user input and a minimized window. **Actual scroll-motion/overlap/double-scrollbar checks, mobile/short-viewport rendering, and real keyboard Tab/Escape checks were not completed**. The final explicit book-table vertical-overflow rule was added after that inspection and has build/test coverage but no subsequent visual confirmation. **Live upload processing was not exercised**; this request makes no upload-flow changes.
+Live regression requests to the original complete-book, single-topic and selected-topic download endpoints also returned HTTP 200, `application/pdf` and attachment disposition. The selected download still preserves its supplied order (`3,1`), verified page for page, while inline reading normalizes that same request to physical order. Existing download behavior was not changed.
 
-## Files changed for the homepage/topic workflow
+For the readability fix, a desktop Edge screenshot confirmed the Search panel's clearer, near-white background and readable text with the unchanged image visible around it. Automated browser activation did not change the observed UI, so a complete interactive reader/mobile/keyboard/layout check remains unperformed. Separately, an actual PDF.js/Node canvas render of page 3 of the 20-page inline topic PDF produced **12971 dark text pixels** on white, and the same display filter produced **12971 white text pixels** on black. Both output images were visually inspected for readable full text (`tmp/reader-light-regression.png`, `tmp/reader-dark-regression.png`); this verifies the rendering/filter path outside the browser, not browser geometry or every scanned/color document. **Live upload processing was not exercised**; controlled status tests verify that success is announced only after a confirmed terminal API status.
 
-- `src/app/layout/application-layout/application-layout.component.ts` and its new `.spec.ts`.
-- `src/app/features/books/pages/home/home.component.html`, `home.component.css`, and `home-render.spec.ts`.
-- `src/app/features/books/components/book-table/book-table.component.css` (vertical scroll ownership only).
-- `src/app/features/books/components/book-topic-description/book-topic-description.component.ts`, `.html`, `.css`, `.spec.ts`, and new `book-topic-download.integration.spec.ts`.
-- `src/app/shared/utils/scroll-lock.ts` and new `scroll-lock.spec.ts`.
-- `src/app/features/books/data-access/books-api.service.ts`, `book-download.service.ts`, and their `.spec.ts` files.
-- `src/styles.css` and this README.
+## Files changed for sections, reading and notifications
+
+- `src/app/app.ts` / `app.html`: global notification outlet.
+- Header component TS/HTML/CSS/tests, application-layout TS/tests and footer component styles.
+- Home TS/HTML/CSS, `home-render.spec.ts`, new `home-visibility.spec.ts` and `reader-flow.integration.spec.ts`.
+- Book-search and book-table component TS/HTML/CSS/tests; topic-popup TS/HTML/CSS/tests.
+- New `components/book-reader/book-reader.component.ts`, `.html`, `.css` and `.spec.ts`.
+- New `models/reader.models.ts`, `reader-topic-order.ts` and ordering tests.
+- New `data-access/pdf-reader.service.ts` and tests; existing `books-api.service.ts`, `book-download.service.ts` and tests.
+- Upload service and tests: truthful transient notifications and separate inline validation state.
+- New `shared/services/notification.service.ts`, `shared/ui/notification-outlet.component.ts` and their tests.
+- `shared/utils/scroll-lock.ts` and tests; `src/styles.css`; `package.json`, lockfile and `angular.json`; this README.
+- Backend: new `download/controller/BookReaderController.java`, `download/controller/impl/BookReaderControllerImpl.java`, `download/service/BookReaderService.java`, two reader test classes and backend README. Existing download/search services and database schema are unchanged.

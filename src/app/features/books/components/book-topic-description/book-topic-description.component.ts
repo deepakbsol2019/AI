@@ -17,10 +17,13 @@ import { IconComponent } from '../../../../shared/ui/icon.component';
 import { lockLibraryScroll } from '../../../../shared/utils/scroll-lock';
 import { BookDownloadService } from '../../data-access/book-download.service';
 import type { Book } from '../../models/book.models';
+import type { BookTopic } from '../../models/book.models';
+import type { ReaderRequest } from '../../models/reader.models';
+import { NotificationOutletComponent } from '../../../../shared/ui/notification-outlet.component';
 
 @Component({
   selector: 'app-book-topic-description',
-  imports: [IconComponent],
+  imports: [IconComponent, NotificationOutletComponent],
   templateUrl: './book-topic-description.component.html',
   styleUrl: './book-topic-description.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -28,6 +31,7 @@ import type { Book } from '../../models/book.models';
 export class BookTopicDescriptionComponent implements OnDestroy {
   readonly book = input.required<Book>();
   readonly closed = output<void>();
+  readonly readRequested = output<ReaderRequest>();
   readonly downloads = inject(BookDownloadService);
   readonly filterText = signal('');
   readonly selectedIds = signal<ReadonlySet<number>>(new Set());
@@ -98,6 +102,20 @@ export class BookTopicDescriptionComponent implements OnDestroy {
   downloadSelected(): void {
     if (this.selectedCount() < 2 || this.anyTopicDownloading()) return;
     this.downloads.downloadSelectedTopics(this.book(), this.selectedTopics());
+  }
+
+  viewTopic(topic: BookTopic): void {
+    if (this.selectedCount() >= 2) return;
+    this.readRequested.emit({ mode: 'topic', book: this.book(), topics: [topic] });
+  }
+
+  viewSelected(): void {
+    if (this.selectedCount() < 2) return;
+    this.readRequested.emit({
+      mode: 'selected-topics',
+      book: this.book(),
+      topics: this.selectedTopics(),
+    });
   }
 
   close(): void {

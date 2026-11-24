@@ -12,7 +12,7 @@
   }
   <table class="table book-table align-middle mb-0">
     <caption class="visually-hidden">
-      Books matching your search. Download a full book or view its topics.
+      Books matching your search. Read or download a book, or explore its topics.
     </caption>
     <thead>
       <tr>
@@ -22,6 +22,7 @@
         <th scope="col">Book Description</th>
         <th scope="col">Download Book</th>
         <th scope="col">View Book</th>
+        <th scope="col">View Topic</th>
       </tr>
     </thead>
     <tbody>
@@ -66,10 +67,20 @@
               View Book <app-icon name="arrow-right" />
             </button>
           </td>
+          <td class="action-cell">
+            <button
+              type="button"
+              class="btn btn-primary btn-sm view-topics-button"
+              (click)="viewTopics.emit(book)"
+              [attr.aria-label]="'View topics: ' + book.bookName"
+            >
+              View Topic
+            </button>
+          </td>
         </tr>
       } @empty {
         <tr>
-          <td colspan="6">
+          <td colspan="7">
             @if (busy()) {
               <div class="empty-state" role="status">
                 <span class="spinner-border text-primary" aria-hidden="true"></span>

@@ -12,7 +12,19 @@ import { IconComponent } from '../../shared/ui/icon.component';
 })
 export class HeaderComponent {
   readonly uploadBusy = input(false);
+  readonly searchMinimized = input(false);
+  readonly collectionMinimized = input(false);
   readonly fileSelected = output<File>();
+  readonly restoreSearch = output<void>();
+  readonly restoreCollection = output<void>();
+
+  protected restoreSearchSection(): void {
+    if (this.searchMinimized()) this.restoreSearch.emit();
+  }
+
+  protected restoreCollectionSection(): void {
+    if (this.collectionMinimized()) this.restoreCollection.emit();
+  }
 
   protected chooseFile(event: Event): void {
     const input = event.target as HTMLInputElement;

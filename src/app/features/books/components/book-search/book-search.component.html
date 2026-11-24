@@ -4,7 +4,18 @@
       <p class="eyebrow">YOUR NEXT CHAPTER STARTS HERE</p>
       <h2 id="search-heading" class="section-title">Find a book. Discover an idea.</h2>
     </div>
-    <span class="search-emblem" aria-hidden="true"><app-icon name="search" /></span>
+    <div class="section-heading-actions">
+      <span class="search-emblem" aria-hidden="true"><app-icon name="search" /></span>
+      <button
+        type="button"
+        class="btn btn-primary btn-sm minimize-search"
+        aria-label="Minimize Search"
+        title="Minimize Search"
+        (click)="minimizeRequested.emit()"
+      >
+        <span aria-hidden="true">−</span>
+      </button>
+    </div>
   </div>
   <form [formGroup]="form" (ngSubmit)="submit()" role="search" aria-label="Search library">
     <label class="form-label" for="library-query">Search the library</label>

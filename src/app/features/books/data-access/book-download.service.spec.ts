@@ -2,6 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
+import { NotificationService } from '../../../shared/services/notification.service';
 import { Book, BookTopic } from '../models/book.models';
 import { BookDownloadService } from './book-download.service';
 
@@ -37,6 +38,7 @@ const multiTopicBook: Book = { ...book, topics: [topic, second, third], topicCou
 describe('BookDownloadService', () => {
   let service: BookDownloadService;
   let http: HttpTestingController;
+  let notifications: NotificationService;
 
   beforeEach(() => {
     TestBed.configureTestingModule({
@@ -44,6 +46,7 @@ describe('BookDownloadService', () => {
     });
     service = TestBed.inject(BookDownloadService);
     http = TestBed.inject(HttpTestingController);
+    notifications = TestBed.inject(NotificationService);
     vi.stubGlobal(
       'URL',
       class extends URL {
@@ -57,6 +60,7 @@ describe('BookDownloadService', () => {
 
   afterEach(() => {
     http.verify();
+    TestBed.resetTestingModule();
     vi.runOnlyPendingTimers();
     vi.useRealTimers();
     vi.restoreAllMocks();
@@ -73,6 +77,7 @@ describe('BookDownloadService', () => {
     expect(service.isSelectedTopicsDownloading(12)).toBe(false);
     const full = http.expectOne('/api/download/book-download?bookId=12');
     const selected = http.expectOne('/api/download/book-topic-download?bookId=12&topicIds=91');
+    expect(notifications.items()).toEqual([]);
     full.flush(new Blob(['%PDF'], { type: 'application/pdf' }), {
       headers: { 'Content-Disposition': "attachment; filename*=UTF-8''Server%20book.pdf" },
     });
@@ -80,11 +85,15 @@ describe('BookDownloadService', () => {
     expect(service.isBookDownloading(12)).toBe(false);
     expect(service.isTopicDownloading(12, 91)).toBe(true);
     expect(service.message()).toBe('Download ready: Server book.pdf');
+    expect(notifications.items()).toMatchObject([
+      { message: 'Download ready: Server book.pdf', severity: 'success' },
+    ]);
     selected.flush(new Blob(['%PDF'], { type: 'application/pdf' }));
     await Promise.resolve();
     expect(service.isTopicDownloading(12, 91)).toBe(false);
     expect(service.isAnyTopicDownloading(12)).toBe(false);
     expect(URL.createObjectURL).toHaveBeenCalledTimes(2);
+    expect(notifications.items()).toHaveLength(2);
     expect(document.querySelector('a[download]')).toBeNull();
     vi.advanceTimersByTime(1000);
     expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2);
@@ -106,6 +115,9 @@ describe('BookDownloadService', () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(service.error()).toBe('Saved topic PDF is missing.');
+    expect(notifications.items()).toMatchObject([
+      { message: 'Saved topic PDF is missing.', severity: 'error' },
+    ]);
     expect(service.isBookDownloading(12)).toBe(false);
     expect(URL.createObjectURL).not.toHaveBeenCalled();
     service.downloadBook(book);

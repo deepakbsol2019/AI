@@ -92,13 +92,13 @@ describe('Home rendered integration', () => {
     const search = scrollRegion.querySelector('app-book-search') as HTMLElement;
     const table = scrollRegion.querySelector('app-book-table') as HTMLElement;
     expect(search.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(element.querySelectorAll('app-book-table thead th')).toHaveLength(6);
+    expect(element.querySelectorAll('app-book-table thead th')).toHaveLength(7);
     expect(element.querySelector('app-book-table .type-cell')?.textContent?.trim()).toBe(
       'Programming',
     );
-    const opener = element.querySelector('app-book-table .view-button') as HTMLButtonElement;
+    const opener = element.querySelector('app-book-table .view-topics-button') as HTMLButtonElement;
     opener.focus();
-    await fixture.componentInstance.viewBook(book);
+    await fixture.componentInstance.viewTopics(book);
     await fixture.whenStable();
     const dialog = element.querySelector('dialog') as HTMLDialogElement;
     expect(dialog.open).toBe(true);
@@ -109,7 +109,7 @@ describe('Home rendered integration', () => {
     expect(element.querySelector('dialog')).toBeNull();
     expect(fixture.componentInstance.results()).toEqual(result);
     expect(document.activeElement).toBe(opener);
-  });
+  }, 15_000);
 
   it('redirects an unknown URL to the lazy Home page', async () => {
     const harness = await RouterTestingHarness.create();

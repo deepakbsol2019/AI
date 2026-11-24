@@ -14,6 +14,7 @@ export class BookSearchComponent {
   readonly busy = input(false);
   readonly searchSubmitted = output<BookSearchCriteria>();
   readonly resetRequested = output<void>();
+  readonly minimizeRequested = output<void>();
   readonly form = new FormGroup({
     query: new FormControl('', { nonNullable: true }),
     bookName: new FormControl('', { nonNullable: true }),

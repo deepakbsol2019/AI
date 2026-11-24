@@ -8,7 +8,14 @@ import { FooterComponent } from '../footer/footer.component';
   imports: [HeaderComponent, FooterComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `<a class="skip-link" href="#main-content">Skip to books</a
-    ><app-header [uploadBusy]="uploadBusy()" (fileSelected)="fileSelected.emit($event)" />
+    ><app-header
+      [uploadBusy]="uploadBusy()"
+      [searchMinimized]="searchMinimized()"
+      [collectionMinimized]="collectionMinimized()"
+      (fileSelected)="fileSelected.emit($event)"
+      (restoreSearch)="restoreSearch.emit()"
+      (restoreCollection)="restoreCollection.emit()"
+    />
     <div
       class="library-scroll-region"
       data-library-scroll-region
@@ -45,5 +52,9 @@ import { FooterComponent } from '../footer/footer.component';
 })
 export class ApplicationLayoutComponent {
   readonly uploadBusy = input(false);
+  readonly searchMinimized = input(false);
+  readonly collectionMinimized = input(false);
   readonly fileSelected = output<File>();
+  readonly restoreSearch = output<void>();
+  readonly restoreCollection = output<void>();
 }

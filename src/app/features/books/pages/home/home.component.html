@@ -1,7 +1,21 @@
-<app-application-layout [uploadBusy]="upload.busy()" (fileSelected)="upload.upload($event)">
+<app-application-layout
+  [uploadBusy]="upload.busy()"
+  [searchMinimized]="searchMinimized()"
+  [collectionMinimized]="collectionMinimized()"
+  (restoreSearch)="searchMinimized.set(false)"
+  (restoreCollection)="collectionMinimized.set(false)"
+  (fileSelected)="upload.upload($event)"
+>
   <main id="main-content" class="container library-main" tabindex="-1">
     <h1 class="visually-hidden">Book library</h1>
-    @if (upload.phase() !== 'idle') {
+    @if (upload.validationError(); as validation) {
+      <p class="alert alert-danger" role="alert">{{ validation }}</p>
+    }
+    @if (
+      upload.phase() === 'uploading' ||
+      upload.phase() === 'processing' ||
+      upload.phase() === 'unknown'
+    ) {
       <section
         class="glass-panel upload-status"
         [class.upload-error]="upload.phase() === 'error' || upload.phase() === 'unknown'"
@@ -39,23 +53,28 @@
       </section>
     }
 
-    @defer (on immediate) {
-      <app-book-search
-        [busy]="loading()"
-        (searchSubmitted)="search($event)"
-        (resetRequested)="reset()"
-      />
-    } @placeholder {
-      <section class="glass-panel section-placeholder" role="status">
-        Preparing search controls…
-      </section>
-    } @error {
-      <section class="glass-panel section-placeholder" role="alert">
-        Search controls could not load. Reload this page to try again.
-      </section>
-    }
+    <div id="library-search-section" [hidden]="searchMinimized()">
+      @defer (on immediate) {
+        <app-book-search
+          [busy]="loading()"
+          (searchSubmitted)="search($event)"
+          (resetRequested)="reset()"
+          (minimizeRequested)="searchMinimized.set(true)"
+        />
+      } @placeholder {
+        <section class="glass-panel section-placeholder" role="status">
+          Preparing search controls…
+        </section>
+      } @error {
+        <section class="glass-panel section-placeholder" role="alert">
+          Search controls could not load. Reload this page to try again.
+        </section>
+      }
+    </div>
 
     <section
+      id="book-collection-section"
+      [hidden]="collectionMinimized()"
       class="glass-panel collection-panel"
       aria-labelledby="collection-title"
       [attr.aria-busy]="loading()"
@@ -71,13 +90,15 @@
             }}{{ activeFilterCount() ? ' matched' : ' in your library' }}</span
           >
         }
+        <button
+          type="button"
+          class="btn btn-sm minimize-button icon-action"
+          aria-label="Minimize Book Collection"
+          (click)="collectionMinimized.set(true)"
+        >
+          −
+        </button>
       </div>
-      @if (downloads.error(); as message) {
-        <p class="alert alert-danger mx-4" role="alert">{{ message }}</p>
-      }
-      @if (downloads.message(); as message) {
-        <p class="download-notice mx-4" role="status">{{ message }}</p>
-      }
       @if (dialogLoading()) {
         <p class="px-4 muted" role="status">Opening book topics…</p>
       }
@@ -97,6 +118,7 @@
             [books]="results()?.books ?? []"
             [busy]="loading()"
             (viewBook)="viewBook($event)"
+            (viewTopics)="viewTopics($event)"
           />
         } @placeholder {
           <div class="section-placeholder" role="status">Opening the collection…</div>

@@ -105,9 +105,9 @@ describe('BookTopicDescriptionComponent', () => {
       'Select topic',
       'Topic Name',
       'Topic Description',
-      'Download Topic',
+      'View / Download Topic',
     ]);
-    (element.querySelector('.topic-action button') as HTMLButtonElement).click();
+    (element.querySelector('.topic-action button:not(.topic-view)') as HTMLButtonElement).click();
     expect(downloads.downloadTopic).toHaveBeenCalledWith(selectedBook, selectedBook.topics[0]);
     (element.querySelector('.book-download') as HTMLButtonElement).click();
     expect(downloads.downloadBook).toHaveBeenCalledWith(selectedBook);
@@ -117,14 +117,18 @@ describe('BookTopicDescriptionComponent', () => {
     const fixture = create();
     const element = fixture.nativeElement as HTMLElement;
     const bulk = element.querySelector('.selected-download') as HTMLButtonElement;
+    const bulkView = element.querySelector('.selected-view') as HTMLButtonElement;
+    const individualViews = Array.from(element.querySelectorAll<HTMLButtonElement>('.topic-view'));
     const individuals = Array.from(
-      element.querySelectorAll<HTMLButtonElement>('.topic-action button'),
+      element.querySelectorAll<HTMLButtonElement>('.topic-action button:not(.topic-view)'),
     );
     const state = (count: number) => {
       expect(fixture.componentInstance.selectedCount()).toBe(count);
       expect(bulk.disabled).toBe(count < 2);
+      expect(bulkView.disabled).toBe(count < 2);
       expect(individuals).toHaveLength(3);
       expect(individuals.every((button) => button.disabled === count >= 2)).toBe(true);
+      expect(individualViews.every((button) => button.disabled === count >= 2)).toBe(true);
     };
     state(0);
     select(fixture, 12);
@@ -210,7 +214,7 @@ describe('BookTopicDescriptionComponent', () => {
     downloads.error.set('Please retry this download.');
     fixture.detectChanges();
     expect(fixture.componentInstance.selectedCount()).toBe(2);
-    expect(element.querySelector('[role="alert"]')?.textContent).toContain('Please retry');
+    expect(downloads.error()).toContain('Please retry');
     expect(bulk.disabled).toBe(false);
     bulk.click();
     expect(downloads.downloadSelectedTopics).toHaveBeenCalledTimes(2);
@@ -220,7 +224,9 @@ describe('BookTopicDescriptionComponent', () => {
     individualBusy.set(new Set([12]));
     const fixture = create();
     const element = fixture.nativeElement as HTMLElement;
-    const individuals = element.querySelectorAll<HTMLButtonElement>('.topic-action button');
+    const individuals = element.querySelectorAll<HTMLButtonElement>(
+      '.topic-action button:not(.topic-view)',
+    );
     expect(individuals[0].disabled).toBe(true);
     expect(individuals[1].disabled).toBe(false);
     select(fixture, 12);
@@ -254,6 +260,36 @@ describe('BookTopicDescriptionComponent', () => {
     const reopened = create();
     expect(reopened.componentInstance.selectedCount()).toBe(0);
     expect(reopened.componentInstance.filterText()).toBe('');
+  });
+
+  it('requests complete topic reading in original order without clearing popup state or downloading', () => {
+    const fixture = create();
+    const read = vi.fn();
+    fixture.componentInstance.readRequested.subscribe(read);
+    const element = fixture.nativeElement as HTMLElement;
+    (element.querySelector('.selected-view') as HTMLButtonElement).click();
+    expect(read).not.toHaveBeenCalled();
+    (element.querySelector('.topic-view') as HTMLButtonElement).click();
+    expect(read).toHaveBeenLastCalledWith({
+      mode: 'topic',
+      book: selectedBook,
+      topics: [firstTopic],
+    });
+    select(fixture, 41);
+    select(fixture, 12);
+    filter(fixture, 'Beta');
+    (element.querySelector('.topic-view') as HTMLButtonElement).click();
+    expect(read).toHaveBeenCalledTimes(1);
+    (element.querySelector('.selected-view') as HTMLButtonElement).click();
+    expect(read).toHaveBeenLastCalledWith({
+      mode: 'selected-topics',
+      book: selectedBook,
+      topics: [selectedBook.topics[0], selectedBook.topics[2]],
+    });
+    expect(fixture.componentInstance.filterText()).toBe('Beta');
+    expect(fixture.componentInstance.selectedCount()).toBe(2);
+    expect(downloads.downloadTopic).not.toHaveBeenCalled();
+    expect(downloads.downloadSelectedTopics).not.toHaveBeenCalled();
   });
 
   it('shows a safe empty state with a visible disabled selected-download action', () => {

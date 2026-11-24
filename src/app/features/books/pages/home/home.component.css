@@ -2,34 +2,53 @@
   display: block;
 }
 .library-main {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
   padding-top: 24px;
   padding-bottom: 24px;
   max-width: 1240px;
 }
 .collection-panel {
-  margin-top: 24px;
+  margin-top: 0;
   overflow: hidden;
+}
+.library-main [hidden] {
+  display: none !important;
+}
+.minimize-button {
+  flex: 0 0 auto;
+  min-height: 30px;
+  width: 32px;
+  padding: 0;
+  font-size: 1.3rem;
+  line-height: 1;
 }
 .collection-heading {
   padding: 26px 28px 23px;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
   border-bottom: 1px solid #dee5eb;
+}
+.collection-heading > div {
+  min-width: 0;
 }
 .count-pill {
   padding: 7px 12px;
   border: 1px solid #dbe5ed;
   border-radius: 30px;
   font-size: 0.72rem;
-  background: var(--panel-background);
-  color: #516981;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 600;
   white-space: nowrap;
 }
 .collection-footer {
   padding: 17px 25px;
-  background: var(--panel-background);
+  background: transparent;
   border-top: 1px solid #e1e6eb;
   display: flex;
   justify-content: space-between;
@@ -56,12 +75,12 @@
 }
 .section-placeholder {
   padding: 32px;
-  color: #61738a;
+  color: var(--muted);
   min-height: 100px;
 }
 .upload-status {
   padding: 20px 24px;
-  margin-bottom: 24px;
+  margin-bottom: 0;
   overflow-wrap: anywhere;
 }
 .status-top {
@@ -79,7 +98,8 @@
   font-size: 0.72rem;
   text-transform: capitalize;
   white-space: nowrap;
-  color: #44637f;
+  color: var(--muted);
+  font-weight: 600;
 }
 .upload-error {
   border-color: #d8a09a;
@@ -88,7 +108,7 @@
   font-size: 0.85rem;
 }
 .download-notice {
-  color: #256348;
+  color: var(--ink);
   font-size: 0.85rem;
 }
 .progress {
@@ -99,14 +119,24 @@
     padding-top: 16px;
     padding-bottom: 16px;
   }
-  .collection-panel {
-    margin-top: 16px;
-  }
   .collection-heading {
-    align-items: flex-start;
+    align-items: start;
+    grid-template-columns: minmax(0, 1fr) auto;
     padding: 22px 18px;
-    flex-direction: column;
     gap: 10px;
+  }
+  .collection-heading > div {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .collection-heading .minimize-button {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .collection-heading .count-pill {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: start;
   }
   .collection-footer {
     align-items: flex-start;

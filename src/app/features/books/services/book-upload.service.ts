@@ -15,6 +15,7 @@ import {
 } from 'rxjs';
 import { API_CONFIG } from '../../../core/configuration/api.config';
 import { apiErrorMessage } from '../../../shared/utils/api-error';
+import { NotificationService } from '../../../shared/services/notification.service';
 import { BooksApiService } from '../data-access/books-api.service';
 import { UploadStatus } from '../models/book.models';
 
@@ -24,6 +25,7 @@ type UploadPhase = 'idle' | 'uploading' | 'processing' | 'unknown' | 'success' |
 @Injectable({ providedIn: 'root' })
 export class BookUploadService {
   private readonly api = inject(BooksApiService);
+  private readonly notifications = inject(NotificationService);
   private readonly config = inject(API_CONFIG);
   private readonly destroyRef = inject(DestroyRef);
   private readonly completedSubject = new Subject<void>();
@@ -34,18 +36,22 @@ export class BookUploadService {
   readonly fileName = signal('');
   readonly message = signal('');
   readonly receiptId = signal<number | null>(null);
+  readonly validationError = signal<string | null>(null);
 
   upload(file: File): void {
     if (this.busy()) return;
+    this.validationError.set(null);
     this.receiptId.set(null);
     this.fileName.set(file.name);
     this.progress.set(null);
     // MIME is advisory; the backend validates PDF structure and actual content.
     if (!/\.pdf$/i.test(file.name) || (file.type && file.type !== 'application/pdf')) {
+      this.validationError.set('Choose a PDF file with a .pdf extension.');
       this.fail('Choose a PDF file with a .pdf extension.');
       return;
     }
     if (file.size === 0 || file.size > this.config.maxUploadBytes) {
+      this.validationError.set('Choose a non-empty PDF of 100 MiB or less.');
       this.fail('Choose a non-empty PDF of 100 MiB or less.');
       return;
     }
@@ -108,9 +114,11 @@ export class BookUploadService {
     if (receipt.status === 'Success') {
       this.phase.set('success');
       this.message.set(receipt.message || 'Your book is ready in the library.');
+      this.notifications.show(this.message(), 'success');
       this.completedSubject.next();
     } else if (receipt.status === 'failed') {
       this.fail(receipt.message || 'The server could not process this PDF.');
+      this.notifications.show(this.message(), 'error');
     } else {
       this.message.set(receipt.message || 'Processing your book…');
     }
@@ -125,6 +133,7 @@ export class BookUploadService {
       );
     } else {
       this.fail(message);
+      this.notifications.show(message, 'error');
     }
   }
 

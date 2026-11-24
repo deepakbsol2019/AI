@@ -1,0 +1,147 @@
+﻿<dialog
+  #readerDialog
+  class="reader-dialog"
+  [class.dark-mode]="pageTheme() !== 'original'"
+  aria-labelledby="reader-title"
+  aria-describedby="reader-scope"
+  (close)="onClosed()"
+>
+  <app-notifications />
+  <header class="reader-header">
+    <div class="reader-heading">
+      <h2 id="reader-title" [title]="title()">{{ title() }}</h2>
+      <span id="reader-scope">{{ scopeLabel() }}</span>
+    </div>
+    <div class="reader-toolbar" aria-label="PDF controls">
+      <div class="reader-actions">
+        <button type="button" class="reader-button reader-back" autofocus (click)="close()">
+          <app-icon name="chevron-left" /> Back
+        </button>
+        <button
+          type="button"
+          class="reader-button reader-download"
+          [disabled]="downloading()"
+          (click)="download()"
+        >
+          <app-icon name="download" /> {{ downloading() ? 'Downloading…' : downloadLabel() }}
+        </button>
+      </div>
+      <div class="control-group page-controls">
+        <button
+          type="button"
+          class="reader-button reader-prev"
+          aria-label="Previous PDF page"
+          [disabled]="status() !== 'ready' || rendering() || pageNumber() <= 1"
+          (click)="navigate(-1)"
+        >
+          <app-icon name="chevron-left" />
+        </button>
+        <span class="page-count" aria-live="polite">{{
+          status() === 'ready' ? 'Page ' + pageNumber() + ' of ' + pageCount() : 'PDF pages'
+        }}</span>
+        <button
+          type="button"
+          class="reader-button reader-next"
+          aria-label="Next PDF page"
+          [disabled]="status() !== 'ready' || rendering() || pageNumber() >= pageCount()"
+          (click)="navigate(1)"
+        >
+          <app-icon name="chevron-right" />
+        </button>
+      </div>
+      <div class="control-group zoom-controls">
+        <button
+          type="button"
+          class="reader-button zoom-out"
+          aria-label="Zoom out"
+          [disabled]="status() !== 'ready' || rendering() || zoom() <= 0.5"
+          (click)="changeZoom(-0.25)"
+        >
+          −
+        </button>
+        <span class="zoom-label">{{ (zoom() * 100).toFixed(0) }}%</span>
+        <button
+          type="button"
+          class="reader-button zoom-in"
+          aria-label="Zoom in"
+          [disabled]="status() !== 'ready' || rendering() || zoom() >= 3"
+          (click)="changeZoom(0.25)"
+        >
+          +
+        </button>
+        <button
+          type="button"
+          class="reader-button reader-fit"
+          [disabled]="status() !== 'ready' || rendering()"
+          (click)="fitWidth()"
+        >
+          Fit width
+        </button>
+      </div>
+      <div class="color-control">
+        <label for="reader-color-mode">Mode</label>
+        <select
+          id="reader-color-mode"
+          [value]="pageTheme()"
+          (change)="changeTheme($event)"
+          [disabled]="status() !== 'ready' || rendering()"
+        >
+          <option value="original">Light mode (original PDF)</option>
+          <option value="dark">Dark mode</option>
+        </select>
+        <details class="color-help">
+          <summary aria-label="About dark mode"><app-icon name="info" /></summary>
+          <p>
+            Dark mode also recolors scanned pages and photos. Use Light mode for the original PDF
+            colors.
+          </p>
+        </details>
+      </div>
+    </div>
+  </header>
+  <section
+    #pageViewport
+    class="reader-content"
+    tabindex="0"
+    role="region"
+    aria-label="PDF page"
+    [attr.aria-busy]="status() === 'loading' || rendering()"
+  >
+    @if (status() === 'loading') {
+      <div class="reader-state" role="status">
+        <span class="spinner-border" aria-hidden="true"></span>
+        <h3>Opening PDF…</h3>
+        <p>Loading the actual document for this reading selection.</p>
+      </div>
+    }
+    @if (status() === 'empty') {
+      <div class="reader-state" role="status">
+        <h3>No PDF content returned</h3>
+        <p>The service returned an empty document for this selection.</p>
+        <button type="button" class="reader-button" (click)="retry()">Retry</button>
+      </div>
+    }
+    @if (status() === 'error') {
+      <div class="reader-state" role="alert">
+        <h3>The PDF could not be opened</h3>
+        <p>{{ error() }}</p>
+        <button type="button" class="reader-button reader-retry" (click)="retry()">Retry</button>
+      </div>
+    }
+    @if (rendering() && status() === 'ready') {
+      <p class="render-status" role="status">Rendering page {{ pageNumber() }}…</p>
+    }
+    <canvas
+      #pageCanvas
+      class="reader-canvas"
+      [class.page-dark]="pageTheme() !== 'original'"
+      [hidden]="status() !== 'ready'"
+      role="img"
+      [attr.aria-label]="title() + ', page ' + pageNumber() + ' of ' + pageCount()"
+      >Your browser does not support PDF canvas rendering.</canvas
+    >
+  </section>
+  <footer class="reader-footer">
+    <span>{{ scopeLabel() }} · PDF</span><span>One page rendered at a time</span>
+  </footer>
+</dialog>

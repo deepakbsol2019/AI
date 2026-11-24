@@ -34,4 +34,30 @@ describe('BookSearchComponent', () => {
     expect(reset).toHaveBeenCalledTimes(1);
     expect(search).not.toHaveBeenCalled();
   });
+
+  it('requests minimization without submitting, resetting, or changing entered filters', () => {
+    TestBed.configureTestingModule({ imports: [BookSearchComponent] });
+    const fixture = TestBed.createComponent(BookSearchComponent);
+    const minimize = vi.fn();
+    const search = vi.fn();
+    const reset = vi.fn();
+    fixture.componentInstance.minimizeRequested.subscribe(minimize);
+    fixture.componentInstance.searchSubmitted.subscribe(search);
+    fixture.componentInstance.resetRequested.subscribe(reset);
+    fixture.componentInstance.form.patchValue({ query: 'Keep my query', authorName: 'Writer' });
+    const before = fixture.componentInstance.form.getRawValue();
+    fixture.detectChanges();
+    const details = fixture.nativeElement.querySelector('details') as HTMLDetailsElement;
+    details.open = true;
+    const button = fixture.nativeElement.querySelector('.minimize-search') as HTMLButtonElement;
+    expect(button.type).toBe('button');
+    expect(button.getAttribute('aria-label')).toBe('Minimize Search');
+    expect(button.disabled).toBe(false);
+    button.click();
+    expect(minimize).toHaveBeenCalledTimes(1);
+    expect(search).not.toHaveBeenCalled();
+    expect(reset).not.toHaveBeenCalled();
+    expect(fixture.componentInstance.form.getRawValue()).toEqual(before);
+    expect(details.open).toBe(true);
+  });
 });

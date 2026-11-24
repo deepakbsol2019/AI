@@ -42,6 +42,24 @@ export class BooksApiService {
     });
   }
 
+  readBook(bookId: number): Observable<HttpResponse<Blob>> {
+    return this.http.get(`${this.baseUrl}/read/book`, {
+      params: { bookId },
+      responseType: 'blob',
+      observe: 'response',
+    });
+  }
+
+  readTopics(bookId: number, topicIds: readonly number[]): Observable<HttpResponse<Blob>> {
+    let params = new HttpParams().set('bookId', bookId);
+    for (const topicId of topicIds) params = params.append('topicIds', topicId);
+    return this.http.get(`${this.baseUrl}/read/topics`, {
+      params,
+      responseType: 'blob',
+      observe: 'response',
+    });
+  }
+
   downloadTopic(bookId: number, topicId: number): Observable<HttpResponse<Blob>> {
     return this.downloadTopics(bookId, [topicId]);
   }

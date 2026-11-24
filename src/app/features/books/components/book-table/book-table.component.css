@@ -9,13 +9,16 @@
 .book-table {
   font-size: 0.83rem;
   min-width: 1080px;
-  --bs-table-bg: var(--panel-background);
+  --bs-table-bg: transparent;
+  --bs-table-bg-state: transparent;
+  --bs-table-bg-type: transparent;
+  --bs-table-accent-bg: transparent;
   --bs-table-border-color: #e5e5e5;
-  color: #37465c;
+  color: var(--ink);
 }
 .book-table thead th {
-  background: var(--panel-background);
-  color: #66778d;
+  background: transparent;
+  color: var(--ink);
   text-transform: uppercase;
   letter-spacing: 0.065em;
   font-size: 0.65rem;
@@ -32,7 +35,8 @@
   border-bottom: 0;
 }
 .book-table tbody tr:hover > td {
-  background: #f5f5f5;
+  background: transparent;
+  border-bottom-color: var(--muted);
 }
 .name-cell {
   width: 23%;
@@ -55,7 +59,8 @@
 .description-cell p {
   font-size: 0.79rem;
   line-height: 1.75;
-  color: #65738a;
+  color: var(--muted);
+  font-weight: 500;
   margin: 0;
   white-space: pre-line;
   overflow-wrap: anywhere;
@@ -81,13 +86,14 @@
   display: block;
   font-weight: 650;
   line-height: 1.55;
-  color: #1f3554;
+  color: var(--ink);
   overflow-wrap: anywhere;
 }
 .book-meta {
   display: block;
   font-size: 0.65rem;
-  color: #8390a1;
+  color: var(--muted);
+  font-weight: 500;
   margin-top: 0.35rem;
 }
 .action-cell {
@@ -109,8 +115,9 @@
   margin: 0;
   padding: 0.7rem 1.25rem;
   font-size: 0.75rem;
-  color: #506b8f;
-  background: var(--panel-background);
+  color: var(--muted);
+  font-weight: 600;
+  background: transparent;
   display: flex;
   gap: 0.55rem;
   align-items: center;

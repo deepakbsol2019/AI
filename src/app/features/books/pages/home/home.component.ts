@@ -18,6 +18,8 @@ import { BooksApiService } from '../../data-access/books-api.service';
 import { BookDownloadService } from '../../data-access/book-download.service';
 import { Book, BookSearchCriteria, BookSearchResponse } from '../../models/book.models';
 import { BookUploadService } from '../../services/book-upload.service';
+import type { ReaderRequest } from '../../models/reader.models';
+import { NotificationService } from '../../../../shared/services/notification.service';
 
 @Component({
   selector: 'app-home',
@@ -30,6 +32,9 @@ export class HomeComponent {
   private readonly destroyRef = inject(DestroyRef);
   readonly downloads = inject(BookDownloadService);
   readonly upload = inject(BookUploadService);
+  private readonly notifications = inject(NotificationService);
+  readonly searchMinimized = signal(false);
+  readonly collectionMinimized = signal(false);
   readonly results = signal<BookSearchResponse | null>(null);
   readonly loading = signal(true);
   readonly error = signal<string | null>(null);
@@ -43,6 +48,8 @@ export class HomeComponent {
   private readonly dialogHost = viewChild.required('dialogHost', { read: ViewContainerRef });
   private activeDialog: ComponentRef<unknown> | null = null;
   private dialogSelection = 0;
+  private activeReader: ComponentRef<unknown> | null = null;
+  private readerSelection = 0;
 
   constructor() {
     this.requests
@@ -72,6 +79,9 @@ export class HomeComponent {
     this.upload.completed$.pipe(takeUntilDestroyed()).subscribe(() => this.reload());
     this.destroyRef.onDestroy(() => {
       this.dialogSelection++;
+      this.readerSelection++;
+      // Release the nested reader's scroll lock before its originating popup.
+      this.activeReader?.destroy();
       this.activeDialog?.destroy();
     });
   }
@@ -113,6 +123,10 @@ export class HomeComponent {
   }
 
   async viewBook(book: Book): Promise<void> {
+    await this.openReader({ mode: 'book', book, topics: [] });
+  }
+
+  async viewTopics(book: Book): Promise<void> {
     const selection = ++this.dialogSelection;
     const opener = document.activeElement as HTMLElement | null;
     this.dialogError.set(null);
@@ -125,6 +139,7 @@ export class HomeComponent {
       const ref = this.dialogHost().createComponent(BookTopicDescriptionComponent);
       this.activeDialog = ref;
       ref.setInput('book', book);
+      ref.instance.readRequested.subscribe((request) => void this.openReader(request));
       ref.instance.closed.subscribe(() => {
         ref.destroy();
         if (this.activeDialog === ref) this.activeDialog = null;
@@ -132,10 +147,38 @@ export class HomeComponent {
       });
     } catch {
       if (selection === this.dialogSelection && !this.destroyRef.destroyed) {
-        this.dialogError.set('The book topics view could not load. Please try View Book again.');
+        this.notifications.show(
+          'The book topics view could not load. Please try View Topic again.',
+          'error',
+        );
       }
     } finally {
       if (selection === this.dialogSelection) this.dialogLoading.set(false);
+    }
+  }
+
+  private async openReader(request: ReaderRequest): Promise<void> {
+    if (this.activeReader) return;
+    const selection = ++this.readerSelection;
+    const opener = document.activeElement as HTMLElement | null;
+    try {
+      const { BookReaderComponent } =
+        await import('../../components/book-reader/book-reader.component');
+      if (this.destroyRef.destroyed || selection !== this.readerSelection || this.activeReader)
+        return;
+      const ref = this.dialogHost().createComponent(BookReaderComponent);
+      this.activeReader = ref;
+      ref.setInput('request', request);
+      ref.instance.closed.subscribe(() => {
+        ref.destroy();
+        if (this.activeReader === ref) this.activeReader = null;
+        // The original list/popup stays mounted, including its filter and ID selection.
+        if (opener?.isConnected) opener.focus({ preventScroll: true });
+      });
+    } catch {
+      if (!this.destroyRef.destroyed && selection === this.readerSelection) {
+        this.notifications.show('The PDF reader could not load. Please try again.', 'error');
+      }
     }
   }
 }

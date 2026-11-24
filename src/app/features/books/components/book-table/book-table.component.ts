@@ -14,5 +14,6 @@ export class BookTableComponent {
   readonly books = input<Book[]>([]);
   readonly busy = input(false);
   readonly viewBook = output<Book>();
+  readonly viewTopics = output<Book>();
   readonly downloads = inject(BookDownloadService);
 }

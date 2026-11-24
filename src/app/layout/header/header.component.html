@@ -8,6 +8,26 @@
       >
     </a>
     <div class="header-actions">
+      <div class="section-restores" role="group" aria-label="Restore minimized sections">
+        <button
+          type="button"
+          class="btn btn-primary restore-search"
+          [disabled]="!searchMinimized()"
+          aria-controls="library-search-section"
+          (click)="restoreSearchSection()"
+        >
+          <app-icon name="search" /> Search
+        </button>
+        <button
+          type="button"
+          class="btn btn-primary restore-collection"
+          [disabled]="!collectionMinimized()"
+          aria-controls="book-collection-section"
+          (click)="restoreCollectionSection()"
+        >
+          <app-icon name="book" /> Book Collection
+        </button>
+      </div>
       <span class="library-label"
         ><span class="status-dot"></span> Your personal knowledge collection</span
       >
@@ -23,7 +43,7 @@
       />
       <button
         type="button"
-        class="btn btn-primary"
+        class="btn btn-primary upload-button"
         [disabled]="uploadBusy()"
         (click)="pdfPicker.click()"
       >

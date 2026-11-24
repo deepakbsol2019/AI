@@ -21,6 +21,7 @@ import { IconComponent } from '../../shared/ui/icon.component';
     }
     .site-footer {
       background: var(--panel-background);
+      text-shadow: var(--surface-text-shadow);
       border-top: 1px solid #ffffffb3;
     }
     .footer-content {
@@ -31,7 +32,8 @@ import { IconComponent } from '../../shared/ui/icon.component';
       min-height: 65px;
       padding: 1rem 1.75rem;
       font-size: 0.69rem;
-      color: #66758a;
+      color: var(--muted);
+      font-weight: 500;
     }
     .footer-brand {
       display: flex;
@@ -39,14 +41,14 @@ import { IconComponent } from '../../shared/ui/icon.component';
       gap: 0.55rem;
     }
     .footer-brand app-icon {
-      color: #33557e;
+      color: var(--ink);
     }
     .footer-separator {
       margin-inline: 0.35rem;
-      color: #bbc5d1;
+      color: var(--muted);
     }
     .footer-note {
-      color: #768297;
+      color: var(--muted);
       font-size: 0.66rem;
       letter-spacing: 0.015em;
     }

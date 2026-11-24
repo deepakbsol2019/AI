@@ -33,7 +33,9 @@ describe('BookTableComponent', () => {
     const fixture = TestBed.createComponent(BookTableComponent);
     fixture.componentRef.setInput('books', [selectedBook]);
     const viewed = vi.fn();
+    const topicsViewed = vi.fn();
     fixture.componentInstance.viewBook.subscribe(viewed);
+    fixture.componentInstance.viewTopics.subscribe(topicsViewed);
     fixture.detectChanges();
     const element = fixture.nativeElement as HTMLElement;
     expect(Array.from(element.querySelectorAll('th'), (th) => th.textContent)).toEqual([
@@ -43,13 +45,17 @@ describe('BookTableComponent', () => {
       'Book Description',
       'Download Book',
       'View Book',
+      'View Topic',
     ]);
     expect(element.querySelector('tbody .type-cell')?.textContent?.trim()).toBe('Reference');
-    expect(element.querySelectorAll('tbody td')).toHaveLength(6);
+    expect(element.querySelectorAll('tbody td')).toHaveLength(7);
     (element.querySelector('tbody .btn-outline-primary') as HTMLButtonElement).click();
     expect(downloads.downloadBook).toHaveBeenCalledWith(selectedBook);
     (element.querySelector('tbody .view-button') as HTMLButtonElement).click();
     expect(viewed).toHaveBeenCalledWith(selectedBook);
+    (element.querySelector('tbody .view-topics-button') as HTMLButtonElement).click();
+    expect(topicsViewed).toHaveBeenCalledWith(selectedBook);
+    expect(viewed).toHaveBeenCalledTimes(1);
   });
 
   it('displays Unknown for null, empty, whitespace, and legacy omitted book types', () => {
@@ -76,7 +82,7 @@ describe('BookTableComponent', () => {
     fixture.detectChanges();
     const element = fixture.nativeElement as HTMLElement;
     expect(element.textContent).toContain('Finding books');
-    expect(element.querySelector('tbody td')?.getAttribute('colspan')).toBe('6');
+    expect(element.querySelector('tbody td')?.getAttribute('colspan')).toBe('7');
     expect(element.textContent).not.toContain('No matching books');
     fixture.componentRef.setInput('busy', false);
     fixture.detectChanges();

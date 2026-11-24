@@ -4,6 +4,7 @@ import { DestroyRef, inject, Injectable, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { catchError, finalize, from, ignoreElements, Observable, switchMap, tap } from 'rxjs';
 import { apiErrorMessage } from '../../../shared/utils/api-error';
+import { NotificationService } from '../../../shared/services/notification.service';
 import { downloadFilename } from '../../../shared/utils/download-filename';
 import { Book, BookTopic } from '../models/book.models';
 import { BooksApiService } from './books-api.service';
@@ -11,6 +12,7 @@ import { BooksApiService } from './books-api.service';
 @Injectable({ providedIn: 'root' })
 export class BookDownloadService {
   private readonly api = inject(BooksApiService);
+  private readonly notifications = inject(NotificationService);
   private readonly document = inject(DOCUMENT);
   private readonly destroyRef = inject(DestroyRef);
   private readonly active = signal<ReadonlySet<string>>(new Set());
@@ -83,10 +85,17 @@ export class BookDownloadService {
     request
       .pipe(
         switchMap((response) => from(this.save(response, fallback))),
-        tap((filename) => this.message.set(`Download ready: ${filename}`)),
+        tap((filename) => {
+          const message = `Download ready: ${filename}`;
+          this.message.set(message);
+          this.notifications.show(message, 'success');
+        }),
         catchError((error: unknown) =>
           from(apiErrorMessage(error)).pipe(
-            tap((message) => this.error.set(message)),
+            tap((message) => {
+              this.error.set(message);
+              this.notifications.show(message, 'error');
+            }),
             ignoreElements(),
           ),
         ),

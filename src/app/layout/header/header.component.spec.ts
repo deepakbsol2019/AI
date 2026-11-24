@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { HeaderComponent } from './header.component';
 
-describe('PDF file picker', () => {
+describe('Library header controls', () => {
   beforeEach(() =>
     TestBed.configureTestingModule({
       imports: [HeaderComponent],
@@ -48,7 +48,67 @@ describe('PDF file picker', () => {
     Object.defineProperty(input, 'files', { value: { item: () => new File(['pdf'], 'book.pdf') } });
     input.dispatchEvent(new Event('change'));
     expect(input.disabled).toBe(true);
-    expect(fixture.nativeElement.querySelector('button').disabled).toBe(true);
+    expect(fixture.nativeElement.querySelector('.upload-button').disabled).toBe(true);
     expect(selected).not.toHaveBeenCalled();
+  });
+
+  it('always renders both restore controls natively disabled while their sections are visible', () => {
+    const fixture = TestBed.createComponent(HeaderComponent);
+    const restoreSearch = vi.fn();
+    const restoreCollection = vi.fn();
+    fixture.componentInstance.restoreSearch.subscribe(restoreSearch);
+    fixture.componentInstance.restoreCollection.subscribe(restoreCollection);
+    fixture.detectChanges();
+    const element = fixture.nativeElement as HTMLElement;
+    const buttons = Array.from(
+      element.querySelectorAll<HTMLButtonElement>('.section-restores button'),
+    );
+    expect(buttons.map((button) => button.textContent?.trim())).toEqual([
+      'Search',
+      'Book Collection',
+    ]);
+    for (const button of buttons) {
+      expect(button.disabled).toBe(true);
+      expect(button.matches(':disabled')).toBe(true);
+      button.focus();
+      expect(document.activeElement).not.toBe(button);
+      button.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      button.dispatchEvent(new KeyboardEvent('keyup', { key: ' ', bubbles: true }));
+      button.click();
+      // Even a manually dispatched click must respect the current minimized state.
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    }
+    expect(restoreSearch).not.toHaveBeenCalled();
+    expect(restoreCollection).not.toHaveBeenCalled();
+  });
+
+  it('enables and emits only the corresponding minimized section restore action', () => {
+    const fixture = TestBed.createComponent(HeaderComponent);
+    const restoreSearch = vi.fn();
+    const restoreCollection = vi.fn();
+    fixture.componentInstance.restoreSearch.subscribe(restoreSearch);
+    fixture.componentInstance.restoreCollection.subscribe(restoreCollection);
+    fixture.componentRef.setInput('searchMinimized', true);
+    fixture.detectChanges();
+    const search = fixture.nativeElement.querySelector('.restore-search') as HTMLButtonElement;
+    const collection = fixture.nativeElement.querySelector(
+      '.restore-collection',
+    ) as HTMLButtonElement;
+    expect(search.disabled).toBe(false);
+    expect(collection.disabled).toBe(true);
+    search.click();
+    collection.click();
+    expect(restoreSearch).toHaveBeenCalledTimes(1);
+    expect(restoreCollection).not.toHaveBeenCalled();
+
+    fixture.componentRef.setInput('searchMinimized', false);
+    fixture.componentRef.setInput('collectionMinimized', true);
+    fixture.detectChanges();
+    expect(search.disabled).toBe(true);
+    expect(collection.disabled).toBe(false);
+    search.click();
+    collection.click();
+    expect(restoreSearch).toHaveBeenCalledTimes(1);
+    expect(restoreCollection).toHaveBeenCalledTimes(1);
   });
 });

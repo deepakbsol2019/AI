@@ -19,6 +19,19 @@ describe('BooksApiService — backend contract', () => {
 
   afterEach(() => http.verify());
 
+  it('reads actual PDFs through inline endpoints without invoking the attachment routes', () => {
+    api.readBook(12).subscribe();
+    const full = http.expectOne('/api/read/book?bookId=12');
+    expect(full.request.responseType).toBe('blob');
+    full.flush(new Blob(['%PDF'], { type: 'application/pdf' }));
+    api.readTopics(12, [34, 55]).subscribe();
+    const selected = http.expectOne('/api/read/topics?bookId=12&topicIds=34&topicIds=55');
+    expect(selected.request.params.getAll('topicIds')).toEqual(['34', '55']);
+    expect(selected.request.responseType).toBe('blob');
+    selected.flush(new Blob(['%PDF'], { type: 'application/pdf' }));
+    http.expectNone((request) => request.url.includes('/download/'));
+  });
+
   it('lists books with one GET, no criteria, and no request body', () => {
     api.search().subscribe((response) => expect(response.size).toBe(20));
     const request = http.expectOne('/api/search/books');

@@ -5,6 +5,7 @@
   aria-describedby="topics-description"
   (close)="onClosed()"
 >
+  <app-notifications />
   <header class="topics-header">
     <div class="heading-row">
       <div class="topics-heading">
@@ -55,6 +56,15 @@
       <span id="selection-count" class="selection-count" aria-live="polite"
         >{{ selectedCount() }} selected{{ selectedDownloading() ? ' · Downloading…' : '' }}</span
       >
+      <button
+        type="button"
+        class="btn btn-primary btn-sm selected-view"
+        [disabled]="selectedCount() < 2"
+        (click)="viewSelected()"
+        aria-describedby="selection-count"
+      >
+        View Selected Topic
+      </button>
     </div>
     <form
       class="topic-filter"
@@ -82,12 +92,6 @@
       Showing {{ filteredTopics().length }} of {{ book().topics.length }} topics. Selection includes
       hidden topics.
     </p>
-    @if (downloads.error(); as error) {
-      <p class="alert alert-danger modal-feedback" role="alert" [title]="error">{{ error }}</p>
-    }
-    @if (downloads.message(); as message) {
-      <p class="download-feedback modal-feedback" role="status" [title]="message">{{ message }}</p>
-    }
   </header>
   <section class="topics-content">
     <div
@@ -112,7 +116,7 @@
             </th>
             <th scope="col">Topic Name</th>
             <th scope="col">Topic Description</th>
-            <th scope="col">Download Topic</th>
+            <th scope="col">View / Download Topic</th>
           </tr>
         </thead>
         <tbody>
@@ -134,6 +138,15 @@
                 {{ topic.topicDetails || 'No description available.' }}
               </td>
               <td class="topic-action">
+                <button
+                  type="button"
+                  class="btn btn-primary btn-sm topic-view"
+                  [disabled]="selectedCount() >= 2"
+                  (click)="viewTopic(topic)"
+                  [attr.aria-label]="'View topic: ' + (topic.topicName || 'Untitled topic')"
+                >
+                  View
+                </button>
                 <button
                   type="button"
                   class="btn btn-outline-primary btn-sm"
