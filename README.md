@@ -2,6 +2,18 @@
 
 Spring Boot 4.2 / Java 25 backend with the existing Ollama, MySQL, PDFBox, upload-status, and local PDF storage flows.
 
+## Inline PDF reading
+
+The Angular reader uses new `GET /api/read/book?bookId={id}` and `GET /api/read/topics?bookId={id}&topicIds={id}...` routes. They return real PDF bytes with `Content-Disposition: inline` and `Cache-Control: no-store`. The existing attachment-download endpoints and their output format remain unchanged. No database migration or new file-path column is required.
+
+Whole-book reading reuses the existing complete-book assembler. Single-topic reading reuses its stored topic PDF. For multiple topics, `BookReaderService` validates unique positive IDs and book ownership, requires authoritative persisted physical page boundaries, then orders the existing topic files by physical start/end (reserved offset tie-break, then ID). This places front matter before later chapters even when its row has a larger ID. Missing/invalid multi-topic boundaries return 409 with an explanation rather than guessed ranges. Existing PDF assembly, generated topic cover/contents, storage confinement and file-error handling remain in use.
+
+The targeted reader/download/startup checks passed **68 tests, no failures or errors**: `BookReaderControllerTests`, `BookReaderServiceTests`, `DownloadControllerTests`, `DownloadPipelineTests`, `DownloadServiceTests` and `BookSearchDownloadApplicationTests`. Live inline requests via the UI proxy verified all three scopes, 372-page and 14-page complete books, and exact selected-source pages in physical order. Frontend visual/PDF dark-mode limitations and its full changed-file list are documented in the sibling UI README.
+
+```powershell
+mvn '-Dmaven.repo.local=target/maven-repository' -o test '-Dtest=BookReaderControllerTests,BookReaderServiceTests,DownloadControllerTests,DownloadPipelineTests,DownloadServiceTests,BookSearchDownloadApplicationTests' '-DargLine=-Dpdfbox.fontcache=target -Djava.io.tmpdir=C:/workspace/backend/Book_Search/Book-Search-Download/target/test-tmp'
+```
+
 ## Combined book metadata generation
 
 The existing metadata request generates the author, `bookDetails.bookName`, `bookDetails.bookType`, `bookDetails.bookDetails` (book description), and `topicDetails[].details` (topic descriptions/subtopic details) together in the same JSON response. It uses the same initial five PDF pages, including available introduction/preface text after a contents boundary. The source contents parser still receives only contents text, so prose headings are not turned into topics. Later contents requests generate topic details in their existing topics-only schema.
