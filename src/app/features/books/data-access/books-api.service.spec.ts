@@ -1,0 +1,100 @@
+import { HttpEventType, provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { TestBed } from '@angular/core/testing';
+import { BooksApiService } from './books-api.service';
+import { UploadStatus } from '../models/book.models';
+
+describe('BooksApiService — backend contract', () => {
+  let api: BooksApiService;
+  let http: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    });
+    api = TestBed.inject(BooksApiService);
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => http.verify());
+
+  it('lists books with one GET, no criteria, and no request body', () => {
+    api.search().subscribe((response) => expect(response.size).toBe(20));
+    const request = http.expectOne('/api/search/books');
+    expect(request.request.method).toBe('GET');
+    expect(request.request.body).toBeNull();
+    expect(request.request.params.keys()).toEqual([]);
+    request.flush({ books: [], page: 0, size: 20, totalElements: 0, totalPages: 0 });
+  });
+
+  it('serializes actual filter names, omits empty values, and preserves page zero', () => {
+    api
+      .search({
+        query: ' Java ',
+        bookName: ' ',
+        authorName: null,
+        topicName: '',
+        bookDetailsContains: '100%_safe',
+        topicDetailsContains: ' memory ',
+        page: 0,
+        size: 7,
+      })
+      .subscribe();
+    const request = http.expectOne((req) => req.url === '/api/search/books');
+    expect(request.request.params.keys().sort()).toEqual([
+      'bookDetailsContains',
+      'page',
+      'query',
+      'size',
+      'topicDetailsContains',
+    ]);
+    expect(request.request.params.get('query')).toBe('Java');
+    expect(request.request.params.get('page')).toBe('0');
+    expect(request.request.params.get('size')).toBe('7');
+    expect(request.request.params.get('bookDetailsContains')).toBe('100%_safe');
+    expect(request.request.params.get('topicDetailsContains')).toBe('memory');
+    request.flush({ books: [], page: 0, size: 7, totalElements: 0, totalPages: 0 });
+  });
+
+  it('posts only the required file part, lets the browser set multipart headers, and exposes async receipt', () => {
+    const file = new File(['%PDF-1.7'], 'book.pdf', { type: 'application/pdf' });
+    const receipt: UploadStatus = {
+      book_upload_id: 41,
+      status: 'inprogress',
+      message: 'Processing',
+    };
+    let received: UploadStatus | null = null;
+    api.upload(file).subscribe((event) => {
+      if (event.type === HttpEventType.Response) received = event.body;
+    });
+    const request = http.expectOne('/api/upload-file');
+    expect(request.request.method).toBe('POST');
+    expect(request.request.reportProgress).toBe(true);
+    expect(request.request.headers.has('Content-Type')).toBe(false);
+    const body = request.request.body as FormData;
+    expect([...body.keys()]).toEqual(['file']);
+    expect((body.get('file') as File).name).toBe('book.pdf');
+    request.flush(receipt, { status: 202, statusText: 'Accepted' });
+    expect(received).toEqual(receipt);
+    api.uploadStatus(41).subscribe((status) => expect(status.status).toBe('Success'));
+    http.expectOne('/api/upload-status/41').flush({ ...receipt, status: 'Success' });
+  });
+
+  it('uses the whole-book and selected-topics binary routes with exactly one topic ID', () => {
+    api
+      .downloadBook(12)
+      .subscribe((response) =>
+        expect(response.headers.get('Content-Disposition')).toContain('book-12'),
+      );
+    const book = http.expectOne('/api/download/book-download?bookId=12');
+    expect(book.request.responseType).toBe('blob');
+    book.flush(new Blob(['pdf'], { type: 'application/pdf' }), {
+      headers: { 'Content-Disposition': 'attachment; filename="book-12.pdf"' },
+    });
+    api.downloadTopic(12, 34).subscribe();
+    const topic = http.expectOne('/api/download/book-topic-download?bookId=12&topicIds=34');
+    expect(topic.request.responseType).toBe('blob');
+    expect(topic.request.params.getAll('topicIds')).toEqual(['34']);
+    topic.flush(new Blob(['topic'], { type: 'application/pdf' }));
+  });
+});

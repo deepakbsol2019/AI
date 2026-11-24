@@ -1,0 +1,39 @@
+<header class="site-header">
+  <div class="container-xl header-content">
+    <a routerLink="/" class="brand" aria-label="Bookhaven home">
+      <span class="brand-mark"><app-icon name="book" [size]="27" /></span>
+      <span
+        ><span class="brand-name">Bookhaven<span class="brand-dot">.</span></span
+        ><span class="brand-caption">DIGITAL LIBRARY</span></span
+      >
+    </a>
+    <div class="header-actions">
+      <span class="library-label"
+        ><span class="status-dot"></span> Your personal knowledge collection</span
+      >
+      <input
+        #pdfPicker
+        type="file"
+        accept=".pdf,application/pdf"
+        class="visually-hidden"
+        tabindex="-1"
+        aria-label="Choose a PDF book"
+        [disabled]="uploadBusy()"
+        (change)="chooseFile($event)"
+      />
+      <button
+        type="button"
+        class="btn btn-primary"
+        [disabled]="uploadBusy()"
+        (click)="pdfPicker.click()"
+      >
+        @if (uploadBusy()) {
+          <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+        } @else {
+          <app-icon name="upload" [size]="17" />
+        }
+        {{ uploadBusy() ? 'Uploading PDF…' : 'Upload PDF Book' }}
+      </button>
+    </div>
+  </div>
+</header>

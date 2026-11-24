@@ -1,0 +1,98 @@
+<section class="glass-panel search-panel" aria-labelledby="search-heading">
+  <div class="section-heading">
+    <div>
+      <p class="eyebrow">YOUR NEXT CHAPTER STARTS HERE</p>
+      <h2 id="search-heading" class="section-title">Find a book. Discover an idea.</h2>
+    </div>
+    <span class="search-emblem" aria-hidden="true"><app-icon name="search" /></span>
+  </div>
+  <form [formGroup]="form" (ngSubmit)="submit()" role="search" aria-label="Search library">
+    <label class="form-label" for="library-query">Search the library</label>
+    <div class="search-line">
+      <div class="query-field">
+        <app-icon name="search" />
+        <input
+          id="library-query"
+          class="form-control"
+          type="search"
+          formControlName="query"
+          placeholder="What would you like to explore?"
+          aria-describedby="query-help"
+        />
+      </div>
+      <button class="btn btn-primary search-submit" type="submit" [disabled]="busy()">
+        <app-icon name="search" /> {{ busy() ? 'Searching…' : 'Search' }}
+      </button>
+      <button class="btn btn-outline-secondary" type="button" (click)="reset()">
+        <app-icon name="reset" /> Reset
+      </button>
+    </div>
+    <p class="form-text" id="query-help">
+      Matches complete book, author, or topic names, and text within descriptions. All matching
+      ignores case.
+    </p>
+    <details class="search-details">
+      <summary>
+        <app-icon name="filter" /> Refine your search
+        <span class="summary-note">Optional filters</span>
+      </summary>
+      <p class="filter-help">
+        Filters are combined. Names require a complete match; description filters match literal
+        text. Topic filters must match the same topic.
+      </p>
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label" for="book-name"
+            >Book name <span class="field-note">Exact</span></label
+          >
+          <input
+            class="form-control"
+            id="book-name"
+            formControlName="bookName"
+            placeholder="Complete book name"
+          />
+        </div>
+        <div class="col-md-4">
+          <label class="form-label" for="author-name"
+            >Author name <span class="field-note">Exact</span></label
+          >
+          <input
+            class="form-control"
+            id="author-name"
+            formControlName="authorName"
+            placeholder="Complete credited author name"
+          />
+        </div>
+        <div class="col-md-4">
+          <label class="form-label" for="topic-name"
+            >Topic name <span class="field-note">Exact</span></label
+          >
+          <input
+            class="form-control"
+            id="topic-name"
+            formControlName="topicName"
+            placeholder="Complete topic name"
+          />
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="book-details">Book description contains</label>
+          <input
+            class="form-control"
+            id="book-details"
+            formControlName="bookDetailsContains"
+            placeholder="Text within a book description"
+          />
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="topic-details">Topic description contains</label>
+          <input
+            class="form-control"
+            id="topic-details"
+            formControlName="topicDetailsContains"
+            placeholder="Text within a topic description"
+          />
+        </div>
+      </div>
+    </details>
+  </form>
+</section>

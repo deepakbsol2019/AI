@@ -1,0 +1,182 @@
+<app-application-layout [uploadBusy]="upload.busy()" (fileSelected)="upload.upload($event)">
+  <main id="main-content" class="container library-main">
+    <section class="welcome" aria-labelledby="welcome-title">
+      <div>
+        <p class="eyebrow welcome-eyebrow"><span></span> A LITTLE CURIOSITY GOES A LONG WAY</p>
+        <h1 id="welcome-title">
+          Your next chapter<br />starts here<span class="title-dot">.</span>
+        </h1>
+        <p class="welcome-description">
+          A home for your books. A world of ideas to explore.<br class="d-none d-md-block" />
+          Search the collection, discover a topic, and make it yours.
+        </p>
+      </div>
+      <div class="collection-note d-none d-lg-flex">
+        <app-icon name="book" /><span
+          >Good books.<br /><strong>Endless possibilities.</strong></span
+        >
+      </div>
+    </section>
+
+    @if (upload.phase() !== 'idle') {
+      <section
+        class="glass-panel upload-status"
+        [class.upload-error]="upload.phase() === 'error' || upload.phase() === 'unknown'"
+        aria-label="PDF upload status"
+      >
+        <div class="status-top">
+          <strong
+            ><app-icon [name]="upload.phase() === 'success' ? 'check' : 'upload'" />
+            {{ upload.fileName() }}</strong
+          ><span class="status-badge">{{
+            upload.phase() === 'processing' ? 'Preparing your book' : upload.phase()
+          }}</span>
+        </div>
+        <p aria-live="polite" class="mb-0">{{ upload.message() }}</p>
+        @if (upload.phase() === 'uploading' && upload.progress() !== null) {
+          <div
+            class="progress mt-3"
+            role="progressbar"
+            [attr.aria-valuenow]="upload.progress()"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-label="PDF transfer progress"
+          >
+            <div class="progress-bar" [style.width.%]="upload.progress()"></div>
+          </div>
+        }
+        @if (upload.phase() === 'processing') {
+          <p class="small muted mt-2 mb-0">You can keep browsing while your PDF is processed.</p>
+        }
+        @if (upload.phase() === 'unknown') {
+          <button class="btn btn-outline-primary btn-sm mt-3" (click)="upload.retryStatus()">
+            Resume status check
+          </button>
+        }
+      </section>
+    }
+
+    @defer (on immediate) {
+      <app-book-search
+        [busy]="loading()"
+        (searchSubmitted)="search($event)"
+        (resetRequested)="reset()"
+      />
+    } @placeholder {
+      <section class="glass-panel section-placeholder" role="status">
+        Preparing search controls…
+      </section>
+    } @error {
+      <section class="glass-panel section-placeholder" role="alert">
+        Search controls could not load. Reload this page to try again.
+      </section>
+    }
+
+    <section
+      class="glass-panel collection-panel"
+      aria-labelledby="collection-title"
+      [attr.aria-busy]="loading()"
+    >
+      <div class="collection-heading">
+        <div>
+          <p class="eyebrow">THE COLLECTION</p>
+          <h2 id="collection-title" class="section-title">Find something worth reading</h2>
+        </div>
+        @if (results(); as response) {
+          <span class="count-pill"
+            >{{ response.totalElements }} {{ response.totalElements === 1 ? 'book' : 'books'
+            }}{{ activeFilterCount() ? ' matched' : ' in your library' }}</span
+          >
+        }
+      </div>
+      @if (downloads.error(); as message) {
+        <p class="alert alert-danger mx-4" role="alert">{{ message }}</p>
+      }
+      @if (downloads.message(); as message) {
+        <p class="download-notice mx-4" role="status">{{ message }}</p>
+      }
+      @if (dialogLoading()) {
+        <p class="px-4 muted" role="status">Opening book topics…</p>
+      }
+      @if (dialogError(); as message) {
+        <p class="alert alert-danger mx-4" role="alert">{{ message }}</p>
+      }
+      @if (error(); as message) {
+        <div class="empty-state" role="alert">
+          <app-icon name="info" />
+          <h3>We couldn’t load your books</h3>
+          <p>{{ message }}</p>
+          <button class="btn btn-primary" (click)="reload()">Try again</button>
+        </div>
+      } @else {
+        @defer (on immediate) {
+          <app-book-table
+            [books]="results()?.books ?? []"
+            [busy]="loading()"
+            (viewBook)="viewBook($event)"
+          />
+        } @placeholder {
+          <div class="section-placeholder" role="status">Opening the collection…</div>
+        } @error {
+          <div class="empty-state" role="alert">
+            The collection view could not load. Reload this page to try again.
+          </div>
+        }
+      }
+      <div class="collection-footer">
+        <p class="mb-0 small muted" aria-live="polite">
+          @if (loading()) {
+            Searching your library…
+          } @else if (results(); as response) {
+            @if (response.totalElements) {
+              Showing {{ response.page * response.size + 1 }}–{{
+                response.page * response.size + response.books.length
+              }}
+              of {{ response.totalElements }} books
+            } @else {
+              Your next discovery is a search away.
+            }
+          }
+        </p>
+        <div class="pagination-controls">
+          <label class="small muted" for="page-size">Per page</label
+          ><select
+            id="page-size"
+            class="form-select form-select-sm"
+            [value]="pageSize()"
+            [disabled]="loading()"
+            (change)="changeSize($event)"
+          >
+            <option value="10">10</option>
+            <option value="20">20</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+          </select>
+          <nav aria-label="Book results pages">
+            <button
+              class="btn btn-light btn-sm"
+              aria-label="Previous page"
+              [disabled]="loading() || !results()?.page"
+              (click)="changePage((results()?.page ?? 0) - 1)"
+            >
+              <app-icon name="chevron-left" /></button
+            ><span class="page-label"
+              >{{ (results()?.page ?? 0) + 1 }} / {{ results()?.totalPages || 1 }}</span
+            ><button
+              class="btn btn-light btn-sm"
+              aria-label="Next page"
+              [disabled]="loading() || (results()?.page ?? 0) + 1 >= (results()?.totalPages ?? 0)"
+              (click)="changePage((results()?.page ?? 0) + 1)"
+            >
+              <app-icon name="chevron-right" />
+            </button>
+          </nav>
+        </div>
+      </div>
+    </section>
+    <p class="library-footnote">
+      <app-icon name="file" /> A whole book or just one topic. Take the knowledge you need.
+    </p>
+  </main>
+  <ng-container #dialogHost />
+</app-application-layout>

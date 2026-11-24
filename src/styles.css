@@ -1,1 +1,275 @@
-/* You can add global styles to this file, and also import other style files */
+:root {
+  /* Change this local asset URL to use your own library photograph. */
+  --library-background-image: url('/assets/library-interior.jpg');
+  --ink: #172b46;
+  --muted: #596b80;
+  --blue: #225eb4;
+  --blue-dark: #174783;
+  --line: #dce3eb;
+  --warm: #ba8c41;
+  --panel-background: rgba(255, 255, 255, 0.95);
+  --bs-body-font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --bs-body-color: var(--ink);
+  --bs-primary: #225eb4;
+  --bs-border-radius: 0.6rem;
+  color-scheme: light;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: #d8d3c8;
+  background-image:
+    linear-gradient(rgba(17, 30, 43, 0.24), rgba(17, 30, 43, 0.36)), var(--library-background-image);
+  background-position: center;
+  background-size: cover;
+  background-attachment: fixed;
+  font-size: 0.925rem;
+  -webkit-font-smoothing: antialiased;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+button {
+  touch-action: manipulation;
+}
+button:disabled {
+  cursor: not-allowed;
+}
+a {
+  color: var(--blue);
+}
+:focus-visible {
+  outline: 3px solid #b87516 !important;
+  outline-offset: 4px;
+}
+.glass-panel {
+  background: var(--panel-background);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 1rem;
+  box-shadow:
+    0 8px 32px rgba(12, 28, 46, 0.1),
+    0 1px 2px rgba(12, 28, 46, 0.04);
+}
+.eyebrow {
+  color: var(--blue);
+  font-size: 0.68rem;
+  font-weight: 750;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.section-title {
+  color: var(--ink);
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin: 0;
+}
+.muted,
+.text-muted {
+  color: var(--muted) !important;
+}
+.btn {
+  border-radius: 0.5rem;
+  font-size: 0.825rem;
+  font-weight: 600;
+  min-height: 40px;
+  padding: 0.55rem 1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+.btn-primary {
+  --bs-btn-bg: var(--blue);
+  --bs-btn-border-color: var(--blue);
+  --bs-btn-hover-bg: var(--blue-dark);
+  --bs-btn-hover-border-color: var(--blue-dark);
+  --bs-btn-active-bg: var(--blue-dark);
+  --bs-btn-active-border-color: var(--blue-dark);
+  box-shadow: 0 3px 8px #225eb424;
+}
+.btn-outline-primary {
+  --bs-btn-color: var(--blue);
+  --bs-btn-border-color: #c1d3ec;
+  --bs-btn-hover-bg: #edf3fc;
+  --bs-btn-hover-color: var(--blue-dark);
+  --bs-btn-hover-border-color: #91afd6;
+  --bs-btn-active-bg: #e7effa;
+  --bs-btn-active-color: var(--blue-dark);
+}
+.btn-light {
+  --bs-btn-bg: #f4f6f9;
+  --bs-btn-border-color: #dce3eb;
+  --bs-btn-color: #465a74;
+  --bs-btn-hover-bg: #e8edf4;
+}
+.btn-sm {
+  min-height: 35px;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.76rem;
+}
+.form-label {
+  color: #344963;
+  font-size: 0.77rem;
+  font-weight: 650;
+  margin-bottom: 0.45rem;
+}
+.form-control,
+.form-select {
+  border-color: #d6dfe9;
+  min-height: 43px;
+  font-size: 0.84rem;
+  color: var(--ink);
+  background-color: #fff;
+}
+.form-control::placeholder {
+  color: #7a8799;
+}
+.form-control:focus,
+.form-select:focus {
+  border-color: #6995cd;
+  box-shadow: 0 0 0 0.2rem #225eb419;
+}
+.table {
+  --bs-table-bg: transparent;
+  --bs-table-color: var(--ink);
+  --bs-table-border-color: #e5eaf0;
+  margin-bottom: 0;
+}
+.table > thead > tr > th {
+  background: #f2f5fa;
+  color: #53657d;
+  font-size: 0.66rem;
+  font-weight: 750;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  padding: 1rem 1.25rem;
+  vertical-align: middle;
+}
+.table > tbody > tr > td {
+  padding: 1.25rem;
+  vertical-align: middle;
+  font-size: 0.825rem;
+  overflow-wrap: anywhere;
+}
+.table > tbody > tr:last-child > td {
+  border-bottom: 0;
+}
+.table-responsive {
+  -webkit-overflow-scrolling: touch;
+}
+.empty-state {
+  padding: 3rem 1.5rem;
+  text-align: center;
+  color: var(--muted);
+}
+.empty-state app-icon {
+  color: #8da3bf;
+  margin-bottom: 0.75rem;
+}
+.empty-state h3 {
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 650;
+}
+.empty-state p {
+  max-width: 38rem;
+  margin: 0.6rem auto 1rem;
+  line-height: 1.7;
+}
+.alert {
+  border-radius: 0.65rem;
+  font-size: 0.85rem;
+}
+.alert-danger {
+  color: #862c32;
+  background: #fff3f3;
+  border-color: #efd5d8;
+}
+.alert-success {
+  color: #235944;
+  background: #f0faf4;
+  border-color: #cce7d7;
+}
+.alert-info {
+  color: #365775;
+  background: #eef6fc;
+  border-color: #d5e5f3;
+}
+dialog {
+  color: var(--ink);
+  border: 1px solid #e4e9ef;
+  border-radius: 1rem;
+  padding: 0;
+  max-height: 88dvh;
+  max-width: calc(100vw - 2rem);
+  box-shadow: 0 22px 90px #101f4366;
+}
+dialog::backdrop {
+  background: #14294399;
+}
+.skip-link {
+  position: fixed;
+  left: 1rem;
+  top: -5rem;
+  z-index: 100;
+  padding: 0.7rem 1rem;
+  background: #fff;
+  color: var(--ink);
+  border-radius: 0.4rem;
+}
+.skip-link:focus {
+  top: 1rem;
+}
+.skeleton {
+  border-radius: 0.45rem;
+  background: #e8edf3;
+  animation: breathe 1.5s ease-in-out infinite alternate;
+}
+@keyframes breathe {
+  to {
+    opacity: 0.55;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  :root {
+    --panel-background: #fff;
+  }
+  body {
+    background-image: none;
+    background-color: #233a4e;
+  }
+  .glass-panel {
+    border-color: #bbc7d5;
+  }
+}
+@media (forced-colors: active) {
+  .glass-panel {
+    background: Canvas;
+    border: 1px solid CanvasText;
+  }
+}
+@media (max-width: 575px) {
+  body {
+    background-attachment: scroll;
+  }
+  .table > tbody > tr > td,
+  .table > thead > tr > th {
+    padding: 0.85rem;
+  }
+}

@@ -1,0 +1,91 @@
+<div
+  class="table-responsive"
+  tabindex="0"
+  role="region"
+  aria-label="Library books"
+  [attr.aria-busy]="busy()"
+>
+  @if (busy() && books().length) {
+    <p class="table-activity" role="status">
+      <span class="spinner-border spinner-border-sm" aria-hidden="true"></span> Updating your books…
+    </p>
+  }
+  <table class="table book-table align-middle mb-0">
+    <caption class="visually-hidden">
+      Books matching your search. Download a full book or view its topics.
+    </caption>
+    <thead>
+      <tr>
+        <th scope="col">Book Name</th>
+        <th scope="col">Author Name</th>
+        <th scope="col">Book Description</th>
+        <th scope="col">Download Book</th>
+        <th scope="col">View Book</th>
+      </tr>
+    </thead>
+    <tbody>
+      @for (book of books(); track book.bookId) {
+        <tr>
+          <td class="name-cell">
+            <div class="book-identity">
+              <span class="book-tile" aria-hidden="true"><app-icon name="book" /></span>
+              <div>
+                <span class="book-title">{{ book.bookName || 'Untitled book' }}</span>
+                <span class="book-meta"
+                  >{{ book.topicCount }} {{ book.topicCount === 1 ? 'topic' : 'topics' }} ·
+                  {{ book.totalPages }} pages</span
+                >
+              </div>
+            </div>
+          </td>
+          <td class="author-cell">{{ book.authorName || 'Author not provided' }}</td>
+          <td class="description-cell">
+            <p>{{ book.bookDetails || 'No description available.' }}</p>
+          </td>
+          <td class="action-cell">
+            <button
+              type="button"
+              class="btn btn-outline-primary btn-sm"
+              (click)="downloads.downloadBook(book)"
+              [disabled]="downloads.isBookDownloading(book.bookId)"
+              [attr.aria-label]="'Download book: ' + book.bookName"
+            >
+              <app-icon name="download" />
+              {{ downloads.isBookDownloading(book.bookId) ? 'Downloading…' : 'Download' }}
+            </button>
+          </td>
+          <td class="action-cell">
+            <button
+              type="button"
+              class="btn btn-link btn-sm view-button"
+              (click)="viewBook.emit(book)"
+              [attr.aria-label]="'View book: ' + book.bookName"
+            >
+              View Book <app-icon name="arrow-right" />
+            </button>
+          </td>
+        </tr>
+      } @empty {
+        <tr>
+          <td colspan="5">
+            @if (busy()) {
+              <div class="empty-state" role="status">
+                <span class="spinner-border text-primary" aria-hidden="true"></span>
+                <p>Finding books in your library…</p>
+              </div>
+            } @else {
+              <div class="empty-state">
+                <app-icon name="book" />
+                <h3>No matching books</h3>
+                <p>
+                  Try different search terms, refine your filters, or select Reset to explore the
+                  library.
+                </p>
+              </div>
+            }
+          </td>
+        </tr>
+      }
+    </tbody>
+  </table>
+</div>

@@ -1,0 +1,101 @@
+<dialog
+  #topicDialog
+  class="topics-dialog"
+  aria-labelledby="topics-title"
+  aria-describedby="topics-description"
+  (close)="onClosed()"
+>
+  <header class="topics-header">
+    <div class="topics-heading">
+      <p class="eyebrow">EXPLORE THE BOOK</p>
+      <h2 id="topics-title">{{ book().bookName || 'Untitled book' }}</h2>
+      <p class="muted" id="topics-description">
+        {{ book().authorName || 'Author not provided' }} · {{ book().topics.length }}
+        {{ book().topics.length === 1 ? 'topic' : 'topics' }}
+      </p>
+    </div>
+    <div class="header-actions">
+      <button
+        type="button"
+        class="btn btn-primary btn-sm"
+        (click)="downloads.downloadBook(book())"
+        [disabled]="downloads.isBookDownloading(book().bookId)"
+      >
+        <app-icon name="download" />
+        {{ downloads.isBookDownloading(book().bookId) ? 'Downloading…' : 'Download Book' }}
+      </button>
+      <button
+        type="button"
+        class="close-button"
+        aria-label="Close book topics"
+        autofocus
+        (click)="close()"
+      >
+        <app-icon name="close" />
+      </button>
+    </div>
+  </header>
+  <section class="topics-content">
+    @if (downloads.error(); as error) {
+      <div class="alert alert-danger" role="alert">{{ error }}</div>
+    }
+    @if (book().topics.length) {
+      <p class="topic-intro">
+        Read what interests you. Download the whole book or just a single topic.
+      </p>
+      <div class="table-responsive" tabindex="0" role="region" aria-label="Book topics">
+        <table class="table topics-table align-middle mb-0">
+          <caption class="visually-hidden">
+            All topics in
+            {{
+              book().bookName
+            }}
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Topic Name</th>
+              <th scope="col">Topic Description</th>
+              <th scope="col">Download Topic</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (topic of book().topics; track topic.topicId) {
+              <tr>
+                <td class="topic-name">{{ topic.topicName || 'Untitled topic' }}</td>
+                <td class="topic-description">
+                  {{ topic.topicDetails || 'No description available.' }}
+                </td>
+                <td class="topic-action">
+                  <button
+                    type="button"
+                    class="btn btn-outline-primary btn-sm"
+                    (click)="downloads.downloadTopic(book(), topic)"
+                    [disabled]="downloads.isTopicDownloading(book().bookId, topic.topicId)"
+                    [attr.aria-label]="'Download topic: ' + topic.topicName"
+                  >
+                    <app-icon name="download" />
+                    {{
+                      downloads.isTopicDownloading(book().bookId, topic.topicId)
+                        ? 'Downloading…'
+                        : 'Download'
+                    }}
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    } @else {
+      <div class="empty-state">
+        <app-icon name="book" />
+        <h3>No topics available</h3>
+        <p>You can still download the complete book from the header.</p>
+      </div>
+    }
+  </section>
+  <footer class="topics-footer">
+    <span><app-icon name="file" /> PDF downloads</span
+    ><button type="button" class="btn btn-outline-secondary" (click)="close()">Close</button>
+  </footer>
+</dialog>

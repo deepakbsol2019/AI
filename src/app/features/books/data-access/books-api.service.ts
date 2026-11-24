@@ -1,0 +1,52 @@
+import { HttpClient, HttpEvent, HttpParams, HttpResponse } from '@angular/common/http';
+import { inject, Injectable } from '@angular/core';
+import { Observable } from 'rxjs';
+import { API_CONFIG } from '../../../core/configuration/api.config';
+import { BookSearchCriteria, BookSearchResponse, UploadStatus } from '../models/book.models';
+
+@Injectable({ providedIn: 'root' })
+export class BooksApiService {
+  private readonly http = inject(HttpClient);
+  private readonly baseUrl = inject(API_CONFIG).baseUrl.replace(/\/$/, '');
+
+  search(criteria: BookSearchCriteria = {}): Observable<BookSearchResponse> {
+    let params = new HttpParams();
+    for (const [name, input] of Object.entries(criteria)) {
+      const value = typeof input === 'string' ? input.trim() : input;
+      if (value !== undefined && value !== null && value !== '') {
+        params = params.set(name, value);
+      }
+    }
+    return this.http.get<BookSearchResponse>(`${this.baseUrl}/search/books`, { params });
+  }
+
+  upload(file: File): Observable<HttpEvent<UploadStatus>> {
+    const body = new FormData();
+    body.append('file', file, file.name);
+    // The browser supplies the multipart boundary; never set Content-Type here.
+    return this.http.post<UploadStatus>(`${this.baseUrl}/upload-file`, body, {
+      observe: 'events',
+      reportProgress: true,
+    });
+  }
+
+  uploadStatus(id: number): Observable<UploadStatus> {
+    return this.http.get<UploadStatus>(`${this.baseUrl}/upload-status/${id}`);
+  }
+
+  downloadBook(bookId: number): Observable<HttpResponse<Blob>> {
+    return this.http.get(`${this.baseUrl}/download/book-download`, {
+      params: { bookId },
+      responseType: 'blob',
+      observe: 'response',
+    });
+  }
+
+  downloadTopic(bookId: number, topicId: number): Observable<HttpResponse<Blob>> {
+    return this.http.get(`${this.baseUrl}/download/book-topic-download`, {
+      params: { bookId, topicIds: topicId },
+      responseType: 'blob',
+      observe: 'response',
+    });
+  }
+}
