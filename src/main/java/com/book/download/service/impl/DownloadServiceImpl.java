@@ -9,6 +9,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
+import org.springframework.ai.tool.annotation.Tool;
+import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,7 +48,14 @@ public class DownloadServiceImpl implements DownloadService {
 
     @Override
     @Transactional(readOnly = true)
-    public byte[] downloadBook(Long bookId) {
+    @Tool(name = "downloadBook", returnDirect = true, description = """
+            Download the complete PDF of an existing book using its persisted book ID.
+            Includes the original front matter and all saved topics in book order, without adding a new cover.
+            Returns PDF bytes for the application to deliver to the user. Do not guess book IDs.
+            """)
+    public byte[] downloadBook(
+            @ToolParam(description = "Required positive book ID from an existing book record or book search result.")
+            Long bookId) {
         BookDetails book = requireBook(bookId);
         List<TopicDetails> found = topics.findAllByBookDetailsBookIdOrderByTopicIdAsc(bookId);
         if (found.isEmpty()) {
@@ -73,7 +82,16 @@ public class DownloadServiceImpl implements DownloadService {
 
     @Override
     @Transactional(readOnly = true)
-    public byte[] downloadTopics(Long bookId, List<Long> topicIds) {
+    @Tool(name = "downloadTopics", returnDirect = true, description = """
+            Download selected topics from one existing book as a single PDF, with a generated cover and contents.
+            Preserves the supplied topic ID order. For one topic, supply a list containing that single ID.
+            Returns PDF bytes for the application to deliver to the user. Do not guess book or topic IDs.
+            """)
+    public byte[] downloadTopics(
+            @ToolParam(description = "Required positive book ID owning every selected topic, from an existing book record or book search result.")
+            Long bookId,
+            @ToolParam(description = "Required nonempty ordered list of unique positive topic IDs belonging to bookId. PDF pages and contents follow this exact order; only explicitly selected topics are included.")
+            List<Long> topicIds) {
         requirePositiveId(bookId, "bookId");
         List<Long> requested = validateSelection(topicIds);
         BookDetails book = requireBook(bookId);
