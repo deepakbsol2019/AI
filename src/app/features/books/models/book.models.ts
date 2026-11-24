@@ -32,6 +32,7 @@ export interface BookTopic {
 export interface Book {
   bookId: number;
   bookName: string;
+  bookType: string | null;
   authorName: string | null;
   bookDetails: string | null;
   totalPages: number;

@@ -1,13 +1,18 @@
+:root,
+dialog::backdrop {
+  /* The supplied original is shared by the page and the pop-up backdrop. */
+  --library-background-image: url('/assets/Flowering-Gurukul-by-the-River.png');
+  --library-background-position: 50% 50%;
+}
 :root {
-  /* Change this local asset URL to use your own library photograph. */
-  --library-background-image: url('/assets/library-interior.jpg');
   --ink: #172b46;
   --muted: #596b80;
   --blue: #225eb4;
   --blue-dark: #174783;
   --line: #dce3eb;
   --warm: #ba8c41;
-  --panel-background: rgba(255, 255, 255, 0.95);
+  /* Opaque white surfaces keep panels consistent without fading text or controls. */
+  --panel-background: #ffffff;
   --bs-body-font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
   --bs-body-color: var(--ink);
   --bs-primary: #225eb4;
@@ -21,14 +26,32 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background-color: #d8d3c8;
-  background-image:
-    linear-gradient(rgba(17, 30, 43, 0.24), rgba(17, 30, 43, 0.36)), var(--library-background-image);
-  background-position: center;
-  background-size: cover;
-  background-attachment: fixed;
+  min-height: 100dvh;
+  background-color: #ffffff;
+  isolation: isolate;
   font-size: 0.925rem;
   -webkit-font-smoothing: antialiased;
+}
+app-root {
+  display: block;
+}
+html:has(app-home),
+body:has(app-home) {
+  overflow: hidden;
+}
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-color: #ffffff;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.16)),
+    var(--library-background-image);
+  background-position: var(--library-background-position);
+  background-size: cover;
+  background-repeat: no-repeat;
 }
 button,
 input,
@@ -137,13 +160,13 @@ a {
   box-shadow: 0 0 0 0.2rem #225eb419;
 }
 .table {
-  --bs-table-bg: transparent;
+  --bs-table-bg: var(--panel-background);
   --bs-table-color: var(--ink);
   --bs-table-border-color: #e5eaf0;
   margin-bottom: 0;
 }
 .table > thead > tr > th {
-  background: #f2f5fa;
+  background: var(--panel-background);
   color: #53657d;
   font-size: 0.66rem;
   font-weight: 750;
@@ -207,12 +230,19 @@ dialog {
   border: 1px solid #e4e9ef;
   border-radius: 1rem;
   padding: 0;
+  background: var(--panel-background);
   max-height: 88dvh;
   max-width: calc(100vw - 2rem);
   box-shadow: 0 22px 90px #101f4366;
 }
 dialog::backdrop {
-  background: #14294399;
+  background-color: #ffffff;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.28)),
+    var(--library-background-image);
+  background-position: var(--library-background-position);
+  background-size: cover;
+  background-repeat: no-repeat;
 }
 .skip-link {
   position: fixed;
@@ -250,24 +280,30 @@ dialog::backdrop {
   :root {
     --panel-background: #fff;
   }
-  body {
+  body::before {
     background-image: none;
-    background-color: #233a4e;
+    background-color: #ffffff;
+  }
+  dialog::backdrop {
+    background-image: none;
+    background-color: #ffffff;
   }
   .glass-panel {
     border-color: #bbc7d5;
   }
 }
 @media (forced-colors: active) {
+  body::before,
+  dialog::backdrop {
+    background-image: none;
+    background-color: Canvas;
+  }
   .glass-panel {
     background: Canvas;
     border: 1px solid CanvasText;
   }
 }
 @media (max-width: 575px) {
-  body {
-    background-attachment: scroll;
-  }
   .table > tbody > tr > td,
   .table > thead > tr > th {
     padding: 0.85rem;

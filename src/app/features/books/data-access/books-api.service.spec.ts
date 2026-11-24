@@ -1,6 +1,7 @@
 import { HttpEventType, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { vi } from 'vitest';
 import { BooksApiService } from './books-api.service';
 import { UploadStatus } from '../models/book.models';
 
@@ -96,5 +97,29 @@ describe('BooksApiService — backend contract', () => {
     expect(topic.request.responseType).toBe('blob');
     expect(topic.request.params.getAll('topicIds')).toEqual(['34']);
     topic.flush(new Blob(['topic'], { type: 'application/pdf' }));
+  });
+
+  it('downloads only the requested topic IDs as one response using ordered repeated parameters', () => {
+    const ids = Object.freeze([92, 34, 91]);
+    const received = vi.fn();
+    api.downloadTopics(12, ids).subscribe(received);
+    const request = http.expectOne(
+      '/api/download/book-topic-download?bookId=12&topicIds=92&topicIds=34&topicIds=91',
+    );
+    expect(request.request.method).toBe('GET');
+    expect(request.request.body).toBeNull();
+    expect(request.request.params.keys()).toEqual(['bookId', 'topicIds']);
+    expect(request.request.params.getAll('topicIds')).toEqual(['92', '34', '91']);
+    expect(request.request.responseType).toBe('blob');
+    const pdf = new Blob(['%PDF combined topics'], { type: 'application/pdf' });
+    request.flush(pdf, {
+      headers: { 'Content-Disposition': 'attachment; filename="book-12-selected-topics.pdf"' },
+    });
+    expect(received).toHaveBeenCalledTimes(1);
+    expect(received.mock.calls[0][0].body).toBe(pdf);
+    expect(received.mock.calls[0][0].headers.get('Content-Disposition')).toContain(
+      'selected-topics.pdf',
+    );
+    expect(ids).toEqual([92, 34, 91]);
   });
 });

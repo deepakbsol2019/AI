@@ -1,23 +1,6 @@
 <app-application-layout [uploadBusy]="upload.busy()" (fileSelected)="upload.upload($event)">
-  <main id="main-content" class="container library-main">
-    <section class="welcome" aria-labelledby="welcome-title">
-      <div>
-        <p class="eyebrow welcome-eyebrow"><span></span> A LITTLE CURIOSITY GOES A LONG WAY</p>
-        <h1 id="welcome-title">
-          Your next chapter<br />starts here<span class="title-dot">.</span>
-        </h1>
-        <p class="welcome-description">
-          A home for your books. A world of ideas to explore.<br class="d-none d-md-block" />
-          Search the collection, discover a topic, and make it yours.
-        </p>
-      </div>
-      <div class="collection-note d-none d-lg-flex">
-        <app-icon name="book" /><span
-          >Good books.<br /><strong>Endless possibilities.</strong></span
-        >
-      </div>
-    </section>
-
+  <main id="main-content" class="container library-main" tabindex="-1">
+    <h1 class="visually-hidden">Book library</h1>
     @if (upload.phase() !== 'idle') {
       <section
         class="glass-panel upload-status"
@@ -174,9 +157,6 @@
         </div>
       </div>
     </section>
-    <p class="library-footnote">
-      <app-icon name="file" /> A whole book or just one topic. Take the knowledge you need.
-    </p>
   </main>
   <ng-container #dialogHost />
 </app-application-layout>

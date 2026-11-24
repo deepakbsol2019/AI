@@ -19,6 +19,7 @@ const topic: BookTopic = {
 const book: Book = {
   bookId: 12,
   bookName: 'Effective Java',
+  bookType: 'Unknown',
   authorName: 'Joshua Bloch',
   bookDetails: 'Programming',
   totalPages: 400,
@@ -29,6 +30,9 @@ const book: Book = {
   topicCount: 1,
   topics: [topic],
 };
+const second: BookTopic = { ...topic, topicId: 92, topicName: 'Generics' };
+const third: BookTopic = { ...topic, topicId: 93, topicName: 'Concurrency' };
+const multiTopicBook: Book = { ...book, topics: [topic, second, third], topicCount: 3 };
 
 describe('BookDownloadService', () => {
   let service: BookDownloadService;
@@ -65,6 +69,8 @@ describe('BookDownloadService', () => {
     service.downloadTopic(book, topic);
     expect(service.isBookDownloading(12)).toBe(true);
     expect(service.isTopicDownloading(12, 91)).toBe(true);
+    expect(service.isAnyTopicDownloading(12)).toBe(true);
+    expect(service.isSelectedTopicsDownloading(12)).toBe(false);
     const full = http.expectOne('/api/download/book-download?bookId=12');
     const selected = http.expectOne('/api/download/book-topic-download?bookId=12&topicIds=91');
     full.flush(new Blob(['%PDF'], { type: 'application/pdf' }), {
@@ -77,6 +83,7 @@ describe('BookDownloadService', () => {
     selected.flush(new Blob(['%PDF'], { type: 'application/pdf' }));
     await Promise.resolve();
     expect(service.isTopicDownloading(12, 91)).toBe(false);
+    expect(service.isAnyTopicDownloading(12)).toBe(false);
     expect(URL.createObjectURL).toHaveBeenCalledTimes(2);
     expect(document.querySelector('a[download]')).toBeNull();
     vi.advanceTimersByTime(1000);
@@ -107,5 +114,119 @@ describe('BookDownloadService', () => {
       .flush(new Blob(['pdf'], { type: 'application/pdf' }));
     await Promise.resolve();
     expect(service.error()).toBeNull();
+  });
+
+  it('locks selected-topic downloads per book even when selection changes while permitting other books and full books', async () => {
+    const selection = Object.freeze([second, topic]);
+    service.downloadSelectedTopics(multiTopicBook, selection);
+    service.downloadSelectedTopics(multiTopicBook, [topic, third]);
+    service.downloadTopic(multiTopicBook, third);
+    expect(service.isSelectedTopicsDownloading(12)).toBe(true);
+    expect(service.isAnyTopicDownloading(12)).toBe(true);
+    expect(service.isAnyTopicDownloading(13)).toBe(false);
+    const selected = http.expectOne(
+      '/api/download/book-topic-download?bookId=12&topicIds=92&topicIds=91',
+    );
+    http.expectNone('/api/download/book-topic-download?bookId=12&topicIds=91&topicIds=93');
+    http.expectNone('/api/download/book-topic-download?bookId=12&topicIds=93');
+    service.downloadBook(multiTopicBook);
+    const full = http.expectOne('/api/download/book-download?bookId=12');
+    const anotherTopics = [
+      { ...topic, topicId: 201 },
+      { ...third, topicId: 203 },
+    ];
+    const anotherBook: Book = {
+      ...multiTopicBook,
+      bookId: 13,
+      topics: anotherTopics,
+      topicCount: 2,
+    };
+    service.downloadSelectedTopics(anotherBook, anotherTopics);
+    const unrelated = http.expectOne(
+      '/api/download/book-topic-download?bookId=13&topicIds=201&topicIds=203',
+    );
+    selected.flush(new Blob(['%PDF selected only'], { type: 'application/pdf' }), {
+      headers: { 'Content-Disposition': "attachment; filename*=UTF-8''Server%20selected.pdf" },
+    });
+    await Promise.resolve();
+    expect(service.isSelectedTopicsDownloading(12)).toBe(false);
+    expect(service.isAnyTopicDownloading(12)).toBe(false);
+    expect(service.isBookDownloading(12)).toBe(true);
+    expect(service.isSelectedTopicsDownloading(13)).toBe(true);
+    expect(service.message()).toBe('Download ready: Server selected.pdf');
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
+    expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledTimes(1);
+    full.flush(new Blob(['%PDF full'], { type: 'application/pdf' }));
+    unrelated.flush(new Blob(['%PDF other selected'], { type: 'application/pdf' }));
+    await Promise.resolve();
+    vi.advanceTimersByTime(1000);
+    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(3);
+    expect(selection).toEqual([second, topic]);
+  });
+
+  it('releases bulk busy state after a Blob error and retries without modifying selection', async () => {
+    const selection = Object.freeze([topic, second]);
+    service.downloadSelectedTopics(multiTopicBook, selection);
+    const errorBlob = new Blob(['{"detail":"A selected topic PDF is missing."}'], {
+      type: 'application/problem+json',
+    });
+    Object.defineProperty(errorBlob, 'text', {
+      value: async () => '{"detail":"A selected topic PDF is missing."}',
+    });
+    http
+      .expectOne('/api/download/book-topic-download?bookId=12&topicIds=91&topicIds=92')
+      .flush(errorBlob, { status: 409, statusText: 'Conflict' });
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(service.error()).toBe('A selected topic PDF is missing.');
+    expect(service.isSelectedTopicsDownloading(12)).toBe(false);
+    expect(service.isAnyTopicDownloading(12)).toBe(false);
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    expect(selection).toEqual([topic, second]);
+    service.downloadSelectedTopics(multiTopicBook, selection);
+    http
+      .expectOne('/api/download/book-topic-download?bookId=12&topicIds=91&topicIds=92')
+      .flush(new Blob(['%PDF retry'], { type: 'application/pdf' }));
+    await Promise.resolve();
+    expect(service.error()).toBeNull();
+    expect(service.message()).toBe('Download ready: Effective Java-selected-topics.pdf');
+    expect(service.isSelectedTopicsDownloading(12)).toBe(false);
+  });
+
+  it('rejects insufficient, invalid or foreign selections before sending a request', () => {
+    const foreign: BookTopic = { ...topic, topicId: 200 };
+    for (const selection of [
+      [],
+      [topic],
+      [topic, topic],
+      [topic, foreign],
+      [topic, { ...second, topicId: 0 }],
+      [topic, { ...second, topicId: Number.NaN }],
+    ]) {
+      service.downloadSelectedTopics(multiTopicBook, selection);
+      expect(service.error()).toBe('Choose at least two valid topics from this book.');
+      expect(service.isAnyTopicDownloading(12)).toBe(false);
+    }
+    service.downloadSelectedTopics({ ...multiTopicBook, bookId: 0 }, [topic, second]);
+    http.expectNone((request) => request.url.includes('/download/'));
+  });
+
+  it('sends each selected ID once in selection order and waits for an existing individual download', async () => {
+    service.downloadTopic(multiTopicBook, third);
+    service.downloadSelectedTopics(multiTopicBook, [second, topic, second]);
+    http.expectNone('/api/download/book-topic-download?bookId=12&topicIds=92&topicIds=91');
+    http
+      .expectOne('/api/download/book-topic-download?bookId=12&topicIds=93')
+      .flush(new Blob(['%PDF individual'], { type: 'application/pdf' }));
+    await Promise.resolve();
+    service.downloadSelectedTopics(multiTopicBook, [second, topic, second]);
+    const selected = http.expectOne(
+      '/api/download/book-topic-download?bookId=12&topicIds=92&topicIds=91',
+    );
+    expect(selected.request.params.getAll('topicIds')).toEqual(['92', '91']);
+    selected.flush(new Blob(['%PDF selected'], { type: 'application/pdf' }));
+    await Promise.resolve();
+    expect(service.isAnyTopicDownloading(12)).toBe(false);
   });
 });

@@ -17,6 +17,7 @@
     <thead>
       <tr>
         <th scope="col">Book Name</th>
+        <th scope="col">Book Type</th>
         <th scope="col">Author Name</th>
         <th scope="col">Book Description</th>
         <th scope="col">Download Book</th>
@@ -38,6 +39,7 @@
               </div>
             </div>
           </td>
+          <td class="type-cell">{{ book.bookType?.trim() || 'Unknown' }}</td>
           <td class="author-cell">{{ book.authorName || 'Author not provided' }}</td>
           <td class="description-cell">
             <p>{{ book.bookDetails || 'No description available.' }}</p>
@@ -67,7 +69,7 @@
         </tr>
       } @empty {
         <tr>
-          <td colspan="5">
+          <td colspan="6">
             @if (busy()) {
               <div class="empty-state" role="status">
                 <span class="spinner-border text-primary" aria-hidden="true"></span>

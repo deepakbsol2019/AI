@@ -2,6 +2,20 @@
 
 Standalone Angular UI connected to the sibling `Book-Search-Download` Spring backend. Home opens directly; unknown routes redirect to Home. No authentication, sidebar, mock mode, or silent mock fallback.
 
+Book listings show **Book Type immediately after Book Name**, using the backend's persisted `bookType`. Missing, null, empty, or whitespace-only legacy values display **Unknown**. Remaining author, description, full-download, and View Book actions are preserved. The existing SVG/icon and background image are unchanged by the book-type feature; there are no type-based icons or theme fields.
+
+## Homepage and topic popup
+
+Home retains this order: header, search, book listing, main footer. The welcome hero and the narrow pre-footer tagline are removed. The viewport shell uses `100vh` with `100dvh` support; header and main footer are outside its single flexible, scrollable middle region. The body does not scroll on Home. The book table retains horizontal scrolling on narrow screens and leaves vertical scrolling to the middle region. Opaque white panels and the supplied Gurukul background remain unchanged.
+
+View Book uses the topics already present in the current search result. Its header, filter, download controls, selected count and close controls remain outside the scrolling topic-table container. Opening the native dialog locks document/body and the Home scroll region; close, native close/Escape, and component destruction restore their previous overflow declarations, priorities and scroll positions.
+
+The popup's local filter updates while typing and when **Filter** is pressed. It trims the query and matches a case-insensitive substring in the topic name **or** description, safely handling null values. Filtering and clearing issue no HTTP requests and never alter the original topic list. The main search API and its exact-name matching behavior are unchanged.
+
+Selection uses stable topic IDs and survives filtering, including hidden rows. The count always includes hidden selections. With zero or one selected, individual topic downloads remain available; with two or more, they are disabled and **Download Selected Topic** becomes available. An active topic download prevents duplicate bulk submissions; a bulk download locks that book's topic download controls until success or failure. Whole-book downloads remain independent. Closing or changing books clears filter and selection state.
+
+Selected topics use the existing backend output: **one combined PDF**, with its existing cover/contents and only the chosen topic source PDFs, ordered as listed in the book. There is no unresolved output-format decision or new backend endpoint.
+
 ## Run
 
 From `Book-Search-Download-UI`:
@@ -19,8 +33,9 @@ Verified installed versions on 24 November 2026: Node **24.16.0**, npm **11.13.0
 
 - `src/app/core/configuration/api.config.ts`: API prefix `/api`, 100 MiB upload validation limit, 2-second status interval, matching backend defaults.
 - `proxy.conf.json`: development target `http://localhost:9090`; restart the dev server after changing it.
-- `src/styles.css`: `--library-background-image` selects the included local 1280×960 CC0 photo. [Asset attribution](public/assets/README.md). No runtime hotlink or blur. Reduced-transparency/contrast preferences use opaque panels and a solid background.
+- `src/styles.css`: `--library-background-image` in the shared `:root, dialog::backdrop` rule references the exact supplied `public/assets/Flowering-Gurukul-by-the-River.png`. The page and native pop-up backdrop share this local asset, with centered `cover` positioning and no stretching, warm tint, or image filter. A fixed viewport background layer keeps the central scene centered on long mobile pages. Neutral white overlays support readability; content and pop-up panels remain `#FFFFFF`, with the image outside the pop-up content. Reduced-transparency/contrast preferences use solid backgrounds. [Asset notes](public/assets/README.md).
 - `src/bootstrap.scss`: selective Bootstrap layout, forms, tables, buttons, feedback, and utilities. No Bootstrap JavaScript or competing modal controllers.
+- `--panel-background` in `src/styles.css` is opaque white (`#FFFFFF`) and shared by base Home/header/footer/modal/table surfaces. It changes background color only; text/buttons/icons do not inherit container opacity. No image or backdrop blur is applied. An attached visual reference was not present in the available files, so the explicit pure-white requirement is used as the target.
 
 Build with `npm run build`. Deploy **`dist/Book-Search-Download-UI/browser/`**, with history fallback to `index.html` and `/api/**` reverse-proxied to the backend. The development proxy is not included in the production bundle.
 
@@ -38,6 +53,7 @@ Contracts were read from backend controllers, DTOs, entities, and tests.
 | Processing status      | `GET /api/upload-status/{book_upload_id}`                                      |
 | Complete book          | `GET /api/download/book-download?bookId={id}`                                  |
 | Selected topic         | `GET /api/download/book-topic-download?bookId={id}&topicIds={selectedId}`      |
+| Multiple topics        | Same GET with repeated IDs: `?bookId={id}&topicIds={firstId}&topicIds={secondId}` |
 
 Six search controls match `query`, `bookName`, `authorName`, `topicName`, `bookDetailsContains`, and `topicDetailsContains`. Names use case-insensitive complete matches. Description filters use literal substrings, including literal `%` and `_`. Broad query combines complete names and description substrings with OR; explicit filters combine with AND. Both topic filters must match the same topic. The form explains these rules; no enum options are invented.
 
@@ -64,14 +80,14 @@ src/app/
     pages/home/                       orchestration and dynamic modal import
     components/
       book-search/                    typed reactive form
-      book-table/                     exactly five Home columns
-      book-topic-description/         exactly three topic columns
+      book-table/                     six Home columns; Book Type second
+      book-topic-description/         selection, name, description, download columns
     models/book.models.ts
     data-access/                      HTTP and shared download services
     services/book-upload.service.ts   transfer and processing lifecycle
   shared/
     ui/icon.component.ts
-    utils/                            HTTP errors and safe filenames
+    utils/                            HTTP errors, safe filenames, scoped scroll locking
 src/bootstrap.scss
 src/styles.css
 ```
@@ -83,14 +99,14 @@ Production build output and `browser-stats.json` show separate dynamic imports:
 | Load time                                        | Chunk                                                  | Raw size, rounded |
 | ------------------------------------------------ | ------------------------------------------------------ | ----------------: |
 | Initial                                          | Angular/router/HTTP bootstrap JavaScript               |          279.5 kB |
-| Initial                                          | Bootstrap subset and global CSS                        |          150.6 kB |
+| Initial                                          | Bootstrap subset and global CSS                        |          151.3 kB |
 | Root route                                       | Books routes via `loadChildren`                        |             175 B |
-| Root route                                       | Home via `loadComponent`, including its shell/services |            ~28 kB |
+| Root route                                       | Home via `loadComponent`, including its shell/services |           27.2 kB |
 | After first Home render, `@defer (on immediate)` | Search and reactive forms                              |           43.8 kB |
-| After first Home render, `@defer (on immediate)` | Books table                                            |            5.7 kB |
-| Only after View Book click, dynamic `import()`   | Topics modal                                           |            7.2 kB |
+| After first Home render, `@defer (on immediate)` | Books table                                            |            6.1 kB |
+| Only after View Book click, dynamic `import()`   | Topics modal                                           |           14.9 kB |
 
-Initial total: **~430.1 kB raw / 91.5 kB estimated transfer**, below the original 500 kB warning budget. Header/footer/layout/icons/services load **with their lazy Home parent**; they are not independently deferred. Search/table are referenced only inside defer boundaries. Home starts its one initial search immediately, independently of deferred rendering. No modal prefetch. Development HMR may consolidate deferred chunks; production output is the verified loading source.
+Initial total: **~430.7 kB raw / 91.6 kB estimated transfer**, below the original 500 kB warning budget. Header/footer/layout/icons/services load **with their lazy Home parent**; they are not independently deferred. Search/table are referenced only inside defer boundaries. Home starts its one initial search immediately, independently of deferred rendering. No modal prefetch. Development HMR may consolidate deferred chunks; production output is the verified loading source.
 
 ## Checks and remaining verification
 
@@ -99,8 +115,18 @@ npm run build -- --stats-json
 npm test -- --watch=false
 ```
 
-Production compilation passes with strict TypeScript/templates, no warnings or budget failures. **33 tests** cover exact API serialization, one initial unfiltered search, pagination, filters/Reset, stale-request cancellation, retry, upload-refresh state, picker cancellation/reselection, validation/progress/status success/failure/recovery, duplicates/concurrency, selected book/topic dispatch, filenames, Blob errors, URL cleanup, table states, dynamic modal selection/close/focus restoration, and unknown routes.
+Production compilation passes with strict TypeScript/templates, no warnings or budget failures. **50 Angular tests pass**. They cover section order/removal and shell projection; unchanged main search serialization; local filter input/apply/clear with zero HTTP requests; name-or-description and null/no-match cases; selection transitions **0 → 1 → 2 → 1 → 0**; hidden selections and original-order dispatch; selected-only HTTP IDs; duplicate suppression and success/error recovery; close/changed-book reset; scroll-lock restoration; and the retained upload, individual/whole-book download, filename, Blob-error, dynamic-modal/focus, Book Type and pagination checks. DOM tests emulate native dialog open/close and do not prove browser scroll geometry.
 
-Direct checks against the running backend passed: three real books on default search; exact-name filtering, pagination, and no results. Both download endpoints returned HTTP 200, `application/pdf`, attachment filenames and `%PDF` signatures. The dev server and `/api` proxy returned HTTP 200 and the same real catalog.
+The existing backend download regression suite also passed **34 tests** (`DownloadControllerTests`, `DownloadPipelineTests`, `DownloadServiceTests`). Live requests through the Angular `/api` proxy returned HTTP 200, `application/pdf`, and attachment filenames for selected topics, an individual topic and a whole book. For Think Java topic IDs **1 and 3**, PDFBox verified all **34 selected source pages** against their original topic files, in the requested order, plus exactly two existing front-matter pages; there were no extra source pages. The whole-book check retained all 14 pages. Default search still returns the four existing books, and the frontend main search method was compared directly with its original implementation and is unchanged. No database migration or backend source change was needed for this request.
 
-No contracts remain missing. **Live upload processing was not exercised** against the backend; controlled HTTP tests cover that lifecycle without creating test records. **Browser visual/mobile/keyboard QA remains unperformed**: the browser connector was unavailable and computer-use access to installed Edge was denied. DOM tests emulate native dialog open/close; real Tab trapping, Escape and responsive rendering still require a browser smoke check.
+The computer-use skill was used to inspect the updated desktop homepage and topic popup in Edge. Both retained white panels and the clear Gurukul image; the popup's header/controls and table container fit within the desktop viewport. Further browser interaction was interrupted by active user input and a minimized window. **Actual scroll-motion/overlap/double-scrollbar checks, mobile/short-viewport rendering, and real keyboard Tab/Escape checks were not completed**. The final explicit book-table vertical-overflow rule was added after that inspection and has build/test coverage but no subsequent visual confirmation. **Live upload processing was not exercised**; this request makes no upload-flow changes.
+
+## Files changed for the homepage/topic workflow
+
+- `src/app/layout/application-layout/application-layout.component.ts` and its new `.spec.ts`.
+- `src/app/features/books/pages/home/home.component.html`, `home.component.css`, and `home-render.spec.ts`.
+- `src/app/features/books/components/book-table/book-table.component.css` (vertical scroll ownership only).
+- `src/app/features/books/components/book-topic-description/book-topic-description.component.ts`, `.html`, `.css`, `.spec.ts`, and new `book-topic-download.integration.spec.ts`.
+- `src/app/shared/utils/scroll-lock.ts` and new `scroll-lock.spec.ts`.
+- `src/app/features/books/data-access/books-api.service.ts`, `book-download.service.ts`, and their `.spec.ts` files.
+- `src/styles.css` and this README.

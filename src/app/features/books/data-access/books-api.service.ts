@@ -43,8 +43,15 @@ export class BooksApiService {
   }
 
   downloadTopic(bookId: number, topicId: number): Observable<HttpResponse<Blob>> {
+    return this.downloadTopics(bookId, [topicId]);
+  }
+
+  downloadTopics(bookId: number, topicIds: readonly number[]): Observable<HttpResponse<Blob>> {
+    let params = new HttpParams().set('bookId', bookId);
+    // The existing Spring controller binds repeated parameters to an ordered List<Long>.
+    for (const topicId of topicIds) params = params.append('topicIds', topicId);
     return this.http.get(`${this.baseUrl}/download/book-topic-download`, {
-      params: { bookId, topicIds: topicId },
+      params,
       responseType: 'blob',
       observe: 'response',
     });

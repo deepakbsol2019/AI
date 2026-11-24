@@ -6,6 +6,7 @@ import { BookTableComponent } from './book-table.component';
 const selectedBook: Book = {
   bookId: 18,
   bookName: 'A selected book',
+  bookType: '  Reference  ',
   authorName: null,
   bookDetails: 'Book description',
   totalPages: 10,
@@ -28,7 +29,7 @@ describe('BookTableComponent', () => {
     });
   });
 
-  it('keeps exactly five columns and passes the selected book to each action', () => {
+  it('places Book Type after Book Name and keeps the existing book actions', () => {
     const fixture = TestBed.createComponent(BookTableComponent);
     fixture.componentRef.setInput('books', [selectedBook]);
     const viewed = vi.fn();
@@ -37,15 +38,36 @@ describe('BookTableComponent', () => {
     const element = fixture.nativeElement as HTMLElement;
     expect(Array.from(element.querySelectorAll('th'), (th) => th.textContent)).toEqual([
       'Book Name',
+      'Book Type',
       'Author Name',
       'Book Description',
       'Download Book',
       'View Book',
     ]);
+    expect(element.querySelector('tbody .type-cell')?.textContent?.trim()).toBe('Reference');
+    expect(element.querySelectorAll('tbody td')).toHaveLength(6);
     (element.querySelector('tbody .btn-outline-primary') as HTMLButtonElement).click();
     expect(downloads.downloadBook).toHaveBeenCalledWith(selectedBook);
     (element.querySelector('tbody .view-button') as HTMLButtonElement).click();
     expect(viewed).toHaveBeenCalledWith(selectedBook);
+  });
+
+  it('displays Unknown for null, empty, whitespace, and legacy omitted book types', () => {
+    const fixture = TestBed.createComponent(BookTableComponent);
+    const { bookType: _bookType, ...legacyBook } = selectedBook;
+    const books = [
+      { ...selectedBook, bookId: 1, bookType: null },
+      { ...selectedBook, bookId: 2, bookType: '' },
+      { ...selectedBook, bookId: 3, bookType: '   ' },
+      { ...legacyBook, bookId: 4 },
+      { ...selectedBook, bookId: 5, bookType: '  Science & Technology  ' },
+    ];
+    fixture.componentRef.setInput('books', books);
+    fixture.detectChanges();
+    const element = fixture.nativeElement as HTMLElement;
+    expect(
+      Array.from(element.querySelectorAll('.type-cell'), (cell) => cell.textContent?.trim()),
+    ).toEqual(['Unknown', 'Unknown', 'Unknown', 'Unknown', 'Science & Technology']);
   });
 
   it('distinguishes first loading from an empty result and keeps existing rows during refresh', () => {
@@ -54,6 +76,7 @@ describe('BookTableComponent', () => {
     fixture.detectChanges();
     const element = fixture.nativeElement as HTMLElement;
     expect(element.textContent).toContain('Finding books');
+    expect(element.querySelector('tbody td')?.getAttribute('colspan')).toBe('6');
     expect(element.textContent).not.toContain('No matching books');
     fixture.componentRef.setInput('busy', false);
     fixture.detectChanges();

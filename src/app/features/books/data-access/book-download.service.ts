@@ -25,6 +25,18 @@ export class BookDownloadService {
     return this.active().has(`topic:${bookId}:${topicId}`);
   }
 
+  isSelectedTopicsDownloading(bookId: number): boolean {
+    return this.active().has(`selected-topics:${bookId}`);
+  }
+
+  isAnyTopicDownloading(bookId: number): boolean {
+    const active = this.active();
+    return (
+      active.has(`selected-topics:${bookId}`) ||
+      [...active].some((key) => key.startsWith(`topic:${bookId}:`))
+    );
+  }
+
   downloadBook(book: Book): void {
     this.download(
       `book:${book.bookId}`,
@@ -34,10 +46,32 @@ export class BookDownloadService {
   }
 
   downloadTopic(book: Book, topic: BookTopic): void {
+    if (this.isSelectedTopicsDownloading(book.bookId)) return;
     this.download(
       `topic:${book.bookId}:${topic.topicId}`,
       this.api.downloadTopic(book.bookId, topic.topicId),
       `${topic.topicName}.pdf`,
+    );
+  }
+
+  downloadSelectedTopics(book: Book, topics: readonly BookTopic[]): void {
+    // One bulk operation per book, even if the user's selection subsequently changes.
+    if (this.isAnyTopicDownloading(book.bookId)) return;
+    const topicIds = [...new Set(topics.map((topic) => topic.topicId))];
+    const currentBookIds = new Set(book.topics.map((topic) => topic.topicId));
+    if (
+      !Number.isSafeInteger(book.bookId) ||
+      book.bookId <= 0 ||
+      topicIds.length < 2 ||
+      topicIds.some((id) => !Number.isSafeInteger(id) || id <= 0 || !currentBookIds.has(id))
+    ) {
+      this.error.set('Choose at least two valid topics from this book.');
+      return;
+    }
+    this.download(
+      `selected-topics:${book.bookId}`,
+      this.api.downloadTopics(book.bookId, topicIds),
+      `${book.bookName}-selected-topics.pdf`,
     );
   }
 
