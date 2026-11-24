@@ -58,7 +58,7 @@ class BookSearchToolTests {
             assertThat(properties.path(property).path("description").asText()).as("description for %s", property)
                     .isNotBlank();
         }
-        assertThat(properties.path("bookName").path("description").asText()).contains("EXACT", "complete title");
+        assertThat(properties.path("bookName").path("description").asText()).contains("SUBSTRING", "Effective Java");
         assertThat(properties.path("topicDetailsContains").path("description").asText()).contains("literal", "one topic");
         assertThat(properties.path("query").path("description").asText()).contains("OR", "ONLY here");
         assertThat(properties.path("page").path("description").asText()).contains("default 0");
@@ -79,7 +79,7 @@ class BookSearchToolTests {
         String description = tool.getToolDefinition().description();
         assertThat(description).contains("find Java books", "books related to Java", "contains Java",
                 "only in criteria.query", "explicit filters are combined with AND", "SAME topic", "ALL its topics",
-                "Do not guess", "substring match in a name field is outside this contract", "unique books",
+                "Do not guess", "case-insensitive literal substring matching", "unique books",
                 "before database pagination", "totalElements", "totalPages",
                 "{\"criteria\":{\"query\":\"Java\"}}",
                 "{\"criteria\":{\"bookName\":\"Java\"}}",

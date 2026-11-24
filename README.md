@@ -2,6 +2,44 @@
 
 Spring Boot 4.2 / Java 25 backend with the existing Ollama, MySQL, PDFBox, upload-status, and local PDF storage flows.
 
+## Homepage search listing
+
+`GET /api/search/books` now defaults to zero-based `page=0` and **`size=5`** when size is omitted. Explicit larger sizes remain supported; the existing valid API range is still 1–100. This default is applied only at the REST listing controller. The shared `searchBooks` AI tool retains its existing omitted-size default of 20; unrelated endpoint defaults are unchanged.
+
+`bookName`, `authorName`, and `topicName` now use case-insensitive literal **contains** matching in the database: `Java` matches `Effective Java` and `Java Programming`. The broad `query` remains an OR across book name, author name, topic name, book description and topic description, with substring matching in each field. Separate supplied filters remain ANDed; an explicit topic name and topic-description filter must match the same topic. Surrounding whitespace is removed, empty optional filters are ignored, and nullable fields safely contribute no match.
+
+All substring patterns use parameter binding and explicit `!` escaping so `%`, `_`, `!` and backslash input stay literal. Existing distinct-book counting and ID-first database pagination are preserved: multiple matching topics yield one book, correct filtered totals and its complete topic list. No match returns an empty result with zero totals. No browser-side substitute search, storage change, or schema migration was introduced. The topic popup's separate local filter is unchanged.
+
+Focused verification ran **69 tests: 68 passed, 0 failures, 0 errors, 1 skipped** across `BookSearchControllerTests`, `SearchServiceTests`, `BookSearchQueryRepositoryTests`, `BookSearchToolTests`, `BookMetadataPersistenceTests` and `BookTypePersistenceTests`. The skip is the optional live-model test (`book.ai.live` was unset). These checks cover the actual H2 query and HTTP/controller flow, name/query substrings, literal wildcard characters, same-topic AND conditions, distinct totals, five-row default pages, unchanged tool default 20, and existing metadata persistence.
+
+```powershell
+mvn '-Dmaven.repo.local=target/maven-repository' -o test '-Dtest=BookSearchControllerTests,SearchServiceTests,BookSearchQueryRepositoryTests,BookSearchToolTests,BookMetadataPersistenceTests,BookTypePersistenceTests' '-DargLine=-Dpdfbox.fontcache=target -Djava.io.tmpdir=C:/workspace/backend/Book_Search/Book-Search-Download/target/test-tmp'
+```
+
+The owned backend on port 9090 was restarted after checking that no upload was in progress. Eleven live GET smoke checks through the Angular proxy passed: omitted-size listing returned five rows and size 5; partial/case-insensitive book, author, topic and broad queries matched the catalog; repeated topic matches stayed unique with complete topics; literal percent/underscore filters, blank/no-match input, ordered page 1 at size 2 and explicit size 20 retained correct results/counts. The five-book catalog was unchanged. These read-only live checks complement the seven-matching-book pagination scenario in H2. Full backend tests and live AI/upload processing were not rerun for this increment.
+
+Changed files for this search increment are `search/repository/BookSearchQueryRepository.java` (name and broad-query database predicates), `search/controller/impl/SearchControllerImpl.java` (REST-only default), `dto/BookSearchCriteria.java`, `search/tool/BookSearchToolMetadata.java`, the controller/tool/repository test classes above, and this README. The search service, entity schema, metadata-update and PDF flows are unchanged in this increment.
+
+## Independent metadata field updates
+
+`PATCH /api/books/{bookId}/metadata` accepts exactly one provided key: `bookName`, `bookType`, `authorName`, or `bookDetails`. `PATCH /api/books/{bookId}/topics/{topicId}/metadata` accepts exactly one `topicName` or `topicDetails`. Both return the complete confirmed `BookSearchResponse.BookResult`, including all topics; existing search and download contracts stay unchanged. Example bodies are `{"bookType":"Physics"}` and `{"topicDetails":"First paragraph.\n\nSecond paragraph."}`. No database migration or new column is required.
+
+The request DTO tracks property presence: omitted fields remain untouched, while explicit null or empty descriptions clear their values. Empty objects, multiple fields, duplicate JSON keys, unknown/read-only fields, and values other than text or null are rejected with 400. Required book/topic names are trimmed and limited to their existing 255-character columns. A book with an exact reserved `_offset` row also needs room for that existing suffix (248 characters for the book name). Book types are trimmed and limited to 120 characters before domain normalization; null/blank becomes `Unknown`. Author names are nullable, trimmed and limited to their existing 200-character column. Description strings preserve their complete paragraphs and whitespace in the existing LONGTEXT columns; no invented short-text limit or silent truncation is applied. Validation failures return 422, missing/foreign records 404, and conflicts 409 with useful `application/problem+json` detail.
+
+Each save locks and refreshes the parent book before applying only the requested field. This preserves unrelated concurrent field updates without adding a version column. Shared legacy authors use copy-on-write under an author-row lock, so editing one book's credited name does not change another book. Metadata cannot be edited while its linked upload receipt is `inprogress`; retry after processing finishes. Legacy books without a linked receipt remain editable.
+
+Technical PDF storage rows remain visible but their topic names/descriptions are read-only: names ending in `_offset`, plus a legacy sole whole-book row whose name/description match its book, whose physical range is 1 through the total pages, and whose printed-page fields are null. Attempts to edit those topic fields return 409. Ordinary topics cannot be renamed to the reserved `_offset` suffix. Book renames atomically update the exact canonical offset name and its standard technical detail, or the legacy whole-book derived name. Changing a legacy whole-book's book description keeps its technical copy synchronized. These are internal derived values, not unrelated semantic field updates. Existing PDF paths, files, page boundaries, IDs, and AI content are never regenerated or moved.
+
+Focused checks are `BookMetadataControllerTests` and `BookMetadataPersistenceTests`; they cover exact-field JSON presence, explicit clearing, validation, full response/refetch, shared authors, technical-row protection, original-PDF readability after renames, upload-in-progress rejection, rollback, and concurrent independent field saves. The latest targeted suite passed **115 tests with no failures, errors or skips**, including these checks plus search, reading, downloads and application startup:
+
+```powershell
+mvn '-Dmaven.repo.local=target/maven-repository' -o test '-Dtest=BookMetadataControllerTests,BookMetadataPersistenceTests,BookSearchControllerTests,SearchServiceTests,BookReaderControllerTests,BookReaderServiceTests,DownloadControllerTests,DownloadServiceTests,DownloadPipelineTests,BookSearchDownloadApplicationTests' '-DargLine=-Dpdfbox.fontcache=target -Djava.io.tmpdir=C:/workspace/backend/Book_Search/Book-Search-Download/target/test-tmp'
+```
+
+A live no-op book-type PATCH through the Angular proxy returned 200 and refetched unchanged metadata/audit time from MySQL. A 121-character type returned 422 without changing the stored value. Changed-value persistence, concurrent updates and rollback use isolated H2 tests rather than altering the real catalog. The full backend suite, live AI extraction and live upload processing were not rerun for this incremental change. No new migration was applied or required.
+
+Changed backend files for this increment are the three new `metadata/controller/BookMetadataController.java`, `metadata/dto/MetadataPatchRequest.java`, `metadata/service/BookMetadataService.java` files, `repository/BookDetailsRepository.java`, the two focused test classes and this README. Existing entities, extraction, downloads and migration scripts are unchanged in this increment.
+
 ## Inline PDF reading
 
 The Angular reader uses new `GET /api/read/book?bookId={id}` and `GET /api/read/topics?bookId={id}&topicIds={id}...` routes. They return real PDF bytes with `Content-Disposition: inline` and `Cache-Control: no-store`. The existing attachment-download endpoints and their output format remain unchanged. No database migration or new file-path column is required.

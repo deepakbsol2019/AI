@@ -34,7 +34,7 @@ class BookSearchControllerTests {
             .withUserConfiguration(SearchWebConfiguration.class);
 
     @Test
-    void getWithoutABodyListsBooksWithSharedServiceDefaults() {
+    void getWithoutABodyListsBooksWithTheHomepageDefaultOfFive() {
         contextRunner.run(context -> {
             MockMvc mvc = MockMvcBuilders.webAppContextSetup(context).build();
             BookSearchQueryRepository repository = context.getBean(BookSearchQueryRepository.class);
@@ -45,14 +45,14 @@ class BookSearchControllerTests {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.books").isEmpty())
                     .andExpect(jsonPath("$.page").value(0))
-                    .andExpect(jsonPath("$.size").value(20))
+                    .andExpect(jsonPath("$.size").value(5))
                     .andExpect(jsonPath("$.totalElements").value(0))
                     .andExpect(jsonPath("$.totalPages").value(0));
 
             ArgumentCaptor<BookSearchCriteria> criteria = ArgumentCaptor.forClass(BookSearchCriteria.class);
             verify(repository).search(criteria.capture());
             assertThat(criteria.getValue().page()).isZero();
-            assertThat(criteria.getValue().size()).isEqualTo(20);
+            assertThat(criteria.getValue().size()).isEqualTo(5);
             assertThat(criteria.getValue().query()).isNull();
         });
     }
@@ -125,9 +125,9 @@ class BookSearchControllerTests {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.books").isEmpty())
                     .andExpect(jsonPath("$.page").value(2))
-                    .andExpect(jsonPath("$.size").value(20))
+                    .andExpect(jsonPath("$.size").value(5))
                     .andExpect(jsonPath("$.totalElements").value(24))
-                    .andExpect(jsonPath("$.totalPages").value(2));
+                    .andExpect(jsonPath("$.totalPages").value(5));
         });
     }
 

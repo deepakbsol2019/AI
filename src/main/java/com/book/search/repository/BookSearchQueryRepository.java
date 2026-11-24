@@ -106,12 +106,10 @@ public class BookSearchQueryRepository {
             Join<BookDetails, AuthorDetails> author = criteria.authorName() != null || criteria.query() != null
                     ? book.join("authorDetails", JoinType.LEFT) : null;
             if (criteria.bookName() != null) {
-                all.add(builder.equal(builder.lower(book.get("bookName")),
-                        parameter("bookNameExact", criteria.bookName())));
+                all.add(contains(book.get("bookName"), parameter("bookNamePattern", pattern(criteria.bookName()))));
             }
             if (criteria.authorName() != null) {
-                all.add(builder.equal(builder.lower(author.get("authorName")),
-                        parameter("authorNameExact", criteria.authorName())));
+                all.add(contains(author.get("authorName"), parameter("authorNamePattern", pattern(criteria.authorName()))));
             }
             if (criteria.bookDetailsContains() != null) {
                 all.add(contains(book.get("bookDetails"),
@@ -123,8 +121,7 @@ public class BookSearchQueryRepository {
                 List<Predicate> sameTopic = new ArrayList<>();
                 sameTopic.add(builder.equal(topic.get("bookDetails").get("bookId"), book.get("bookId")));
                 if (criteria.topicName() != null) {
-                    sameTopic.add(builder.equal(builder.lower(topic.get("topicName")),
-                            parameter("topicNameExact", criteria.topicName())));
+                    sameTopic.add(contains(topic.get("topicName"), parameter("topicNamePattern", pattern(criteria.topicName()))));
                 }
                 if (criteria.topicDetailsContains() != null) {
                     sameTopic.add(contains(topic.get("details"),
@@ -134,17 +131,16 @@ public class BookSearchQueryRepository {
                 all.add(builder.exists(matchingTopic));
             }
             if (criteria.query() != null) {
-                ParameterExpression<String> name = parameter("generalName", criteria.query());
-                ParameterExpression<String> details = parameter("generalDetailsPattern", pattern(criteria.query()));
+                ParameterExpression<String> general = parameter("generalPattern", pattern(criteria.query()));
                 Subquery<Integer> anyMatchingTopic = query.subquery(Integer.class);
                 Root<TopicDetails> topic = anyMatchingTopic.from(TopicDetails.class);
                 anyMatchingTopic.select(builder.literal(1)).where(
                         builder.equal(topic.get("bookDetails").get("bookId"), book.get("bookId")),
-                        builder.or(builder.equal(builder.lower(topic.get("topicName")), name),
-                                contains(topic.get("details"), details)));
-                all.add(builder.or(builder.equal(builder.lower(book.get("bookName")), name),
-                        builder.equal(builder.lower(author.get("authorName")), name),
-                        contains(book.get("bookDetails"), details),
+                        builder.or(contains(topic.get("topicName"), general),
+                                contains(topic.get("details"), general)));
+                all.add(builder.or(contains(book.get("bookName"), general),
+                        contains(author.get("authorName"), general),
+                        contains(book.get("bookDetails"), general),
                         builder.exists(anyMatchingTopic)));
             }
             return builder.and(all.toArray(Predicate[]::new));

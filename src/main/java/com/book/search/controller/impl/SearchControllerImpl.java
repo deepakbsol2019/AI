@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 public class SearchControllerImpl implements SearchController {
+    private static final int DEFAULT_LISTING_SIZE = 5;
     private final SearchService searchService;
 
     public SearchControllerImpl(SearchService searchService) {
@@ -17,6 +18,12 @@ public class SearchControllerImpl implements SearchController {
 
     @Override
     public ResponseEntity<BookSearchResponse> searchBooks(BookSearchCriteria criteria) {
+        if (criteria != null && criteria.size() == null) {
+            // The homepage listing defaults to five; the shared AI tool retains its own existing default.
+            criteria = new BookSearchCriteria(criteria.bookName(), criteria.topicName(), criteria.authorName(),
+                    criteria.bookDetailsContains(), criteria.topicDetailsContains(), criteria.query(),
+                    criteria.page(), DEFAULT_LISTING_SIZE);
+        }
         return ResponseEntity.ok(searchService.searchBooks(criteria));
     }
 }

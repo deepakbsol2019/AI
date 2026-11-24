@@ -9,7 +9,8 @@ public final class BookSearchToolMetadata {
             default page=0 and size=20, or supply only pagination. Surrounding whitespace is trimmed and
             null, empty and whitespace-only string filters are absent. Use query alone for a broad term;
             explicit fields are only for filters specifically requested by the user and are combined with AND.
-            page must be >= 0 and size must be 1..100. Validation is identical for REST and tool execution.
+            page must be >= 0 and size must be 1..100. Bounds validation is identical for REST and tool
+            execution; the REST homepage listing uses size=5 when its size parameter is omitted.
             """;
 
     public static final String DESCRIPTION = """
@@ -20,19 +21,17 @@ public final class BookSearchToolMetadata {
             "contains Java", put the search term only in criteria.query. Do not copy a broad search term
             into several explicit filters: all supplied explicit filters are combined with AND.
 
-            Use bookName only when the user specifies the complete book name or explicitly requests a
-            book-name match. Use topicName only for an explicit topic-name match. Use authorName only
-            when the user specifies an author. These three name filters match the COMPLETE stored name,
-            ignoring case; they do not perform substring, fuzzy, stemming or semantic matching. A requested
-            substring match in a name field is outside this contract; do not misrepresent exact-name search
-            as that capability. Use bookDetailsContains for requested text within book details and
-            topicDetailsContains for requested text within topic details. Details matches are case-insensitive
+            Use bookName for an explicitly requested book-name filter. Use topicName for an explicit
+            topic-name filter. Use authorName when the user specifies an author. These three name
+            filters use case-insensitive literal substring matching, not fuzzy, stemming or semantic
+            matching. Java therefore matches Effective Java and Java Programming through the title.
+            Use bookDetailsContains for requested text within book details and
+            topicDetailsContains for requested text within topic details. All matches are case-insensitive
             literal substrings: %, _ and the escape character are ordinary text, never wildcard instructions.
 
-            General query is OR across five fields: exact complete book name, exact complete author name,
-            literal substring of book details, exact complete name of any topic, or literal substring of any
-            topic's details, all ignoring case. query=Java does not match Effective Java through its title
-            alone, but that book may match through another eligible field. Missing authors/details/topics
+            General query is OR across five fields: literal substrings of book name, author name,
+            book details, any topic name, or any topic's details, all ignoring case. query=Java matches
+            Effective Java through its title alone. Missing authors/details/topics
             contribute no match and do not prevent a match through another field.
 
             Explicit filters are ANDed. If query and explicit filters are supplied, the full general-query
@@ -55,7 +54,7 @@ public final class BookSearchToolMetadata {
 
             Representative tool arguments (the outer criteria object is required):
             Broad search: {"criteria":{"query":"Java"}}
-            Exact book name: {"criteria":{"bookName":"Java"}}
+            Book-name substring: {"criteria":{"bookName":"Java"}}
             Author plus general search: {"criteria":{"authorName":"Asha Sharma","query":"Java"}}
             Topic-details substring: {"criteria":{"topicDetailsContains":"thread pool"}}
             List all, first page: {"criteria":{}}

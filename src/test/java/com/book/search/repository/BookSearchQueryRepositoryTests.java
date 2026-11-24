@@ -1,6 +1,7 @@
 package com.book.search.repository;
 
 import java.util.List;
+import java.util.ArrayList;
 import java.util.UUID;
 
 import com.book.dto.BookSearchCriteria;
@@ -9,6 +10,8 @@ import com.book.entity.BookDetails;
 import com.book.entity.BookUploadStatus;
 import com.book.entity.TopicDetails;
 import com.book.search.repository.BookSearchQueryRepository.SearchPage;
+import com.book.search.controller.impl.SearchControllerImpl;
+import com.book.search.service.impl.SearchServiceImpl;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import org.hibernate.SessionFactory;
@@ -21,8 +24,12 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import tools.jackson.databind.json.JsonMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @DataJpaTest(showSql = false, properties = {"debug=false", "spring.jpa.show-sql=false",
         "logging.level.org.hibernate.SQL=INFO"})
@@ -35,15 +42,28 @@ class BookSearchQueryRepositoryTests {
     @Autowired PlatformTransactionManager transactions;
 
     @Test
-    void nameFiltersAreCaseInsensitiveWholeFieldMatches() {
+    void nameFiltersAreCaseInsensitiveLiteralSubstrings() {
         BookDetails java = book("Java", "Asha Sharma", null, topic("Collections", null));
-        book("Effective Java", "Asha Sharma Jr", null, topic("Advanced Collections", null));
-        book("JavaScript", "Other Writer", null, topic("Collection", null));
+        BookDetails effective = book("Effective Java", "Asha Sharma Jr", null, topic("Advanced Collections", null));
+        BookDetails script = book("JavaScript", "Other Writer", null, topic("Collection", null));
 
-        assertIds(run(criteria("jAvA", null, null, null, null, null, 0, 20)), java);
-        assertIds(run(criteria(null, "cOlLeCtIoNs", null, null, null, null, 0, 20)), java);
-        assertIds(run(criteria(null, null, "ASHA SHARMA", null, null, null, 0, 20)), java);
-        assertThat(run(criteria("Jav", null, null, null, null, null, 0, 20)).totalElements()).isZero();
+        assertIds(run(criteria("jAvA", null, null, null, null, null, 0, 20)), java, effective, script);
+        assertIds(run(criteria(null, "cOlLeCtIoNs", null, null, null, null, 0, 20)), java, effective);
+        assertIds(run(criteria(null, null, "ASHA SHARMA", null, null, null, 0, 20)), java, effective);
+        assertIds(run(criteria("Jav", null, null, null, null, null, 0, 20)), java, effective, script);
+    }
+
+    @Test
+    void nameContainsFiltersEscapePercentUnderscoreEscapeAndBackslashLiterally() {
+        BookDetails literal = book("Guide 100%_!\\ Supplement", "Dr 100%_!\\ Writer", null,
+                topic("Intro 100%_!\\ Topic", null));
+        book("Guide 100abcX!\\ Supplement", "Dr 100abcX!\\ Writer", null,
+                topic("Intro 100abcX!\\ Topic", null));
+
+        assertIds(run(criteria("100%_!\\", null, null, null, null, null, 0, 20)), literal);
+        assertIds(run(criteria(null, "100%_!\\", null, null, null, null, 0, 20)), literal);
+        assertIds(run(criteria(null, null, "100%_!\\", null, null, null, 0, 20)), literal);
+        assertIds(run(criteria(null, null, null, null, null, "100%_!\\", 0, 20)), literal);
     }
 
     @Test
@@ -59,16 +79,16 @@ class BookSearchQueryRepositoryTests {
     }
 
     @Test
-    void generalSearchMatchesEachOfItsFiveFieldsIndependentlyWithoutPartialNames() {
+    void generalSearchMatchesEachOfItsFiveFieldsIncludingPartialNames() {
         BookDetails title = book("Java", "No other field", null);
         BookDetails author = book("Author match", "JAVA", null);
         BookDetails description = book("Details match", null, "An introduction to JAVA programming.");
         BookDetails topicName = book("Topic-name match", null, null, topic("JaVa", null));
         BookDetails topicDetails = book("Topic-details match", null, null, topic("Language", "Use Java for applications"));
-        book("Effective Java", "Java Expert", null, topic("JavaScript", null));
+        BookDetails partial = book("Effective Java", "Java Expert", null, topic("JavaScript", null));
 
         assertIds(run(criteria(null, null, null, null, null, "Java", 0, 20)),
-                title, author, description, topicName, topicDetails);
+                title, author, description, topicName, topicDetails, partial);
     }
 
     @Test
@@ -107,11 +127,55 @@ class BookSearchQueryRepositoryTests {
     @Test
     void explicitTopicNameAndDetailsMustBelongToOneTopic() {
         book("Split topic match", null, null,
-                topic("Concurrency", "Locks"), topic("Other", "A thread pool"));
+                topic("Practical Concurrency", "Locks"), topic("Other", "A thread pool"));
         BookDetails sameTopic = book("Same topic match", null, null,
-                topic("Concurrency", "A thread pool"), topic("Other", "Locks"));
+                topic("Practical Concurrency", "A thread pool"), topic("Other", "Locks"));
 
-        assertIds(run(criteria(null, "Concurrency", null, null, "thread pool", null, 0, 20)), sameTopic);
+        assertIds(run(criteria(null, "concur", null, null, "thread pool", null, 0, 20)), sameTopic);
+    }
+
+    @Test
+    void actualHttpListingDefaultsToFiveAndContainsTopicMatchesStayDistinctAcrossPages() throws Exception {
+        List<BookDetails> matches = new ArrayList<>();
+        for (int i = 0; i < 7; i++) {
+            matches.add(book("Effective Java " + i, "Test Writer " + i, null,
+                    topic("Java foundations", null), topic("Advanced Java", null), topic("Unrelated topic", null)));
+        }
+        book("Unrelated title", null, null, topic("Other subject", null));
+        entityManager.flush();
+        entityManager.clear();
+        var mvc = MockMvcBuilders.standaloneSetup(new SearchControllerImpl(new SearchServiceImpl(search))).build();
+        JsonMapper json = JsonMapper.builder().build();
+        var unfiltered = json.readTree(mvc.perform(get("/api/search/books"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertThat(unfiltered.path("size").asInt()).isEqualTo(5);
+        assertThat(unfiltered.path("books").size()).isEqualTo(5);
+        assertThat(unfiltered.path("totalElements").asLong()).isEqualTo(8);
+        String firstBody = mvc.perform(get("/api/search/books").queryParam("bookName", "  jAvA  ")
+                        .queryParam("authorName", " WRITER ").queryParam("topicName", " java "))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        var first = json.readTree(firstBody);
+        assertThat(first.path("size").asInt()).isEqualTo(5);
+        assertThat(first.path("totalElements").asLong()).isEqualTo(7);
+        assertThat(first.path("totalPages").asLong()).isEqualTo(2);
+        assertThat(first.path("books").size()).isEqualTo(5);
+        assertThat(first.path("books").get(0).path("bookId").asLong()).isEqualTo(matches.getFirst().getBookId());
+        assertThat(first.path("books").get(0).path("topics").size()).isEqualTo(3);
+        var second = json.readTree(mvc.perform(get("/api/search/books").queryParam("topicName", "java")
+                        .queryParam("page", "1"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertThat(second.path("books").size()).isEqualTo(2);
+        assertThat(second.path("books").get(0).path("bookId").asLong()).isEqualTo(matches.get(5).getBookId());
+        assertThat(second.path("totalElements").asLong()).isEqualTo(7);
+        var larger = json.readTree(mvc.perform(get("/api/search/books").queryParam("bookName", "java")
+                        .queryParam("size", "20"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertThat(larger.path("size").asInt()).isEqualTo(20);
+        assertThat(larger.path("books").size()).isEqualTo(7);
+        var absent = json.readTree(mvc.perform(get("/api/search/books").queryParam("bookName", "never appears"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertThat(absent.path("books").size()).isZero();
+        assertThat(absent.path("totalElements").asLong()).isZero();
     }
 
     @Test
