@@ -40,7 +40,7 @@ import com.book.extraction.ContentsUnavailableException;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-class TopicPdfUploadServiceTests {
+class TopicPdfUploadServiceTests extends com.book.user.TenantAwareTest {
     @TempDir Path root;
     private final TopicPdfFileStore files = mock(TopicPdfFileStore.class);
     private final BookDetailsRepository books = mock(BookDetailsRepository.class);
@@ -498,7 +498,7 @@ class TopicPdfUploadServiceTests {
     private BookExtractionResult callInTransaction(TopicPdfUploadService uploadService) {
         beginTransaction();
         databaseOwner.set(Thread.currentThread());
-        try {
+        try (var tenant = com.book.user.security.TenantContext.use(1)) {
             return uploadService.uploadTopic(saved);
         }
         finally {

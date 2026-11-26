@@ -11,6 +11,7 @@ import com.book.dto.BookSearchCriteria;
 import com.book.entity.AuthorDetails;
 import com.book.entity.BookDetails;
 import com.book.entity.TopicDetails;
+import com.book.user.security.TenantContext;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.TypedQuery;
 import jakarta.persistence.criteria.AbstractQuery;
@@ -39,10 +40,11 @@ public class BookSearchQueryRepository {
 
     /** Receives already normalized and validated criteria from the shared search service. */
     public SearchPage search(BookSearchCriteria criteria) {
+        long tenantId = TenantContext.requireTenantId();
         CriteriaBuilder builder = entityManager.getCriteriaBuilder();
         CriteriaQuery<Long> countCriteria = builder.createQuery(Long.class);
         Root<BookDetails> countBook = countCriteria.from(BookDetails.class);
-        Filters countFilters = new Filters(builder, countCriteria, countBook, criteria);
+        Filters countFilters = new Filters(builder, countCriteria, countBook, criteria, tenantId);
         countCriteria.select(builder.countDistinct(countBook.get("bookId")))
                 .where(countFilters.predicate());
         long total = countFilters.bind(entityManager.createQuery(countCriteria)).getSingleResult();
@@ -53,7 +55,7 @@ public class BookSearchQueryRepository {
 
         CriteriaQuery<Long> idCriteria = builder.createQuery(Long.class);
         Root<BookDetails> idBook = idCriteria.from(BookDetails.class);
-        Filters idFilters = new Filters(builder, idCriteria, idBook, criteria);
+        Filters idFilters = new Filters(builder, idCriteria, idBook, criteria, tenantId);
         idCriteria.select(idBook.get("bookId")).distinct(true)
                 .where(idFilters.predicate()).orderBy(builder.asc(idBook.get("bookId")));
         // Hibernate's Number offsets preserve the full valid Integer page/size range.
@@ -68,7 +70,8 @@ public class BookSearchQueryRepository {
         completeBook.fetch("bookUploadStatus", JoinType.LEFT);
         completeBook.fetch("topics", JoinType.LEFT);
         ParameterExpression<List> pageIds = builder.parameter(List.class, "pageIds");
-        completeCriteria.select(completeBook).where(completeBook.get("bookId").in(pageIds))
+        completeCriteria.select(completeBook).where(builder.and(completeBook.get("bookId").in(pageIds),
+                        visibleTenant(builder, completeBook, tenantId)))
                 .orderBy(builder.asc(completeBook.get("bookId")));
         List<BookDetails> fetched = entityManager.createQuery(completeCriteria)
                 .setParameter(pageIds, ids).getResultList();
@@ -86,23 +89,31 @@ public class BookSearchQueryRepository {
         public SearchPage { books = List.copyOf(books); }
     }
 
+    private static Predicate visibleTenant(CriteriaBuilder builder, Root<BookDetails> book,
+            long tenantId) {
+        return builder.equal(book.get("tenantId"), tenantId);
+    }
+
     private static final class Filters {
         private final CriteriaBuilder builder;
         private final AbstractQuery<?> query;
         private final Root<BookDetails> book;
         private final BookSearchCriteria criteria;
+        private final long tenantId;
         private final Map<String, String> parameters = new LinkedHashMap<>();
 
         private Filters(CriteriaBuilder builder, AbstractQuery<?> query, Root<BookDetails> book,
-                BookSearchCriteria criteria) {
+                BookSearchCriteria criteria, long tenantId) {
             this.builder = builder;
             this.query = query;
             this.book = book;
             this.criteria = criteria;
+            this.tenantId = tenantId;
         }
 
         private Predicate predicate() {
             List<Predicate> all = new ArrayList<>();
+            all.add(visibleTenant(builder, book, tenantId));
             Join<BookDetails, AuthorDetails> author = criteria.authorName() != null || criteria.query() != null
                     ? book.join("authorDetails", JoinType.LEFT) : null;
             if (criteria.bookName() != null) {

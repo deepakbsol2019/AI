@@ -29,7 +29,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /** Exercises the actual post-save API, PDF layout detector, and independently committed writer together. */
-@DataJpaTest(showSql = false, properties = { "debug=false", "spring.jpa.show-sql=false",
+@DataJpaTest(showSql = false, properties = { "spring.jpa.hibernate.ddl-auto=create-drop", "debug=false", "spring.jpa.show-sql=false",
         "logging.level.org.hibernate.SQL=INFO" })
 @Import({ BookPageOffsetService.class, SavedBookTopicSelector.class, ChapterOpeningDetector.class,
         PageOffsetAssumptionValidator.class, TopicPageOffsetWriter.class })

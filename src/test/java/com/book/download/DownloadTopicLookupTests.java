@@ -15,7 +15,7 @@ import com.book.entity.TopicDetails;
 import com.book.repository.BookDetailsRepository;
 import com.book.repository.TopicDetailsRepository;
 
-@DataJpaTest(showSql = false, properties = { "debug=false", "spring.jpa.show-sql=false",
+@DataJpaTest(showSql = false, properties = { "spring.jpa.hibernate.ddl-auto=create-drop", "debug=false", "spring.jpa.show-sql=false",
         "logging.level.org.hibernate.SQL=INFO" })
 class DownloadTopicLookupTests {
     @Autowired BookDetailsRepository books;

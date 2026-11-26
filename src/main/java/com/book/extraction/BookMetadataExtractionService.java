@@ -23,6 +23,7 @@ import com.book.dto.PdfTopicBatchExtraction;
 import com.book.repository.BookDetailsRepository;
 import com.book.entity.BookDetails;
 import com.book.entity.BookUploadStatus;
+import com.book.user.security.TenantContext;
 
 @Service
 public class BookMetadataExtractionService {
@@ -45,6 +46,7 @@ public class BookMetadataExtractionService {
     }
 
     public BookExtractionResult extract(byte[] pdfData, String fileName, Long bookUploadId) {
+        TenantContext.requireTenantId();
         if (bookUploadId != null && bookUploadId <= 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The upload tracking ID must be positive.");
         }
@@ -217,12 +219,12 @@ public class BookMetadataExtractionService {
             if (cause instanceof org.hibernate.exception.ConstraintViolationException violation
                     && violation.getConstraintName() != null) {
                 return violation.getConstraintName().toLowerCase(java.util.Locale.ROOT)
-                        .contains("uk_book_details_book_name");
+                        .matches(".*(uk_book_details_book_name|uk_book_tenant_name).*");
             }
         }
         for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
             if (cause.getMessage() != null && cause.getMessage().toLowerCase(java.util.Locale.ROOT)
-                    .contains("uk_book_details_book_name")) {
+                    .matches("(?s).*(uk_book_details_book_name|uk_book_tenant_name).*")) {
                 return true;
             }
         }

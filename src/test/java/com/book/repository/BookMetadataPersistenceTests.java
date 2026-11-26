@@ -39,10 +39,10 @@ import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.json.JsonMapper;
 import static org.assertj.core.api.Assertions.*;
 
-@DataJpaTest(showSql = false, properties = {"debug=false", "spring.jpa.show-sql=false"})
+@DataJpaTest(showSql = false, properties = {"spring.jpa.hibernate.ddl-auto=create-drop", "debug=false", "spring.jpa.show-sql=false"})
 @Import(BookMetadataService.class)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
-class BookMetadataPersistenceTests {
+class BookMetadataPersistenceTests extends com.book.user.TenantAwareTest {
     @Autowired BookMetadataService metadata;
     @Autowired BookDetailsRepository books;
     @Autowired TopicDetailsRepository topics;
@@ -142,7 +142,7 @@ class BookMetadataPersistenceTests {
     void canonicalBookRenameKeepsReservedOffsetAndSourcePdfReadableWithoutFileChanges() throws Exception {
         Long id = fixture(true).getBookId();
         byte[] original = pdf();
-        Path path = storage.resolve("original-unchanged.pdf"); Files.write(path, original);
+        Path path = Files.createDirectories(storage.resolve("1")).resolve("original-unchanged.pdf"); Files.write(path, original);
         tx().executeWithoutResult(status -> books.findById(id).orElseThrow().getTopics().getFirst().setPdfPath(path.toString()));
         String renamed = "Renamed " + UUID.randomUUID();
         BookResult result = metadata.patchBook(id, request("bookName", renamed));
@@ -162,7 +162,7 @@ class BookMetadataPersistenceTests {
     @Test
     void legacyWholeBookDerivedFieldsFollowBookEditsAndKeepTheExistingPdfPath() throws Exception {
         Long id = fixture(true).getBookId();
-        Path path = storage.resolve("legacy-original.pdf"); Files.write(path, pdf());
+        Path path = Files.createDirectories(storage.resolve("1")).resolve("legacy-original.pdf"); Files.write(path, pdf());
         tx().executeWithoutResult(status -> {
             BookDetails book = books.findById(id).orElseThrow(); TopicDetails technical = book.getTopics().getFirst();
             technical.setTopicName(book.getBookName()); technical.setDetails(book.getBookDetails()); technical.setPdfPath(path.toString());
@@ -197,8 +197,8 @@ class BookMetadataPersistenceTests {
         Long id = fixture(false).getBookId();
         CountDownLatch ready = new CountDownLatch(2), start = new CountDownLatch(1);
         try (var executor = Executors.newFixedThreadPool(2)) {
-            var type = executor.submit(() -> { ready.countDown(); start.await(10, TimeUnit.SECONDS); return metadata.patchBook(id, request("bookType", "Chemistry")); });
-            var description = executor.submit(() -> { ready.countDown(); start.await(10, TimeUnit.SECONDS); return metadata.patchBook(id, request("bookDetails", "Concurrent description")); });
+            var type = executor.submit(() -> { try (var ignored = com.book.user.security.TenantContext.use(1L)) { ready.countDown(); start.await(10, TimeUnit.SECONDS); return metadata.patchBook(id, request("bookType", "Chemistry")); } });
+            var description = executor.submit(() -> { try (var ignored = com.book.user.security.TenantContext.use(1L)) { ready.countDown(); start.await(10, TimeUnit.SECONDS); return metadata.patchBook(id, request("bookDetails", "Concurrent description")); } });
             assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue(); start.countDown();
             type.get(20, TimeUnit.SECONDS); description.get(20, TimeUnit.SECONDS);
         }

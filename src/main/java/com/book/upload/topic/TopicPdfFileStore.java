@@ -26,7 +26,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class TopicPdfFileStore {
-    private final Path configuredRoot;
+    private final com.book.storage.TenantStoragePaths storage;
     private final int maxAttempts;
     private final ConcurrentMap<Path, OperationFiles> operations = new ConcurrentHashMap<>();
 
@@ -38,7 +38,7 @@ public class TopicPdfFileStore {
         if (maxAttempts < 1 || maxAttempts > 10) {
             throw new IllegalArgumentException("Topic PDF max-attempts must be between 1 and 10.");
         }
-        configuredRoot = Path.of(storageRoot).toAbsolutePath().normalize();
+        storage = new com.book.storage.TenantStoragePaths(storageRoot);
         this.maxAttempts = maxAttempts;
     }
 
@@ -48,12 +48,12 @@ public class TopicPdfFileStore {
             throw new IllegalArgumentException("A persisted book ID is required for topic PDF storage.");
         }
         try {
-            Files.createDirectories(configuredRoot);
-            Path root = configuredRoot.toRealPath();
+            long tenantId=com.book.user.security.TenantContext.requireTenantId();
+            Path root = storage.provision(tenantId);
             Path operation = root.resolve(bookFolderName(bookName)).toAbsolutePath().normalize();
             // Never adopt an existing folder: it may contain another upload's committed PDFs.
             Files.createDirectory(operation);
-            operations.put(operation, new OperationFiles());
+            operations.put(operation, new OperationFiles(tenantId));
             return operation;
         }
         catch (IOException exception) {
@@ -146,11 +146,11 @@ public class TopicPdfFileStore {
     }
 
     public static String bookFolderName(String bookName) {
-        return windowsComponent(bookName, 255);
+        return com.book.storage.TenantStoragePaths.filename(windowsComponent(bookName, 255));
     }
 
     public static String topicFileName(String topicName) {
-        return windowsComponent(topicName, 251) + ".pdf";
+        return com.book.storage.TenantStoragePaths.filename(windowsComponent(topicName, 251) + ".pdf");
     }
 
     /** Keeps valid titles intact and converts characters Windows cannot use in a path component. */
@@ -287,10 +287,12 @@ public class TopicPdfFileStore {
                 .toAbsolutePath().normalize();
     }
 
-    private static void requireOperationDirectory(Path operation) throws IOException {
-        if (!Files.isDirectory(operation, LinkOption.NOFOLLOW_LINKS)
-                || Files.isSymbolicLink(operation.getParent())
-                || !operation.toRealPath().equals(operation)) {
+    private void requireOperationDirectory(Path operation) throws IOException {
+        storage.requireWritable(ownedOperation(operation).tenantId);
+        storage.requirePath(ownedOperation(operation).tenantId,operation);
+        // The central storage validator already checks every ancestor for redirects.
+        // Comparing the lexical path with its real path would reject Windows 8.3 aliases.
+        if (!Files.isDirectory(operation, LinkOption.NOFOLLOW_LINKS)) {
             throw new IOException("Topic PDF operation directory is absent or resolves through a symbolic link.");
         }
     }
@@ -311,6 +313,8 @@ public class TopicPdfFileStore {
     }
 
     private static final class OperationFiles {
+        private final long tenantId;
+        private OperationFiles(long tenantId) { this.tenantId=tenantId; }
         private final Set<Path> paths = ConcurrentHashMap.newKeySet();
         private final Set<Long> claimedTopics = ConcurrentHashMap.newKeySet();
         private final Set<String> claimedFilenames = ConcurrentHashMap.newKeySet();

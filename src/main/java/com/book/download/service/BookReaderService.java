@@ -10,6 +10,7 @@ import java.util.Set;
 
 import com.book.entity.TopicDetails;
 import com.book.repository.TopicDetailsRepository;
+import com.book.user.security.TenantContext;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +30,7 @@ public class BookReaderService {
     @Transactional(readOnly = true)
     public byte[] readTopics(Long bookId, List<Long> topicIds) {
         requirePositive(bookId, "bookId");
+        TenantContext.requireTenantId();
         if (topicIds == null || topicIds.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "topicIds must contain at least one topic ID.");
         }
@@ -50,6 +52,7 @@ public class BookReaderService {
                 throw unavailableOrder("The saved topic metadata is inconsistent.");
             }
             if (!Objects.equals(topic.getBookDetails().getBookId(), bookId)) throw missingSelection(bookId);
+            TenantContext.requireOwned(topic.getBookDetails().getTenantId());
         }
         if (!byId.keySet().equals(requested)) throw missingSelection(bookId);
         for (TopicDetails topic : found) {

@@ -31,10 +31,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@DataJpaTest(showSql = false, properties = {"debug=false", "spring.jpa.show-sql=false",
+@DataJpaTest(showSql = false, properties = {"spring.jpa.hibernate.ddl-auto=create-drop", "debug=false", "spring.jpa.show-sql=false",
         "logging.level.org.hibernate.SQL=INFO"})
 @Import(BookSearchQueryRepository.class)
-class BookSearchQueryRepositoryTests {
+class BookSearchQueryRepositoryTests extends com.book.user.TenantAwareTest {
     @Autowired BookSearchQueryRepository search;
     @Autowired EntityManager entityManager;
     @Autowired EntityManagerFactory entityManagerFactory;
@@ -292,7 +292,7 @@ class BookSearchQueryRepositoryTests {
     @Test
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     void differentPersistentIdsRemainSeparateEvenForIdenticalTitles() {
-        jdbc.execute("alter table book_details drop constraint uk_book_details_book_name");
+        jdbc.execute("alter table book_details drop constraint uk_book_tenant_name");
         try {
             new TransactionTemplate(transactions).executeWithoutResult(transaction -> {
                 BookDetails first = book("Legacy Same Title", "Same Writer", null, topic("Same Topic", null));
@@ -304,7 +304,7 @@ class BookSearchQueryRepositoryTests {
             });
         }
         finally {
-            jdbc.execute("alter table book_details add constraint uk_book_details_book_name unique (book_name)");
+            jdbc.execute("alter table book_details add constraint uk_book_tenant_name unique (tenant_id, book_name)");
         }
     }
 

@@ -35,7 +35,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
-class BookMetadataExtractionServiceTests {
+class BookMetadataExtractionServiceTests extends com.book.user.TenantAwareTest {
     private final BookPageAnalyzer analyzer = mock(BookPageAnalyzer.class);
     private final BookDetailsRepository books = mock(BookDetailsRepository.class);
     private final ObjectMapper mapper = JsonMapper.builder().build();

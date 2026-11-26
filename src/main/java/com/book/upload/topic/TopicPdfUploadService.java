@@ -154,6 +154,7 @@ public class TopicPdfUploadService {
         }
         BookDetails persistedBook = books.findLockedByBookId(bookId).orElseThrow(() ->
                 new TopicPdfUploadException("The current saved book no longer exists."));
+        com.book.user.security.TenantContext.requireOwned(persistedBook.getTenantId());
         if (!Objects.equals(bookName, persistedBook.getBookName())
                 || responseBook.getTotalPages() != totalPages || persistedBook.getTotalPages() != totalPages
                 || persistedBook.getAuthorDetails() == null

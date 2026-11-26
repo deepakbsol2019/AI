@@ -37,7 +37,7 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-class DownloadPipelineTests {
+class DownloadPipelineTests extends com.book.user.TenantAwareTest {
     @TempDir Path storage;
 
     @Test
@@ -102,7 +102,7 @@ class DownloadPipelineTests {
     }
 
     private TopicDetails topic(BookDetails book, Long id, String name, String pageMarker) throws Exception {
-        Path pdf = storage.resolve(id + ".pdf");
+        Path pdf = java.nio.file.Files.createDirectories(storage.resolve("1")).resolve(id + ".pdf");
         try (PDDocument document = new PDDocument()) {
             PDPage page = new PDPage();
             document.addPage(page);

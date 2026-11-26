@@ -35,11 +35,12 @@ import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.any;
 
 @DataJpaTest(showSql = false, properties = {
+        "spring.jpa.hibernate.ddl-auto=create-drop",
         "debug=false",
         "spring.jpa.show-sql=false",
         "logging.level.org.hibernate.SQL=INFO"
 })
-class BookPersistenceTests {
+class BookPersistenceTests extends com.book.user.TenantAwareTest {
     @Autowired BookDetailsRepository books;
     @Autowired EntityManager entityManager;
 

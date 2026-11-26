@@ -4,10 +4,11 @@ import jakarta.persistence.*;
 import java.util.ArrayList;
 import java.util.List;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.book.user.security.TenantContext;
 
 @Entity
 @Table(name = "book_details", uniqueConstraints =
-        @UniqueConstraint(name = "uk_book_details_book_name", columnNames = "book_name"))
+        @UniqueConstraint(name = "uk_book_tenant_name", columnNames = {"tenant_id", "book_name"}))
 public class BookDetails extends AuditedEntity {
     public static final int MAX_BOOK_NAME_LENGTH = 255;
     public static final int MAX_BOOK_TYPE_LENGTH = 120;
@@ -16,6 +17,10 @@ public class BookDetails extends AuditedEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long bookId;
+
+    @Column(name = "tenant_id", updatable = false)
+    @JsonIgnore
+    private Long tenantId = TenantContext.currentTenantId();
 
     @Column(nullable = false, unique = true, length = 36)
     private String extractionId;
@@ -52,6 +57,11 @@ public class BookDetails extends AuditedEntity {
     public BookDetails() { }
     public Long getBookId() { return bookId; }
     public void setBookId(Long bookId) { this.bookId = bookId; }
+    @JsonIgnore public Long getTenantId() { return tenantId; }
+    public void setTenantId(Long tenantId) { this.tenantId = tenantId; }
+    @PrePersist private void assignNewBookTenant() {
+        if (tenantId == null) tenantId = TenantContext.currentTenantId();
+    }
     public String getExtractionId() { return extractionId; }
     public void setExtractionId(String extractionId) { this.extractionId = extractionId; }
     public String getBookName() { return bookName; }

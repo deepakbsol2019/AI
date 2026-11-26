@@ -60,7 +60,7 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
 /** Real background execution and independently committed receipts around the complete book transaction. */
-@DataJpaTest(showSql = false, properties = { "debug=false", "spring.jpa.show-sql=false",
+@DataJpaTest(showSql = false, properties = { "spring.jpa.hibernate.ddl-auto=create-drop", "debug=false", "spring.jpa.show-sql=false",
         "logging.level.org.hibernate.SQL=INFO" })
 @Import({ FileUploadServiceImpl.class, BookMetadataExtractionService.class, BookPageOffsetService.class,
         SavedBookTopicSelector.class, ChapterOpeningDetector.class, PageOffsetAssumptionValidator.class,
@@ -68,7 +68,7 @@ import tools.jackson.databind.json.JsonMapper;
         BookUploadSubmissionService.class, BackgroundBookUploadService.class, WholeBookFallbackService.class,
         BackgroundBookUploadTests.Configuration.class })
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
-class BackgroundBookUploadTests {
+class BackgroundBookUploadTests extends com.book.user.TenantAwareTest {
     private static final Path STORAGE_ROOT = temporaryDirectory();
 
     @Autowired BookUploadSubmissionService submissions;
@@ -143,7 +143,7 @@ class BackgroundBookUploadTests {
         List<TopicDetails> savedTopics = topics.findAllByBookDetailsBookIdOrderByTopicIdAsc(bookId);
         assertThat(savedTopics).hasSize(2).allSatisfy(topic -> {
             assertThat(topic.getPdfPath()).isNotBlank();
-            assertThat(Path.of(topic.getPdfPath())).isRegularFile().hasParent(STORAGE_ROOT.resolve(bookName));
+            assertThat(Path.of(topic.getPdfPath())).isRegularFile().hasParent(STORAGE_ROOT.resolve("1").resolve(bookName));
         });
         assertThat(savedTopics).extracting(TopicDetails::getTopicName)
                 .containsExactly("Real Numbers", bookName + "_offset");
@@ -205,7 +205,7 @@ class BackgroundBookUploadTests {
         assertThat(acknowledgement.getStatus()).isEqualTo("inprogress");
         assertThat(counts()).isEqualTo(before);
         assertThat(regularFiles()).containsExactlyElementsOf(existingFiles);
-        assertThat(STORAGE_ROOT.resolve(bookName)).doesNotExist();
+        assertThat(STORAGE_ROOT.resolve("1").resolve(bookName)).doesNotExist();
         verify(analyzer, times(1)).analyze(any(), any());
     }
 

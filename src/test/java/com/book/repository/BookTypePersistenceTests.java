@@ -38,8 +38,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
-@DataJpaTest(showSql = false, properties = {"debug=false", "spring.jpa.show-sql=false"})
-class BookTypePersistenceTests {
+@DataJpaTest(showSql = false, properties = {"spring.jpa.hibernate.ddl-auto=create-drop", "debug=false", "spring.jpa.show-sql=false"})
+class BookTypePersistenceTests extends com.book.user.TenantAwareTest {
     @Autowired BookDetailsRepository books;
     @Autowired EntityManager entityManager;
 

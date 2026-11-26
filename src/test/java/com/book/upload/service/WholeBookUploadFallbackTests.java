@@ -61,7 +61,7 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
 /** The background job keeps a complete original PDF when contents cannot define a safe partition. */
-@DataJpaTest(showSql = false, properties = {"debug=false", "spring.jpa.show-sql=false",
+@DataJpaTest(showSql = false, properties = {"spring.jpa.hibernate.ddl-auto=create-drop", "debug=false", "spring.jpa.show-sql=false",
         "logging.level.org.hibernate.SQL=INFO"})
 @Import({FileUploadServiceImpl.class, BookMetadataExtractionService.class, BookPageOffsetService.class,
         SavedBookTopicSelector.class, ChapterOpeningDetector.class, PageOffsetAssumptionValidator.class,
@@ -69,7 +69,7 @@ import tools.jackson.databind.json.JsonMapper;
         BookUploadStatusService.class, BookUploadSubmissionService.class, BackgroundBookUploadService.class,
         WholeBookUploadFallbackTests.Configuration.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
-class WholeBookUploadFallbackTests {
+class WholeBookUploadFallbackTests extends com.book.user.TenantAwareTest {
     private static final Path STORAGE_ROOT = temporaryDirectory();
     private static final String DESCRIPTION = "A factual description retained from the book metadata.";
     private static final String BODY = "This page explains the central ideas of the book and provides complete examples for every reader.";
@@ -195,7 +195,7 @@ class WholeBookUploadFallbackTests {
         assertThat(regularFiles()).containsExactlyElementsOf(existing);
         assertThat(fileStore.wholeBookAttempts.get()).isEqualTo(2);
         assertThat(fileStore.splitAttempts.get()).isZero();
-        assertThat(STORAGE_ROOT.resolve(bookName)).doesNotExist();
+        assertThat(STORAGE_ROOT.resolve("1").resolve(bookName)).doesNotExist();
     }
 
     @Test
@@ -274,7 +274,7 @@ class WholeBookUploadFallbackTests {
             assertThat(topic.getBookDetails().getBookId()).isEqualTo(bookId);
         });
         Path output = Path.of(saved.getFirst().getPdfPath());
-        assertThat(output).isRegularFile().hasParent(STORAGE_ROOT.resolve(bookName)).hasFileName(bookName + "_offset.pdf");
+        assertThat(output).isRegularFile().hasParent(STORAGE_ROOT.resolve("1").resolve(bookName)).hasFileName(bookName + "_offset.pdf");
         assertThat(Files.readAllBytes(output)).isEqualTo(original);
         try (PDDocument document = Loader.loadPDF(output.toFile())) {
             assertThat(document.getNumberOfPages()).isEqualTo(pages);

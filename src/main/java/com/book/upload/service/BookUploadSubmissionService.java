@@ -13,6 +13,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.book.dto.UploadFileDtlsDto;
 import com.book.entity.BookUploadStatus;
+import com.book.user.security.TenantContext;
 
 /** Commits the acknowledgement before dispatch, without waiting for model calls or topic PDF work. */
 @Service
@@ -30,6 +31,7 @@ public class BookUploadSubmissionService {
     }
 
     public BookUploadStatus submit(UploadFileDtlsDto uploadedFile) {
+        long tenantId = TenantContext.requireTenantId();
         if (uploadedFile == null || uploadedFile.getFileName() == null || uploadedFile.getFileName().isBlank()
                 || uploadedFile.getFileData() == null || uploadedFile.getFileData().length == 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "An original filename and a non-empty PDF are required.");
@@ -44,7 +46,9 @@ public class BookUploadSubmissionService {
         BookUploadStatus acknowledgement = statuses.create(source.getFileName());
         source.setBookUploadId(acknowledgement.getBookUploadId());
         try {
-            CompletableFuture.runAsync(() -> background.process(source), executor)
+            CompletableFuture.runAsync(() -> {
+                try (var ignored = TenantContext.use(tenantId)) { background.process(source); }
+            }, executor)
                     .whenComplete((ignored, failure) -> {
                         if (failure != null) {
                             logger.error("Background processing could not finish for book upload {}",

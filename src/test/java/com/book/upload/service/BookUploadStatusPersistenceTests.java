@@ -30,11 +30,11 @@ import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.json.JsonMapper;
 
 /** Uses separate real transactions so status receipts remain visible after the import rolls back. */
-@DataJpaTest(showSql = false, properties = { "debug=false", "spring.jpa.show-sql=false",
+@DataJpaTest(showSql = false, properties = { "spring.jpa.hibernate.ddl-auto=create-drop", "debug=false", "spring.jpa.show-sql=false",
         "logging.level.org.hibernate.SQL=INFO" })
 @Import(BookUploadStatusService.class)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
-class BookUploadStatusPersistenceTests {
+class BookUploadStatusPersistenceTests extends com.book.user.TenantAwareTest {
     @Autowired BookUploadStatusService service;
     @Autowired BookUploadStatusRepository statuses;
     @Autowired PlatformTransactionManager transactionManager;
@@ -46,19 +46,24 @@ class BookUploadStatusPersistenceTests {
         BookUploadStatus receipt = service.create("original book.pdf");
 
         assertThat(receipt.getBookUploadId()).isPositive();
+        assertThat(receipt.getTenantId()).isEqualTo(1L);
         assertThat(receipt.getStatus()).isEqualTo("inprogress");
         assertThat(receipt.getMessage()).isEqualTo("original book.pdf upload service is uploading book topic by topic."
                 + " please check final upload status after some time.");
         BookUploadStatus read = service.get(receipt.getBookUploadId());
         assertThat(read).isNotSameAs(receipt);
         assertThat(read.getMessage()).isEqualTo(receipt.getMessage());
+        assertThat(read.getTenantId()).isEqualTo(1L);
+        assertThat(jdbc.queryForObject("select tenant_id from book_upload_status where book_upload_id = ?",
+                Long.class, receipt.getBookUploadId())).isEqualTo(1L);
         assertThat(jdbc.queryForObject("""
                 select count(*) from information_schema.columns
                  where table_schema = 'PUBLIC' and table_name = 'BOOK_UPLOAD_STATUS'
-                """, Integer.class)).isEqualTo(3);
+                """, Integer.class)).isEqualTo(4);
 
         JsonMapper mapper = JsonMapper.builder().build();
         Map<?, ?> json = mapper.readValue(mapper.writeValueAsString(receipt), Map.class);
+        assertThat(json).hasSize(3);
         assertThat(json.keySet().stream().map(String::valueOf).toList())
                 .containsExactlyInAnyOrder("book_upload_id", "status", "message");
         assertThat(((Number) json.get("book_upload_id")).longValue()).isEqualTo(receipt.getBookUploadId());

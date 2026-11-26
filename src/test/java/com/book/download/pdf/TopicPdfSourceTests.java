@@ -11,13 +11,13 @@ import org.springframework.web.server.ResponseStatusException;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-class TopicPdfSourceTests {
+class TopicPdfSourceTests extends com.book.user.TenantAwareTest {
     @TempDir Path directory;
 
     @Test
     void readsActualStoredLegacyFilenameWithoutRebuildingFromTopicName() throws Exception {
         Path root = Files.createDirectory(directory.resolve("storage"));
-        Path legacy = Files.writeString(root.resolve("old-topic-123.pdf"), "fixture");
+        Path legacy = Files.writeString(Files.createDirectories(root.resolve("1")).resolve("old-topic-123.pdf"), "fixture");
         TopicDetails topic = topic(legacy.toString());
         topic.setTopicName("Completely different current title");
         assertThat(new TopicPdfSource(root.toString()).resolve(topic)).isEqualTo(legacy.toRealPath());
@@ -26,7 +26,7 @@ class TopicPdfSourceTests {
     @Test
     void fullBookOffsetSourcesUseTheSameStorageConfinement() throws Exception {
         Path root = Files.createDirectory(directory.resolve("book-storage"));
-        Path stored = Files.writeString(root.resolve("original.pdf"), "fixture");
+        Path stored = Files.writeString(Files.createDirectories(root.resolve("1")).resolve("original.pdf"), "fixture");
         TopicDetails offset = topic(stored.toString());
         offset.setTopicName("Book_offset");
         TopicPdfSource source = new TopicPdfSource(root.toString());
@@ -39,7 +39,7 @@ class TopicPdfSourceTests {
     @Test
     void relativeStoredPathsResolveInsideStorageRoot() throws Exception {
         Path root = Files.createDirectory(directory.resolve("storage"));
-        Path folder = Files.createDirectory(root.resolve("Book"));
+        Path folder = Files.createDirectories(root.resolve("1").resolve("Book"));
         Path pdf = Files.writeString(folder.resolve("Topic.pdf"), "fixture");
         assertThat(new TopicPdfSource(root.toString()).resolve(topic("Book/Topic.pdf"))).isEqualTo(pdf.toRealPath());
     }
@@ -66,6 +66,7 @@ class TopicPdfSourceTests {
 
     private TopicDetails topic(String path) {
         TopicDetails topic = new TopicDetails();
+        topic.setBookDetails(new com.book.entity.BookDetails());
         topic.setTopicId(123L);
         topic.setPdfPath(path);
         return topic;

@@ -21,7 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 
-class BookReaderServiceTests {
+class BookReaderServiceTests extends com.book.user.TenantAwareTest {
     private final TopicDetailsRepository topics = mock(TopicDetailsRepository.class);
     private final DownloadService downloads = mock(DownloadService.class);
     private final BookReaderService reader = new BookReaderService(topics, downloads);

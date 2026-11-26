@@ -19,7 +19,7 @@ import org.junit.jupiter.api.io.TempDir;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-class TopicPdfFileStoreTests {
+class TopicPdfFileStoreTests extends com.book.user.TenantAwareTest {
     @TempDir Path root;
 
     @Test
@@ -72,7 +72,7 @@ class TopicPdfFileStoreTests {
     @Test
     void wholeBookExhaustionLeavesNoPartialFileAndDoesNotRemoveAnotherBook() throws Exception {
         AtomicInteger attempts = new AtomicInteger();
-        Path other = Files.createDirectory(root.resolve("Existing Book"));
+        Path other = Files.createDirectory(Files.createDirectories(root.resolve("1")).resolve("Existing Book"));
         Path previousPdf = Files.writeString(other.resolve("Existing Book.pdf"), "Previously committed");
         TopicPdfFileStore store = new TopicPdfFileStore(root.toString(), 2) {
             @Override
@@ -97,7 +97,7 @@ class TopicPdfFileStoreTests {
     void extractsTheInclusiveOneBasedRangeWithoutChangingTheSource() throws Exception {
         TopicPdfFileStore store = new TopicPdfFileStore(root.toString(), 3);
         Path operation = store.createOperationDirectory(7L, "Book");
-        assertThat(operation).hasParent(root).hasFileName("Book");
+        assertThat(operation).hasParent(root.resolve("1")).hasFileName("Book");
         byte[] source = pdf(4);
         byte[] unchanged = source.clone();
 
@@ -282,7 +282,7 @@ class TopicPdfFileStoreTests {
 
         var saved = store.extractOffsetAndSave(pdf(4), 99L, "My Book_offset", 2, operation);
 
-        assertThat(Path.of(saved.pdfPath())).hasParent(root.resolve("My Book")).hasFileName("My Book_offset.pdf");
+        assertThat(Path.of(saved.pdfPath())).hasParent(root.resolve("1").resolve("My Book")).hasFileName("My Book_offset.pdf");
         try (PDDocument document = Loader.loadPDF(Path.of(saved.pdfPath()).toFile())) {
             assertThat(document.getNumberOfPages()).isEqualTo(2);
             assertThat(new PDFTextStripper().getText(document)).contains("Source page 1", "Source page 2")
@@ -343,7 +343,7 @@ class TopicPdfFileStoreTests {
 
     @Test
     void anExistingBookFolderIsNeverAdoptedOrModified() throws Exception {
-        Path existing = Files.createDirectory(root.resolve("Existing Book"));
+        Path existing = Files.createDirectory(Files.createDirectories(root.resolve("1")).resolve("Existing Book"));
         Path existingPdf = Files.writeString(existing.resolve("Opening.pdf"), "previous upload");
         TopicPdfFileStore store = new TopicPdfFileStore(root.toString(), 1);
 

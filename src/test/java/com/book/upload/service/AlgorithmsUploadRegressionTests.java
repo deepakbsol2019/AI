@@ -53,7 +53,7 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
 /** Replays the reported null-valued model response against the real Wikibooks Algorithms PDF. */
-@DataJpaTest(showSql = false, properties = {"debug=false", "spring.jpa.show-sql=false",
+@DataJpaTest(showSql = false, properties = {"spring.jpa.hibernate.ddl-auto=create-drop", "debug=false", "spring.jpa.show-sql=false",
         "logging.level.org.hibernate.SQL=INFO"})
 @Import({FileUploadServiceImpl.class, BookMetadataExtractionService.class, BookPageOffsetService.class,
         SavedBookTopicSelector.class, ChapterOpeningDetector.class, PageOffsetAssumptionValidator.class,
@@ -62,7 +62,7 @@ import tools.jackson.databind.json.JsonMapper;
         AlgorithmsUploadRegressionTests.Configuration.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @EnabledIfSystemProperty(named = "book.algorithms.fixture", matches = ".+")
-class AlgorithmsUploadRegressionTests {
+class AlgorithmsUploadRegressionTests extends com.book.user.TenantAwareTest {
     private static final Path STORAGE_ROOT = temporaryDirectory();
     private static final String MODEL_RESPONSE = """
             {"authorDetails":{"authorName":null},"bookDetails":{"bookName":null,"bookDetails":null},

@@ -29,7 +29,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
-@DataJpaTest(showSql = false, properties = { "debug=false", "spring.jpa.show-sql=false",
+@DataJpaTest(showSql = false, properties = { "spring.jpa.hibernate.ddl-auto=create-drop", "debug=false", "spring.jpa.show-sql=false",
         "logging.level.org.hibernate.SQL=INFO" })
 @Import(TopicPageOffsetWriter.class)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)

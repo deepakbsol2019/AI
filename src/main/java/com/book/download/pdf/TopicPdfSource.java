@@ -1,7 +1,6 @@
 package com.book.download.pdf;
 
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 
@@ -14,16 +13,19 @@ import org.springframework.web.server.ResponseStatusException;
 /** Read adapter for the local files written by TopicPdfFileStore. Uses stored paths, including legacy filenames. */
 @Component
 public class TopicPdfSource {
-    private final Path configuredRoot;
+    private final com.book.storage.TenantStoragePaths storage;
 
     public TopicPdfSource(@Value("${app.topic-pdf.storage-root:C:/workspace/backend/Book_Search/upload-pdf}") String storageRoot) {
         if (storageRoot == null || storageRoot.isBlank()) {
             throw new IllegalArgumentException("Topic PDF storage root is required.");
         }
-        configuredRoot = Path.of(storageRoot).toAbsolutePath().normalize();
+        storage = new com.book.storage.TenantStoragePaths(storageRoot);
     }
 
     public Path resolve(TopicDetails topic) {
+        com.book.user.security.TenantContext.requireTenantId();
+        if (topic.getBookDetails()==null) throw unavailable("Topic", "has no tenant owner",null);
+        com.book.user.security.TenantContext.requireOwned(topic.getBookDetails().getTenantId());
         return resolveStoredPath(topic.getPdfPath(), "Topic " + topic.getTopicId());
     }
 
@@ -32,26 +34,10 @@ public class TopicPdfSource {
             throw unavailable(label, "has no saved PDF", null);
         }
         try {
-            Path root = configuredRoot.toRealPath();
-            Path storedPath = Path.of(pdfPath);
-            Path candidate = (storedPath.isAbsolute() ? storedPath : configuredRoot.resolve(storedPath))
-                    .toAbsolutePath().normalize();
-            // The upload store persists real paths, including when the configured root is a junction.
-            if (!candidate.startsWith(configuredRoot) && !candidate.startsWith(root)) {
-                throw unavailable(label, "has a PDF outside the configured storage folder", null);
-            }
-            // Resolve symlinks/junctions as well as '..'; never serve another local file through a stored path.
-            Path actual = candidate.toRealPath();
-            if (!actual.startsWith(root)) {
-                throw unavailable(label, "has a PDF outside the configured storage folder", null);
-            }
-            if (!Files.isRegularFile(actual) || !Files.isReadable(actual)) {
-                throw unavailable(label, "has an unavailable PDF in storage", null);
-            }
-            return actual;
+            return storage.readableFile(com.book.user.security.TenantContext.requireTenantId(),pdfPath);
         }
         catch (IOException | InvalidPathException | SecurityException exception) {
-            throw unavailable(label, "has a missing or unreadable PDF in storage", exception);
+            throw unavailable(label, "has a missing, unreadable or outside-tenant PDF in storage", exception);
         }
     }
 

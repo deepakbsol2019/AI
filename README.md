@@ -2,6 +2,28 @@
 
 Spring Boot 4.2 / Java 25 backend with the existing Ollama, MySQL, PDFBox, upload-status, and local PDF storage flows.
 
+The current [management pages and sidebar guide](MANAGEMENT_PAGES.md) covers full-page user/details/create/confirmation routes, shared fixed shell, permission-based current-tenant invitations and distinct soft deletion. It supersedes earlier details-popup/header-profile layout descriptions while retaining the confirmed SUPER_USER policies.
+
+Current [User Management](USER_MANAGEMENT.md) implements `/user/users`, scoped details/editing, dedicated activation and role assignment, durable deletion jobs, the authenticated header profile, and standalone registration directories. Its deletion matrix and provisioning rules supersede earlier account-deletion exclusions and lazy individual-directory descriptions.
+
+Current organization roles and tenant-directory rules, APIs, migrations and verification are in [ROLE_MANAGEMENT_STORAGE.md](ROLE_MANAGEMENT_STORAGE.md). They supersede earlier ADMIN registration and application-wide file-access statements below.
+
+Password recovery API, password rules, migration and deployment configuration are documented in [PASSWORD_RESET.md](PASSWORD_RESET.md).
+
+## Authentication and tenant authorization
+
+Application-wide `SUPER_USER` provisioning is documented in [SUPER_USER_SETUP.md](SUPER_USER_SETUP.md). It uses the existing role tables, retains authentication/session checks and keeps unassigned historical books inaccessible. Ordinary tenant ADMIN registration remains unchanged.
+
+The application now requires an authenticated, active tenant session for the existing book APIs. Login, registration, password setup/reset and provider callbacks use the new `com.book.user` feature; the sibling Angular app opens its User login container before the guarded Home route. Google and company SSO are implemented but disabled by default. Password registration requires a configured SMTP sender; it never collects or emails a registration password.
+
+See [AUTH_SETUP.md](AUTH_SETUP.md) for API contracts, local/deployment configuration, rotating sessions, SMTP templates, optional MFA, trusted provider activation/enrollment and safe examples. [AUTH_SCHEMA.md](AUTH_SCHEMA.md) inventories both supplied schema references, all 18 tables, MySQL adaptations, explicit additions and permission policies. New Java auth code stays under `com.book.user`; existing catalog changes enforce tenant ownership and propagate it explicitly to upload workers.
+
+The versioned manual migration [20261125_user_auth.sql](src/main/resources/db/manual/20261125_user_auth.sql) was validated twice on isolated MySQL, including 16 rolled-back constraint checks, then applied to the configured application database after a backup and zero-active-upload check. Its 5 books, 39 topics and 9 receipts were preserved. All historical book/receipt tenant IDs remain null and inaccessible, as requested; no users were created in the real catalog. Hibernate now validates the schema rather than updating it. Apply the migration on other deployments before starting this code.
+
+Database/signing/SMTP secrets are external. For this workspace only, an ignored `target/local-user-runtime.properties` contains the development signing key and the previous local database credential; it is not a configuration example or production secret store. The safe tracked examples are [config/auth.env.example](config/auth.env.example) and [config/application-oidc.example.properties](config/application-oidc.example.properties). The earlier literal database credential and credential-like SMTP comment were removed from application configuration; replace any previously used exposed secret externally.
+
+Final validation passed: **565 backend tests run, 556 passed, 9 existing optional checks skipped, no failures/errors**, followed by successful executable-JAR packaging in the same full `verify` run. All auth tests ran, including queued recovery-email delivery, cleanup failure containment and OIDC failure auditing. The frontend passed **172 tests across 34 files**, strict app/spec TypeScript checks and a warning-free production build (**448.04 kB raw / 96.42 kB estimated transfer**). Automatic upload checks and completion reloads cannot renew an unattended session; sign-out clears prior-account upload/download/notification state. After restarting the final JAR, **17 live HTTP checks** passed through the Angular proxy. The migrated backend starts with schema validation and both provider flags disabled; no real users/sessions were created by the live checks. Details and exact commands are in [AUTH_SETUP.md](AUTH_SETUP.md). Historical counts in older feature sections describe their earlier changes. Real provider logins, real SMTP delivery and browser/mobile interaction remain unperformed; the browser access host was unavailable. The optional OIDC-to-local-MFA handoff limit is documented in the setup guide.
+
 ## Homepage search listing
 
 `GET /api/search/books` now defaults to zero-based `page=0` and **`size=5`** when size is omitted. Explicit larger sizes remain supported; the existing valid API range is still 1–100. This default is applied only at the REST listing controller. The shared `searchBooks` AI tool retains its existing omitted-size default of 20; unrelated endpoint defaults are unchanged.

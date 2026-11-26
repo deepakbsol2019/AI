@@ -10,6 +10,7 @@ import java.util.concurrent.ExecutionException;
 
 import com.book.entity.BookUploadStatus;
 import com.book.repository.BookUploadStatusRepository;
+import com.book.user.security.TenantContext;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -27,6 +28,7 @@ public class BookUploadStatusService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public BookUploadStatus create(String originalFileName) {
+        TenantContext.requireTenantId();
         if (originalFileName == null || originalFileName.isBlank()) {
             throw new IllegalArgumentException("The original upload filename is required.");
         }
@@ -77,10 +79,12 @@ public class BookUploadStatusService {
 
     private BookUploadStatus required(Long uploadId) {
         validateId(uploadId);
+        TenantContext.requireTenantId();
         BookUploadStatusRepository.CurrentStatus current = statuses.readCurrent(uploadId).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "No upload status exists for ID " + uploadId + "."));
         BookUploadStatus copy = new BookUploadStatus();
         copy.setBookUploadId(current.getBookUploadId());
+        copy.setTenantId(current.getTenantId());
         copy.setStatus(current.getStatus());
         copy.setMessage(current.getMessage());
         return copy;

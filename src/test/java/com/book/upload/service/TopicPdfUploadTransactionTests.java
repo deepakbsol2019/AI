@@ -60,14 +60,14 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
 /** All initial saves, page mapping, worker files, and path updates succeed or roll back as one upload. */
-@DataJpaTest(showSql = false, properties = { "debug=false", "spring.jpa.show-sql=false",
+@DataJpaTest(showSql = false, properties = { "spring.jpa.hibernate.ddl-auto=create-drop", "debug=false", "spring.jpa.show-sql=false",
         "logging.level.org.hibernate.SQL=INFO" })
 @Import({ FileUploadServiceImpl.class, BookMetadataExtractionService.class, BookPageOffsetService.class,
         SavedBookTopicSelector.class, ChapterOpeningDetector.class, PageOffsetAssumptionValidator.class,
         TopicPageOffsetWriter.class, TopicPdfUploadService.class, BookUploadStatusService.class, WholeBookFallbackService.class,
         TopicPdfUploadTransactionTests.Configuration.class })
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
-class TopicPdfUploadTransactionTests {
+class TopicPdfUploadTransactionTests extends com.book.user.TenantAwareTest {
     private static final Path STORAGE_ROOT = temporaryDirectory();
     private static final String MODEL_RESPONSE = """
             {"authorDetails":{"authorName":"Atomic Writer"},
@@ -114,7 +114,7 @@ class TopicPdfUploadTransactionTests {
         assertThat(prefix.getTopicName()).isEqualTo(bookName + "_offset");
         assertThat(prefix.getStartPage()).isEqualTo(1);
         assertThat(prefix.getEndPage()).isEqualTo(20);
-        assertThat(Path.of(prefix.getPdfPath())).hasParent(STORAGE_ROOT.resolve(bookName))
+        assertThat(Path.of(prefix.getPdfPath())).hasParent(STORAGE_ROOT.resolve("1").resolve(bookName))
                 .hasFileName(bookName + "_offset.pdf");
         try (PDDocument document = Loader.loadPDF(Path.of(prefix.getPdfPath()).toFile())) {
             assertThat(document.getNumberOfPages()).isEqualTo(20);
@@ -126,7 +126,7 @@ class TopicPdfUploadTransactionTests {
         assertThat(returned.getEndPage()).isEqualTo(23);
         assertThat(returned.getPdfPath()).isNotBlank();
         Path savedPdf = Path.of(returned.getPdfPath());
-        assertThat(savedPdf).isRegularFile().hasParent(STORAGE_ROOT.resolve(bookName)).hasFileName("Real Numbers.pdf");
+        assertThat(savedPdf).isRegularFile().hasParent(STORAGE_ROOT.resolve("1").resolve(bookName)).hasFileName("Real Numbers.pdf");
         try (PDDocument document = Loader.loadPDF(savedPdf.toFile())) {
             assertThat(document.getNumberOfPages()).isEqualTo(3);
             assertThat(new org.apache.pdfbox.text.PDFTextStripper().getText(document)).contains("Real Numbers");
@@ -257,7 +257,7 @@ class TopicPdfUploadTransactionTests {
         assertThat(result.topicDetails().getLast().getTopicName()).isEqualTo("Index");
         assertThat(result.topicDetails().getLast().getEndPage()).isEqualTo(372);
         assertThat(result.topicDetails()).allSatisfy(topic -> assertThat(Path.of(topic.getPdfPath()))
-                .hasParent(STORAGE_ROOT.resolve(bookName))
+                .hasParent(STORAGE_ROOT.resolve("1").resolve(bookName))
                 .hasFileName(TopicPdfFileStore.topicFileName(topic.getTopicName())));
         assertThat(fileStore.attempts.get()).isEqualTo(23);
         assertMergedMatchesSource(result, source);

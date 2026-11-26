@@ -27,6 +27,7 @@ import com.book.entity.BookDetails;
 import com.book.entity.TopicDetails;
 import com.book.repository.BookDetailsRepository;
 import com.book.repository.TopicDetailsRepository;
+import com.book.user.security.TenantContext;
 
 /** Local download assembly from the current book's committed metadata and stored PDFs. */
 @Service
@@ -119,9 +120,11 @@ public class DownloadServiceImpl implements DownloadService {
 
     private BookDetails requireBook(Long bookId) {
         requirePositiveId(bookId, "bookId");
-        // This application currently has no additional per-user book authorization policy.
-        return books.findById(bookId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+        TenantContext.requireTenantId();
+        BookDetails book = books.findById(bookId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Book " + bookId + " was not found."));
+        TenantContext.requireOwned(book.getTenantId());
+        return book;
     }
 
     private List<SourcePdf> resolveSources(List<TopicDetails> ordered) {

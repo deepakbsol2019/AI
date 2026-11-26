@@ -39,7 +39,7 @@ import com.book.repository.BookDetailsRepository;
 import com.book.repository.TopicDetailsRepository;
 
 /** Exercises actual PDFBox assembly and stored-file reads with distinct page markers. */
-class DownloadServiceTests {
+class DownloadServiceTests extends com.book.user.TenantAwareTest {
     @TempDir Path storage;
     private final BookDetailsRepository books = mock(BookDetailsRepository.class);
     private final TopicDetailsRepository topics = mock(TopicDetailsRepository.class);
@@ -291,7 +291,7 @@ class DownloadServiceTests {
     }
 
     private TopicDetails stored(Long id, String name, String... pageMarkers) throws Exception {
-        Path path = storage.resolve("legacy-name-" + id + ".pdf");
+        Path path = Files.createDirectories(storage.resolve("1")).resolve("legacy-name-" + id + ".pdf");
         Files.write(path, pdf(pageMarkers));
         TopicDetails topic = new TopicDetails();
         topic.setTopicId(id);

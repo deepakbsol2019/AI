@@ -15,6 +15,7 @@ import com.book.metadata.dto.MetadataPatchRequest;
 import com.book.metadata.dto.MetadataPatchRequest.Change;
 import com.book.repository.BookDetailsRepository;
 import com.book.repository.TopicDetailsRepository;
+import com.book.user.security.TenantContext;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -86,10 +87,12 @@ public class BookMetadataService {
 
     private BookDetails lockedBook(Long bookId) {
         requirePositive(bookId, "bookId");
+        TenantContext.requireTenantId();
         BookDetails book = books.findLockedByBookId(bookId).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Book " + bookId + " was not found."));
         // A caller may already have a stale managed instance; locking alone does not refresh that instance.
         entityManager.refresh(book, LockModeType.PESSIMISTIC_WRITE);
+        TenantContext.requireOwned(book.getTenantId());
         if (book.getBookUploadStatus() != null) {
             entityManager.refresh(book.getBookUploadStatus());
             if (BookUploadStatus.IN_PROGRESS.equals(book.getBookUploadStatus().getStatus())) {
@@ -107,7 +110,7 @@ public class BookMetadataService {
     }
 
     private void renameBook(BookDetails book, List<TopicDetails> entries, TopicDetails legacy, String name) {
-        if (books.existsByCanonicalBookNameExcludingId(name, book.getBookId())) {
+        if (books.existsByCanonicalBookNameExcludingIdInTenant(name, book.getBookId(), book.getTenantId())) {
             throw duplicate(name, null);
         }
         String previous = book.getBookName();
@@ -153,7 +156,7 @@ public class BookMetadataService {
         } catch (DataIntegrityViolationException failure) {
             for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
                 if (cause.getMessage() != null && cause.getMessage().toLowerCase(java.util.Locale.ROOT)
-                        .contains("uk_book_details_book_name")) throw duplicate(bookName, failure);
+                        .matches("(?s).*(uk_book_details_book_name|uk_book_tenant_name).*")) throw duplicate(bookName, failure);
             }
             throw failure;
         }

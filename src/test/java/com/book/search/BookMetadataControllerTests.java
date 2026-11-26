@@ -26,7 +26,7 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-class BookMetadataControllerTests {
+class BookMetadataControllerTests extends com.book.user.TenantAwareTest {
     private final WebApplicationContextRunner contexts = new WebApplicationContextRunner()
             .withUserConfiguration(WebConfiguration.class);
 
@@ -113,6 +113,7 @@ class BookMetadataControllerTests {
     private static void arrange(ApplicationContext context) {
         AuthorDetails author = new AuthorDetails(); author.setAuthorId(8L); author.setAuthorName("Original author");
         BookDetails book = new BookDetails(); book.setBookId(7L); book.setBookName("Original book");
+        book.setTenantId(1L);
         book.setBookType("History"); book.setBookDetails("Original description");
         book.setAuthorDetails(author); book.setTotalPages(10);
         TopicDetails chapter = new TopicDetails(); chapter.setTopicId(11L); chapter.setTopicName("Real chapter");

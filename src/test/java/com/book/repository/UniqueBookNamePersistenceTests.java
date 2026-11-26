@@ -18,10 +18,10 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
-@DataJpaTest(showSql = false, properties = { "debug=false", "spring.jpa.show-sql=false",
+@DataJpaTest(showSql = false, properties = { "spring.jpa.hibernate.ddl-auto=create-drop", "debug=false", "spring.jpa.show-sql=false",
         "logging.level.org.hibernate.SQL=INFO" })
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
-class UniqueBookNamePersistenceTests {
+class UniqueBookNamePersistenceTests extends com.book.user.TenantAwareTest {
     @Autowired BookDetailsRepository books;
     @Autowired JdbcTemplate jdbc;
 
@@ -56,6 +56,7 @@ class UniqueBookNamePersistenceTests {
         CountDownLatch start = new CountDownLatch(1);
         try (var executor = Executors.newFixedThreadPool(2)) {
             java.util.concurrent.Callable<Boolean> insert = () -> {
+              try (var ignored = com.book.user.security.TenantContext.use(1L)) {
                 ready.countDown();
                 if (!start.await(10, TimeUnit.SECONDS)) throw new IllegalStateException("Test start timed out");
                 try {
@@ -65,6 +66,7 @@ class UniqueBookNamePersistenceTests {
                 catch (DataIntegrityViolationException expected) {
                     return false;
                 }
+              }
             };
             var first = executor.submit(insert);
             var second = executor.submit(insert);

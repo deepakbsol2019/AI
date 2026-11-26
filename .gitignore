@@ -1,5 +1,7 @@
 HELP.md
 target/
+/config/local-jwt.properties
+/.local/
 /storage/topic-pdfs/
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/

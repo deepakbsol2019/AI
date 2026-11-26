@@ -13,7 +13,7 @@ import org.mockito.ArgumentCaptor;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-class BookUploadSubmissionServiceTests {
+class BookUploadSubmissionServiceTests extends com.book.user.TenantAwareTest {
     private final BookUploadStatusService statuses = mock(BookUploadStatusService.class);
     private final BackgroundBookUploadService background = mock(BackgroundBookUploadService.class);
 
@@ -99,6 +99,50 @@ class BookUploadSubmissionServiceTests {
 
         verify(uploads).uploadFile(input);
         verifyNoInteractions(statuses); // The transactional pipeline owns the Success update.
+    }
+
+    @Test
+    void queuedJobRestoresItsCapturedTenantAndCleansTheWorkerContext() throws Exception {
+        List<Runnable> pending=new ArrayList<>();
+        var service=new BookUploadSubmissionService(statuses,background,pending::add);
+        when(statuses.create("original.pdf")).thenReturn(status(7L,BookUploadStatus.IN_PROGRESS,"Uploading"));
+        doAnswer(call -> {
+            assertThat(com.book.user.security.TenantContext.requireTenantId()).isEqualTo(1L);
+            return null;
+        }).when(background).process(any());
+        service.submit(source(new byte[]{1}));
+        try (var executor=java.util.concurrent.Executors.newSingleThreadExecutor()) {
+            executor.submit(pending.getFirst()).get();
+            assertThat(executor.submit(com.book.user.security.TenantContext::currentTenantId).get()).isNull();
+        }
+    }
+
+    @Test
+    void superUserUploadKeepsTheActorsTenantWithoutPropagatingGlobalPrivilegeToTheWorker() throws Exception {
+        List<Runnable> pending=new ArrayList<>();
+        var service=new BookUploadSubmissionService(statuses,background,pending::add);
+        when(statuses.create("original.pdf")).thenReturn(status(7L,BookUploadStatus.IN_PROGRESS,"Uploading"));
+        doAnswer(call -> {
+            assertThat(com.book.user.security.TenantContext.requireTenantId()).isEqualTo(1L);
+            assertThat(com.book.user.security.TenantContext.isSuperUser()).isFalse();
+            return null;
+        }).when(background).process(any());
+        try (var actor=com.book.user.security.TenantContext.use(1L,true);
+                var executor=java.util.concurrent.Executors.newSingleThreadExecutor()) {
+            service.submit(source(new byte[]{1}));
+            executor.submit(() -> {
+                try (var previous=com.book.user.security.TenantContext.use(77L,true)) {
+                    pending.getFirst().run();
+                    assertThat(com.book.user.security.TenantContext.requireTenantId()).isEqualTo(77L);
+                    assertThat(com.book.user.security.TenantContext.isSuperUser()).isTrue();
+                }
+            }).get();
+            assertThat(executor.submit(com.book.user.security.TenantContext::currentTenantId).get()).isNull();
+            assertThat(executor.submit(com.book.user.security.TenantContext::isSuperUser).get()).isFalse();
+            assertThat(com.book.user.security.TenantContext.requireTenantId()).isEqualTo(1L);
+            assertThat(com.book.user.security.TenantContext.isSuperUser()).isTrue();
+        }
+        assertThat(com.book.user.security.TenantContext.isSuperUser()).isFalse();
     }
 
     private static UploadFileDtlsDto source(byte[] bytes) {
