@@ -1,4 +1,4 @@
-﻿import { DOCUMENT } from '@angular/common';
+import { DOCUMENT, NgTemplateOutlet } from '@angular/common';
 import { HttpErrorResponse, HttpResponse } from '@angular/common/http';
 import {
   afterNextRender,
@@ -43,13 +43,15 @@ import type {
 
 @Component({
   selector: 'app-book-reader',
-  imports: [IconComponent, NotificationOutletComponent],
+  imports: [IconComponent, NotificationOutletComponent, NgTemplateOutlet],
   providers: [PageTurnSoundService],
   templateUrl: './book-reader.component.html',
   styleUrl: './book-reader.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class BookReaderComponent implements OnDestroy {
+  private static nextColorFilter = 0;
+  readonly colorFilterId = `reader-colors-${++BookReaderComponent.nextColorFilter}`;
   readonly request = input.required<ReaderRequest>();
   readonly closed = output<void>();
   readonly downloads = inject(BookDownloadService);
@@ -60,11 +62,24 @@ export class BookReaderComponent implements OnDestroy {
   readonly pageCount = signal(0);
   readonly zoom = signal(1);
   readonly pageTheme = signal<PdfPageTheme>('original');
+  readonly backgroundColor = signal('#ffffff');
+  readonly textColor = signal('#172b46');
+  readonly colorChannels = computed(() =>
+    [1, 3, 5].map(
+      (start) =>
+        `${parseInt(this.textColor().slice(start, start + 2), 16) / 255} ${parseInt(this.backgroundColor().slice(start, start + 2), 16) / 255}`,
+    ),
+  );
+  readonly colorfulFilter = computed(() =>
+    this.pageTheme() === 'colorful' ? `url(#${this.colorFilterId})` : null,
+  );
   readonly fullPage = signal(false);
   readonly pageMode = signal<ReaderPageMode>(
     typeof window !== 'undefined' && window.innerWidth > 700 ? 'double' : 'single',
   );
   readonly stage = signal<ReaderStage>('pages');
+  readonly displayStage = signal<ReaderStage>('pages');
+  readonly displayedPages = signal<readonly number[]>([1]);
   readonly soundEnabled = signal(false);
   readonly visiblePages = computed(() =>
     spreadPages(this.pageNumber(), this.pageCount(), this.pageMode()),
@@ -138,6 +153,9 @@ export class BookReaderComponent implements OnDestroy {
   private resizeObserver: ResizeObserver | null = null;
   private resizeTimer: ReturnType<typeof setTimeout> | undefined;
   private animation: Animation | null = null;
+  private turnSnapshot: HTMLCanvasElement | null = null;
+  private lastRenderKey = '';
+  private observedSize = '';
   private entryPage = 1;
   private entryScroll = { top: 0, left: 0 };
   private movedInFullPage = false;
@@ -154,6 +172,10 @@ export class BookReaderComponent implements OnDestroy {
       this.mounted.set(true);
       if (typeof ResizeObserver !== 'undefined') {
         this.resizeObserver = new ResizeObserver(() => {
+          // Observe the fixed viewport box, not canvas/scrollbar-driven content sizes.
+          const size = this.viewportSize().join('x');
+          if (size === this.observedSize) return;
+          this.observedSize = size;
           clearTimeout(this.resizeTimer);
           this.resizeTimer = setTimeout(() => {
             if (this.pdf) void this.renderPage();
@@ -197,6 +219,7 @@ export class BookReaderComponent implements OnDestroy {
       this.pageMode(),
       this.fullPage(),
     )!;
+    if (oldStage === 'pages' && next.stage === 'pages') this.captureTurn(direction);
     this.stage.set(next.stage);
     this.pageNumber.set(next.page);
     this.resetViewport();
@@ -211,16 +234,18 @@ export class BookReaderComponent implements OnDestroy {
     }
     if (this.fullPage()) {
       this.movedInFullPage = true;
-      this.animateBook(
-        direction,
-        next.stage === 'back' ? 'close' : oldStage === 'front' ? 'open' : 'turn',
-      );
       if (this.soundEnabled()) this.sound.turn();
     }
+    this.animateBook(
+      direction,
+      next.stage === 'back' ? 'close' : oldStage === 'front' ? 'open' : 'turn',
+    );
   }
 
   async setPageMode(mode: ReaderPageMode): Promise<void> {
     if (mode === this.pageMode() || this.rendering()) return;
+    this.animation?.cancel();
+    this.clearTurn();
     ++this.positionVersion;
     this.pageMode.set(mode);
     this.resetViewport();
@@ -238,6 +263,7 @@ export class BookReaderComponent implements OnDestroy {
     this.soundEnabled.set(false);
     this.sound.disable();
     this.stage.set('front');
+    this.displayStage.set('front');
     this.fullPage.set(true);
     this.resetViewport();
     this.animateBook(1, 'open');
@@ -287,25 +313,84 @@ export class BookReaderComponent implements OnDestroy {
     if (
       !element?.animate ||
       this.document.defaultView?.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-    )
+    ) {
+      this.clearTurn();
       return;
+    }
     this.animation?.cancel();
+    if (kind === 'turn' && this.turnSnapshot) {
+      const sheet = this.turnSnapshot;
+      element.appendChild(sheet);
+      sheet.style.transformOrigin = direction === 1 ? 'left center' : 'right center';
+      this.animation = sheet.animate(
+        [
+          { transform: 'perspective(1600px) rotateY(0deg)', opacity: 1 },
+          {
+            transform: `perspective(1600px) rotateY(${direction * -65}deg)`,
+            opacity: 1,
+            offset: 0.8,
+          },
+          { transform: `perspective(1600px) rotateY(${direction * -95}deg)`, opacity: 0 },
+        ],
+        { duration: 580, easing: 'cubic-bezier(.22,.61,.36,1)', fill: 'forwards' },
+      );
+      void this.animation.finished?.then(
+        () => sheet.remove(),
+        () => sheet.remove(),
+      );
+      this.turnSnapshot = null;
+      return;
+    }
     const angle = kind === 'close' ? direction * 12 : direction * -10;
     this.animation = element.animate(
       [
         { transform: `perspective(1600px) rotateY(${angle}deg) scale(.985)`, opacity: 0.82 },
         { transform: 'perspective(1600px) rotateY(0deg) scale(1)', opacity: 1 },
       ],
-      { duration: kind === 'turn' ? 260 : 400, easing: 'ease-out' },
+      { duration: kind === 'turn' ? 580 : 520, easing: 'ease-in-out' },
     );
   }
 
+  private captureTurn(direction: -1 | 1): void {
+    this.animation?.cancel();
+    this.clearTurn();
+    const source =
+      direction === 1 && this.displayedPages().length === 2
+        ? this.secondCanvas()?.nativeElement
+        : this.canvas()?.nativeElement;
+    if (!source || !source.width || !this.surface()?.nativeElement.animate) return;
+    const snapshot = this.document.createElement('canvas');
+    snapshot.width = source.width;
+    snapshot.height = source.height;
+    snapshot.getContext('2d')?.drawImage(source, 0, 0);
+    snapshot.className = `${source.className} turning-sheet`;
+    snapshot.style.cssText = source.style.cssText;
+    snapshot.style.left = `${source.offsetLeft}px`;
+    snapshot.style.top = `${source.offsetTop}px`;
+    snapshot.setAttribute('aria-hidden', 'true');
+    this.turnSnapshot = snapshot;
+  }
+
+  private clearTurn(): void {
+    this.turnSnapshot?.remove();
+    this.turnSnapshot = null;
+    this.surface()
+      ?.nativeElement.querySelectorAll('.turning-sheet')
+      .forEach((sheet) => sheet.remove());
+  }
+
   changeZoom(delta: number): void {
-    this.zoom.set(Math.round(Math.min(3, Math.max(0.5, this.zoom() + delta)) * 100) / 100);
+    const zoom = Math.round(Math.min(1.25, Math.max(0.5, this.zoom() + delta)) * 100) / 100;
+    if (zoom === this.zoom()) return;
+    this.animation?.cancel();
+    this.clearTurn();
+    this.zoom.set(zoom);
     void this.renderPage();
   }
 
   fitWidth(): void {
+    this.animation?.cancel();
+    this.clearTurn();
     this.zoom.set(1);
     this.resetViewport();
     void this.renderPage();
@@ -313,8 +398,19 @@ export class BookReaderComponent implements OnDestroy {
 
   changeTheme(event: Event): void {
     const value = (event.target as HTMLSelectElement).value;
-    if (value !== 'dark' && value !== 'original' && value !== 'inverted') return;
+    if (value !== 'dark' && value !== 'original' && value !== 'inverted' && value !== 'colorful')
+      return;
     this.pageTheme.set(value === 'inverted' ? 'dark' : value);
+    this.animation?.cancel();
+    this.clearTurn();
+  }
+
+  changeColor(event: Event, target: 'background' | 'text'): void {
+    const color = (event.target as HTMLInputElement).value;
+    if (!/^#[0-9a-f]{6}$/i.test(color)) return;
+    this.animation?.cancel();
+    this.clearTurn();
+    (target === 'background' ? this.backgroundColor : this.textColor).set(color);
   }
 
   download(): void {
@@ -417,7 +513,25 @@ export class BookReaderComponent implements OnDestroy {
   private async renderPage(): Promise<boolean> {
     const pdf = this.pdf;
     if (!pdf || this.finished) return false;
-    if (this.fullPage() && this.stage() !== 'pages') return true;
+    if (this.fullPage() && this.stage() !== 'pages') {
+      this.displayStage.set(this.stage());
+      return true;
+    }
+    const numbers = this.visiblePages();
+    const [viewportWidth, viewportHeight] = this.viewportSize();
+    const key = [
+      this.documentVersion,
+      this.fullPage(),
+      this.pageMode(),
+      numbers.join(','),
+      this.zoom(),
+      viewportWidth,
+      viewportHeight,
+    ].join('/');
+    if (key === this.lastRenderKey && !this.rendering()) {
+      this.displayStage.set('pages');
+      return true;
+    }
     const version = ++this.renderVersion;
     const documentVersion = this.documentVersion;
     const previous = this.renderTask;
@@ -436,55 +550,52 @@ export class BookReaderComponent implements OnDestroy {
       this.extraPage?.cleanup();
       this.extraPage = null;
       this.page = null;
-      const numbers = this.visiblePages();
-      if (numbers.length === 1) {
-        const secondary = this.secondCanvas()?.nativeElement;
-        if (secondary) {
-          secondary.width = 0;
-          secondary.height = 0;
-        }
-      }
-      const page = await pdf.getPage(numbers[0]);
+      const pages = await Promise.all(numbers.map((number) => pdf.getPage(number)));
       if (version !== this.renderVersion || this.finished) {
-        page.cleanup();
+        pages.forEach((page) => page.cleanup());
         return false;
       }
-      this.page = page;
-      const canvas = this.canvas()?.nativeElement;
-      if (!canvas) throw new Error('The PDF page canvas is unavailable.');
-      const availableWidth = Math.max(
-        120,
-        ((this.viewport()?.nativeElement.clientWidth || 800) - 40) / numbers.length,
-      );
-      const availableHeight = Math.max(
-        120,
-        (this.viewport()?.nativeElement.clientHeight || 650) - 40,
-      );
+      this.page = pages[0];
+      this.extraPage = pages[1] || null;
+      const availableWidth = Math.max(40, (viewportWidth - 56) / numbers.length);
+      const availableHeight = Math.max(40, viewportHeight - 56);
       const widthFor = (value: PdfReaderPage) =>
-        this.fullPage()
+        (this.fullPage()
           ? Math.min(
               availableWidth,
               (availableHeight * value.width) / (value.height || value.width * 1.414),
             )
-          : availableWidth * this.zoom();
-      const task = page.render(canvas, widthFor(page), 'original');
-      this.renderTask = task;
-      await task.promise;
+          : availableWidth) * this.zoom();
+      // PDF.js resets a target bitmap before painting. Stage the entire spread so the
+      // displayed pages and their geometry stay intact until every facing page is ready.
+      const staged = pages.map(() => this.document.createElement('canvas'));
+      const tasks = pages.map((page, index) => {
+        const task = page.render(staged[index], widthFor(page), 'original');
+        if (index === 0) this.renderTask = task;
+        else this.extraRenderTask = task;
+        // A second render may throw synchronously before Promise.all is constructed.
+        void task.promise.catch(() => undefined);
+        return task;
+      });
+      await Promise.all(tasks.map((task) => task.promise));
       if (version !== this.renderVersion || this.finished) return false;
-      if (numbers.length === 2) {
-        const second = await pdf.getPage(numbers[1]);
-        if (version !== this.renderVersion || this.finished) {
-          second.cleanup();
-          return false;
-        }
-        this.extraPage = second;
-        const secondCanvas = this.secondCanvas()?.nativeElement;
-        if (!secondCanvas) throw new Error('The facing PDF page canvas is unavailable.');
-        const extra = second.render(secondCanvas, widthFor(second), 'original');
-        this.extraRenderTask = extra;
-        await extra.promise;
-      }
-      return version === this.renderVersion && !this.finished;
+      const targets = [this.canvas()?.nativeElement, this.secondCanvas()?.nativeElement];
+      const contexts = staged.map((_, index) => targets[index]?.getContext('2d'));
+      if (contexts.some((context) => !context))
+        throw new Error('This browser could not display the PDF canvas.');
+      staged.forEach((source, index) => {
+        const target = targets[index]!;
+        target.width = source.width;
+        target.height = source.height;
+        target.style.width = source.style.width;
+        target.style.height = source.style.height;
+        contexts[index]!.drawImage(source, 0, 0);
+      });
+      this.displayedPages.set(numbers);
+      this.displayStage.set('pages');
+      this.lastRenderKey = key;
+      this.observedSize = [viewportWidth, viewportHeight].join('x');
+      return true;
     } catch (error) {
       if (version === this.renderVersion && !this.finished) await this.fail(error, documentVersion);
       return false;
@@ -497,6 +608,15 @@ export class BookReaderComponent implements OnDestroy {
     }
   }
 
+  private viewportSize(): [number, number] {
+    const viewport = this.viewport()?.nativeElement;
+    // The outer box does not oscillate as inner scrollbars appear/disappear.
+    return [
+      viewport?.offsetWidth || viewport?.clientWidth || 800,
+      viewport?.offsetHeight || viewport?.clientHeight || 650,
+    ];
+  }
+
   private async fail(error: unknown, version: number): Promise<void> {
     const message = await apiErrorMessage(error);
     if (version !== this.documentVersion || this.finished) return;
@@ -507,6 +627,7 @@ export class BookReaderComponent implements OnDestroy {
 
   private releaseDocument(): void {
     ++this.renderVersion;
+    this.lastRenderKey = '';
     this.http?.unsubscribe();
     this.http = null;
     const render = this.renderTask;
@@ -548,6 +669,7 @@ export class BookReaderComponent implements OnDestroy {
     this.releaseDocument();
     this.animation?.cancel();
     this.animation = null;
+    this.clearTurn();
     this.soundEnabled.set(false);
     this.sound.disable();
     clearTimeout(this.resizeTimer);

@@ -186,4 +186,27 @@ describe('Home rendered integration', () => {
     fixture.detectChanges();
     expect(viewport.querySelector('.no-books')).not.toBeNull();
   });
+
+  it('keeps the collection mounted in place without inserting upload status or validation layouts', async () => {
+    const fixture = TestBed.createComponent(HomeComponent);
+    TestBed.inject(HttpTestingController).expectOne('/api/search/books?size=5').flush(result);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const element = fixture.nativeElement as HTMLElement;
+    const main = element.querySelector('main')!;
+    const workspace = main.querySelector('.workspace-body')!;
+    const collection = element.querySelector('#book-collection-section');
+    for (const phase of ['uploading', 'processing', 'unknown', 'success', 'error'] as const) {
+      fixture.componentInstance.upload.phase.set(phase);
+      fixture.componentInstance.upload.receiptId.set(41);
+      fixture.componentInstance.upload.validationError.set('A test validation message');
+      fixture.detectChanges();
+      expect(Array.from(main.children)).toEqual([main.querySelector('h1'), workspace]);
+      expect(element.querySelector('#book-collection-section')).toBe(collection);
+      expect(
+        main.querySelector('.upload-status, .upload-receipt, [role="progressbar"]'),
+      ).toBeNull();
+      expect(main.textContent).not.toContain('A test validation message');
+    }
+  });
 });

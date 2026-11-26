@@ -103,7 +103,7 @@ describe('Application viewport layout', () => {
     expect(fixture.nativeElement.querySelector('[data-library-scroll-region]')).toBe(region);
   });
 
-  it('keeps sidebar collapse/reopen accessible and places the only logout within the middle sidebar', async () => {
+  it('opens the existing full profile only on icon click and preserves its actions and collapse focus', async () => {
     TestBed.overrideProvider(AuthSessionService, {
       useValue: {
         user: signal({ userId: 1, email: 'own@example.com', displayName: 'Own User' }),
@@ -112,7 +112,10 @@ describe('Application viewport layout', () => {
       },
     });
     TestBed.overrideProvider(CurrentProfileService, {
-      useValue: { profile: signal(null), refresh: vi.fn(() => Promise.resolve()) },
+      useValue: {
+        profile: signal({ username: 'own.reader', displayName: 'Own User' }),
+        refresh: vi.fn(() => Promise.resolve()),
+      },
     });
     TestBed.overrideProvider(NavigationAccessService, {
       useValue: {
@@ -130,11 +133,18 @@ describe('Application viewport layout', () => {
     const toggle = element.querySelector('.sidebar-toggle') as HTMLButtonElement;
     expect(sidebar.parentElement?.classList.contains('application-middle')).toBe(true);
     expect(element.querySelectorAll('.logout-button')).toHaveLength(1);
-    expect(
-      element.querySelector('app-header .logout-button,app-header .profile-trigger'),
-    ).toBeNull();
+    expect(element.querySelector('app-header .logout-button')).toBeNull();
+    expect(element.querySelector('app-header .profile-trigger')).toBe(toggle);
     expect(sidebar.hidden).toBe(true);
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(element.querySelector('app-header [role="tooltip"]')).toBeNull();
+    toggle.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+    fixture.detectChanges();
+    const tooltip = element.querySelector('app-header [role="tooltip"]')!;
+    expect(tooltip.textContent).toContain('own.reader');
+    expect(tooltip.textContent).toContain('Own User');
+    expect(tooltip.textContent).not.toContain('Logout');
+    expect(sidebar.hidden).toBe(true);
     toggle.click();
     fixture.detectChanges();
     expect(sidebar.hidden).toBe(false);
@@ -143,7 +153,7 @@ describe('Application viewport layout', () => {
     fixture.detectChanges();
     expect(sidebar.hidden).toBe(true);
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
-    expect(toggle.getAttribute('aria-label')).toBe('Expand sidebar');
+    expect(toggle.getAttribute('aria-label')).toBe('Open profile');
     toggle.click();
     fixture.detectChanges();
     expect(sidebar.hidden).toBe(false);

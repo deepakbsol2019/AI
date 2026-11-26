@@ -1,16 +1,34 @@
 <header class="site-header">
   <div class="container-xl header-content">
     @if (sidebarAvailable()) {
-      <button
-        type="button"
-        class="btn btn-primary sidebar-toggle"
-        aria-controls="application-sidebar"
-        [attr.aria-expanded]="sidebarExpanded()"
-        [attr.aria-label]="sidebarExpanded() ? 'Collapse sidebar' : 'Expand sidebar'"
-        (click)="sidebarToggle.emit()"
+      <div
+        class="profile-control"
+        (mouseenter)="profileHintVisible.set(true)"
+        (mouseleave)="profileHintVisible.set(false)"
+        (focusin)="profileHintVisible.set(true)"
+        (focusout)="profileHintVisible.set(false)"
+        (keydown.escape)="profileHintVisible.set(false)"
       >
-        &#9776;<span class="visually-hidden">Navigation</span>
-      </button>
+        <button
+          type="button"
+          class="btn btn-primary sidebar-toggle profile-trigger"
+          aria-controls="application-sidebar"
+          [attr.aria-expanded]="sidebarExpanded()"
+          [attr.aria-label]="sidebarExpanded() ? 'Close profile' : 'Open profile'"
+          [attr.aria-describedby]="
+            profileHintVisible() && !sidebarExpanded() ? 'header-profile-tooltip' : null
+          "
+          (click)="toggleProfile()"
+        >
+          <app-icon name="user" [size]="24" />
+        </button>
+        @if (profileHintVisible() && !sidebarExpanded()) {
+          <span id="header-profile-tooltip" class="profile-tooltip" role="tooltip">
+            <strong>{{ profileUsername() || 'Your account' }}</strong>
+            <span>{{ profileName() || 'Name not available' }}</span>
+          </span>
+        }
+      </div>
     }
     <a routerLink="/" class="brand" aria-label="Bookhaven home">
       <span class="brand-mark"><app-icon name="book" [size]="27" /></span>

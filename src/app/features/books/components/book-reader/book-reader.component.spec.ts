@@ -73,6 +73,9 @@ describe('BookReaderComponent', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      drawImage: vi.fn(),
+    } as unknown as CanvasRenderingContext2D);
     cancel.mockImplementation(() => undefined);
     books = new Subject();
     topics = new Subject();
@@ -186,10 +189,15 @@ describe('BookReaderComponent', () => {
     expect(Array.from(mode.options, (option) => option.textContent)).toEqual([
       'Light mode (original PDF)',
       'Dark mode',
+      'Colorful mode',
     ]);
     expect(dialog.classList.contains('dark-mode')).toBe(false);
     expect(canvas.classList.contains('page-dark')).toBe(false);
-    expect(page.render).toHaveBeenLastCalledWith(canvas, expect.any(Number), 'original');
+    expect(page.render).toHaveBeenLastCalledWith(
+      expect.any(HTMLCanvasElement),
+      expect.any(Number),
+      'original',
+    );
     const renderCount = page.render.mock.calls.length;
 
     mode.value = 'dark';

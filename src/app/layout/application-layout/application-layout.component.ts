@@ -14,6 +14,7 @@ import { HeaderComponent } from '../header/header.component';
 import { FooterComponent } from '../footer/footer.component';
 import { SidebarComponent } from '../sidebar/sidebar.component';
 import { AuthSessionService } from '../../features/user/services/auth-session.service';
+import { CurrentProfileService } from '../../features/user/services/current-profile.service';
 
 @Component({
   selector: 'app-application-layout',
@@ -25,6 +26,8 @@ import { AuthSessionService } from '../../features/user/services/auth-session.se
       [libraryControls]="libraryControls()"
       [sidebarAvailable]="!!session.user()"
       [sidebarExpanded]="sidebarExpanded()"
+      [profileUsername]="profiles.profile()?.username || session.user()?.email || ''"
+      [profileName]="profiles.profile()?.displayName || session.user()?.displayName || ''"
       (sidebarToggle)="sidebarExpanded.set(!sidebarExpanded())"
       [uploadBusy]="uploadBusy()"
       [searchMinimized]="searchMinimized()"
@@ -119,6 +122,7 @@ import { AuthSessionService } from '../../features/user/services/auth-session.se
 })
 export class ApplicationLayoutComponent {
   protected readonly session = inject(AuthSessionService);
+  protected readonly profiles = inject(CurrentProfileService);
   private readonly element: ElementRef<HTMLElement> = inject(ElementRef);
   readonly libraryControls = input(true);
   readonly sidebarExpanded = signal(false);

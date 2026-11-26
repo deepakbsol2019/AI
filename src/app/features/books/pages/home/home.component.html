@@ -15,57 +15,6 @@
     tabindex="-1"
   >
     <h1 class="visually-hidden">Book library</h1>
-    @if (upload.validationError(); as validation) {
-      <p class="alert alert-danger" role="alert">{{ validation }}</p>
-    }
-    @if (
-      upload.phase() === 'uploading' ||
-      upload.phase() === 'processing' ||
-      upload.phase() === 'unknown'
-    ) {
-      <section
-        class="glass-panel upload-status"
-        [class.upload-error]="upload.phase() === 'error' || upload.phase() === 'unknown'"
-        aria-label="Document upload status"
-      >
-        <div class="status-top">
-          <strong
-            ><app-icon [name]="upload.phase() === 'success' ? 'check' : 'upload'" />
-            {{ upload.fileName() }}</strong
-          ><span class="status-badge">{{
-            upload.phase() === 'processing' ? 'Preparing your book' : upload.phase()
-          }}</span>
-        </div>
-        <p aria-live="polite" class="mb-0">{{ upload.message() }}</p>
-        @if (upload.receiptId(); as uploadId) {
-          <p class="mb-0 upload-receipt">
-            Upload ID: <strong>{{ uploadId }}</strong> ·
-            <a [routerLink]="['/user/uploads']" [queryParams]="{ uploadId }">View Upload Status</a>
-          </p>
-        }
-        @if (upload.phase() === 'uploading' && upload.progress() !== null) {
-          <div
-            class="progress mt-3"
-            role="progressbar"
-            [attr.aria-valuenow]="upload.progress()"
-            aria-valuemin="0"
-            aria-valuemax="100"
-            aria-label="PDF transfer progress"
-          >
-            <div class="progress-bar" [style.width.%]="upload.progress()"></div>
-          </div>
-        }
-        @if (upload.phase() === 'processing') {
-          <p class="small muted mt-2 mb-0">You can keep browsing while your PDF is processed.</p>
-        }
-        @if (upload.phase() === 'unknown') {
-          <button class="btn btn-outline-primary btn-sm mt-3" (click)="upload.retryStatus()">
-            Resume status check
-          </button>
-        }
-      </section>
-    }
-
     <div class="workspace-body">
       <div id="library-search-section" [hidden]="searchMinimized()">
         @defer (on immediate) {

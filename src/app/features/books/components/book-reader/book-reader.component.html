@@ -1,7 +1,7 @@
 ﻿<dialog
   #readerDialog
   class="reader-dialog"
-  [class.dark-mode]="pageTheme() !== 'original'"
+  [class.dark-mode]="pageTheme() === 'dark'"
   [class.full-page]="fullPage()"
   [attr.aria-labelledby]="fullPage() ? null : 'reader-title'"
   [attr.aria-describedby]="fullPage() ? null : 'reader-scope'"
@@ -9,6 +9,85 @@
   (close)="onClosed()"
   (cancel)="onCancel($event)"
 >
+  <svg class="reader-color-filter" aria-hidden="true" focusable="false">
+    <defs>
+      <filter [id]="colorFilterId" color-interpolation-filters="sRGB">
+        <feColorMatrix type="saturate" values="0" />
+        <feComponentTransfer>
+          <feFuncR type="table" [attr.tableValues]="colorChannels()[0]" />
+          <feFuncG type="table" [attr.tableValues]="colorChannels()[1]" />
+          <feFuncB type="table" [attr.tableValues]="colorChannels()[2]" />
+          <feFuncA type="identity" />
+        </feComponentTransfer>
+      </filter>
+    </defs>
+  </svg>
+  <ng-template #appearanceControls>
+    <div class="control-group zoom-controls" aria-label="Page zoom">
+      <button
+        type="button"
+        class="reader-button zoom-out"
+        aria-label="Zoom out"
+        [disabled]="status() !== 'ready' || rendering() || zoom() <= 0.5"
+        (click)="changeZoom(-0.25)"
+      >
+        −
+      </button>
+      <span class="zoom-label" aria-live="polite">{{ (zoom() * 100).toFixed(0) }}%</span>
+      <button
+        type="button"
+        class="reader-button zoom-in"
+        aria-label="Zoom in"
+        [disabled]="status() !== 'ready' || rendering() || zoom() >= 1.25"
+        (click)="changeZoom(0.25)"
+      >
+        +
+      </button>
+      <button
+        type="button"
+        class="reader-button reader-fit"
+        [disabled]="status() !== 'ready' || rendering()"
+        (click)="fitWidth()"
+      >
+        {{ fullPage() ? 'Fit page' : 'Fit width' }}
+      </button>
+    </div>
+    <div class="color-control">
+      <label for="reader-color-mode">Mode</label>
+      <select id="reader-color-mode" [value]="pageTheme()" (change)="changeTheme($event)">
+        <option value="original">Light mode (original PDF)</option>
+        <option value="dark">Dark mode</option>
+        <option value="colorful">Colorful mode</option>
+      </select>
+      <details class="color-help">
+        <summary aria-label="About reading colors"><app-icon name="info" /></summary>
+        <p>
+          Dark and Colorful modes also recolor scanned pages and photos. Use Light mode for the
+          original PDF colors.
+        </p>
+      </details>
+    </div>
+    @if (pageTheme() === 'colorful') {
+      <label class="color-control"
+        >Background Color
+        <input
+          type="color"
+          aria-label="Background Color"
+          [value]="backgroundColor()"
+          (input)="changeColor($event, 'background')"
+        />
+      </label>
+      <label class="color-control"
+        >Text Color
+        <input
+          type="color"
+          aria-label="Text Color"
+          [value]="textColor()"
+          (input)="changeColor($event, 'text')"
+        />
+      </label>
+    }
+  </ng-template>
   @if (!fullPage()) {
     <app-notifications />
     <header class="reader-header">
@@ -71,56 +150,13 @@
             <app-icon name="chevron-right" />
           </button>
         </div>
-        <div class="control-group zoom-controls">
-          <button
-            type="button"
-            class="reader-button zoom-out"
-            aria-label="Zoom out"
-            [disabled]="status() !== 'ready' || rendering() || zoom() <= 0.5"
-            (click)="changeZoom(-0.25)"
-          >
-            −
-          </button>
-          <span class="zoom-label">{{ (zoom() * 100).toFixed(0) }}%</span>
-          <button
-            type="button"
-            class="reader-button zoom-in"
-            aria-label="Zoom in"
-            [disabled]="status() !== 'ready' || rendering() || zoom() >= 3"
-            (click)="changeZoom(0.25)"
-          >
-            +
-          </button>
-          <button
-            type="button"
-            class="reader-button reader-fit"
-            [disabled]="status() !== 'ready' || rendering()"
-            (click)="fitWidth()"
-          >
-            Fit width
-          </button>
-        </div>
-        <div class="color-control">
-          <label for="reader-color-mode">Mode</label>
-          <select
-            id="reader-color-mode"
-            [value]="pageTheme()"
-            (change)="changeTheme($event)"
-            [disabled]="status() !== 'ready' || rendering()"
-          >
-            <option value="original">Light mode (original PDF)</option>
-            <option value="dark">Dark mode</option>
-          </select>
-          <details class="color-help">
-            <summary aria-label="About dark mode"><app-icon name="info" /></summary>
-            <p>
-              Dark mode also recolors scanned pages and photos. Use Light mode for the original PDF
-              colors.
-            </p>
-          </details>
-        </div>
+        <ng-container [ngTemplateOutlet]="appearanceControls" />
       </div>
     </header>
+  } @else {
+    <div class="reader-toolbar full-reader-appearance" aria-label="Fullscreen reading appearance">
+      <ng-container [ngTemplateOutlet]="appearanceControls" />
+    </div>
   }
   <section
     #pageViewport
@@ -157,12 +193,12 @@
     <div
       #bookSurface
       class="book-spread"
-      [class.facing-pages]="visiblePages().length === 2"
-      [class.showing-cover]="fullPage() && stage() !== 'pages'"
+      [class.facing-pages]="displayedPages().length === 2"
+      [class.showing-cover]="fullPage() && displayStage() !== 'pages'"
     >
       <section
         class="book-cover front-cover"
-        [hidden]="!fullPage() || stage() !== 'front'"
+        [hidden]="!fullPage() || displayStage() !== 'front'"
         aria-label="Decorative front cover"
       >
         <span class="cover-spine" aria-hidden="true"></span>
@@ -172,7 +208,7 @@
       </section>
       <section
         class="book-cover back-cover"
-        [hidden]="!fullPage() || stage() !== 'back'"
+        [hidden]="!fullPage() || displayStage() !== 'back'"
         aria-label="Plain back cover"
       >
         <span class="visually-hidden">End of the PDF — back cover</span>
@@ -180,21 +216,25 @@
       <canvas
         #pageCanvas
         class="reader-canvas"
-        [class.page-dark]="pageTheme() !== 'original'"
-        [hidden]="status() !== 'ready' || (fullPage() && stage() !== 'pages')"
+        [class.page-dark]="pageTheme() === 'dark'"
+        [style.filter]="colorfulFilter()"
+        [hidden]="status() !== 'ready' || (fullPage() && displayStage() !== 'pages')"
         role="img"
-        [attr.aria-label]="title() + ', page ' + visiblePages()[0] + ' of ' + pageCount()"
+        [attr.aria-label]="title() + ', page ' + displayedPages()[0] + ' of ' + pageCount()"
         >Your browser does not support PDF canvas rendering.</canvas
       >
       <canvas
         #secondPageCanvas
         class="reader-canvas facing-canvas"
-        [class.page-dark]="pageTheme() !== 'original'"
+        [class.page-dark]="pageTheme() === 'dark'"
+        [style.filter]="colorfulFilter()"
         [hidden]="
-          status() !== 'ready' || visiblePages().length !== 2 || (fullPage() && stage() !== 'pages')
+          status() !== 'ready' ||
+          displayedPages().length !== 2 ||
+          (fullPage() && displayStage() !== 'pages')
         "
         role="img"
-        [attr.aria-label]="title() + ', page ' + visiblePages()[1] + ' of ' + pageCount()"
+        [attr.aria-label]="title() + ', page ' + displayedPages()[1] + ' of ' + pageCount()"
         >Your browser does not support PDF canvas rendering.</canvas
       >
     </div>

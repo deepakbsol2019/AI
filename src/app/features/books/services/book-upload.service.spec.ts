@@ -63,7 +63,8 @@ describe('BookUploadService', () => {
       http.expectNone('/api/upload-file');
     }
     expect(service.receiptId()).toBeNull();
-    expect(notifications.items()).toEqual([]);
+    expect(notifications.items()).toHaveLength(invalid.length);
+    expect(notifications.items().every((item) => item.severity === 'error')).toBe(true);
   });
 
   it('lets the backend determine content type instead of trusting a declared MIME or extension', async () => {
@@ -156,11 +157,14 @@ describe('BookUploadService', () => {
     await Promise.resolve();
     expect(service.phase()).toBe('unknown');
     expect(service.receiptId()).toBe(41);
-    expect(service.busy()).toBe(true);
+    expect(service.busy()).toBe(false);
     expect(service.message()).toContain('server may still be processing');
-    expect(notifications.items()).toMatchObject([{ severity: 'info' }]);
-    service.upload(pdf('same.pdf'));
-    http.expectNone('/api/upload-file');
+    expect(notifications.items()).toMatchObject([
+      {
+        severity: 'warning',
+        action: { label: 'View Upload Status', url: '/user/uploads?uploadId=41' },
+      },
+    ]);
     service.retryStatus();
     // Duplicate retries while a check is active also do not issue another request.
     service.retryStatus();
@@ -170,6 +174,27 @@ describe('BookUploadService', () => {
     expect(service.phase()).toBe('success');
     expect(completed).toHaveBeenCalledTimes(1);
     http.expectNone('/api/upload-file');
+  });
+
+  it('allows another upload after interrupted polling while keeping the previous server receipt recoverable', async () => {
+    service.upload(pdf());
+    http.expectOne('/api/upload-file').flush(pending, { status: 202, statusText: 'Accepted' });
+    vi.advanceTimersByTime(pollInterval);
+    http.expectOne('/api/upload-status/41').error(new ProgressEvent('error'));
+    await Promise.resolve();
+    expect(service.busy()).toBe(false);
+    service.upload(pdf('next.pdf'));
+    http
+      .expectOne('/api/upload-file')
+      .flush(
+        { book_upload_id: 42, status: 'Success', message: 'Next book ready' },
+        { status: 202, statusText: 'Accepted' },
+      );
+    expect(service.receiptId()).toBe(42);
+    expect(service.phase()).toBe('success');
+    expect(
+      notifications.items().some((item) => item.action?.url === '/user/uploads?uploadId=41'),
+    ).toBe(true);
   });
 
   it('shows upload HTTP failure and allows selecting the same file again', async () => {
@@ -233,14 +258,12 @@ describe('BookUploadService', () => {
     expect(service.receiptId()).toBe(41);
     expect(service.phase()).toBe('processing');
     vi.advanceTimersByTime(pollInterval);
-    http
-      .expectOne('/api/upload-status/41')
-      .flush({
-        ...pending,
-        state: 'FAILED',
-        failureReason: 'Actual worker failure',
-        status: 'failed',
-      });
+    http.expectOne('/api/upload-status/41').flush({
+      ...pending,
+      state: 'FAILED',
+      failureReason: 'Actual worker failure',
+      status: 'failed',
+    });
     expect(service.message()).toBe('Actual worker failure');
   });
 });

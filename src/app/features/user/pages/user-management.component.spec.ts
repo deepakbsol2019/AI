@@ -10,6 +10,7 @@ import {
   UserDetails,
   DeletionPreview,
   DeletionJob,
+  CreateUserOptions,
 } from '../data-access/user-management-api.service';
 import { AuthSessionService } from '../services/auth-session.service';
 import { CurrentProfileService } from '../services/current-profile.service';
@@ -381,7 +382,7 @@ describe('Routed User Management pages', () => {
     const { component, element, harness } = await page('/user/users/new');
     expect(element.textContent).toContain('Tenant A');
     expect((element.querySelector('#create-tenant') as HTMLSelectElement).disabled).toBe(false);
-    expect(element.querySelectorAll('select')).toHaveLength(1);
+    expect(element.querySelectorAll('select')).toHaveLength(2);
     expect(element.querySelector('[role="dialog"]')).toBeNull();
     component.createForm.setValue({ email: 'new@example.com', displayName: 'New user' });
     api['create'].mockReturnValue(
@@ -527,7 +528,7 @@ describe('Routed User Management pages', () => {
     harness.detectChanges();
     expect(api['createOptions']).toHaveBeenLastCalledWith(7);
     expect(component.createOptions()?.loginPolicy).toBe('SSO');
-    expect(element.querySelectorAll('select')).toHaveLength(1);
+    expect(element.querySelectorAll('select')).toHaveLength(2);
     component.createForm.setValue({ email: 'selected@example.com', displayName: 'Selected user' });
     await component.createUser();
     expect(api['create']).toHaveBeenCalledWith('selected@example.com', 'Selected user', 7);
@@ -544,6 +545,82 @@ describe('Routed User Management pages', () => {
     (element.querySelector('.result-close') as HTMLButtonElement).click();
     await harness.fixture.whenStable();
     expect(TestBed.inject(Router).url).toBe('/user/users/12?search=employee&status=ALL&page=2');
+  });
+  it('offers database role options and submits the selected role with its tenant', async () => {
+    api['createOptions'].mockReturnValue(
+      of({
+        tenantId: 4,
+        tenantName: 'Tenant A',
+        tenantType: 'ORGANIZATION',
+        loginPolicy: 'PASSWORD',
+        roles: [{ roleId: 21, name: 'Tenant reviewer' }],
+      }),
+    );
+    const { component, element } = await page('/user/users/new');
+    const select = element.querySelector('#create-role') as HTMLSelectElement;
+    expect(select.disabled).toBe(false);
+    expect(select.textContent).toContain('Tenant reviewer');
+    component.createForm.setValue({ email: 'reviewer@example.com', displayName: 'Reviewer' });
+    await component.createUser();
+    expect(api['create']).not.toHaveBeenCalled();
+    expect(component.error()).toContain('Select a role');
+    select.value = '21';
+    select.dispatchEvent(new Event('change'));
+    await component.createUser();
+    expect(api['create']).toHaveBeenCalledWith('reviewer@example.com', 'Reviewer', 4, 21);
+  });
+  it('clears role selection immediately on tenant change and ignores stale role responses', async () => {
+    api['createOptions'].mockReturnValue(
+      of({
+        tenantId: 4,
+        tenantName: 'Tenant A',
+        tenantType: 'ORGANIZATION',
+        loginPolicy: 'PASSWORD',
+        roles: [{ roleId: 21, name: 'Tenant A reviewer' }],
+      }),
+    );
+    const { component, harness } = await page('/user/users/new');
+    component.selectCreateRole({ target: { value: '21' } } as unknown as Event);
+    const tenantB = new Subject<CreateUserOptions>(),
+      tenantA = new Subject<CreateUserOptions>();
+    api['createOptions'].mockReturnValueOnce(tenantB).mockReturnValueOnce(tenantA);
+    const first = component.selectCreateTenant({ target: { value: '7' } } as unknown as Event);
+    expect(component.selectedCreateRole()).toBeNull();
+    expect(component.createOptions()?.roles).toEqual([]);
+    expect(component.createRoleLoading()).toBe(true);
+    const second = component.selectCreateTenant({ target: { value: '4' } } as unknown as Event);
+    tenantA.next({
+      tenantId: 4,
+      tenantName: 'Tenant A',
+      tenantType: 'ORGANIZATION',
+      loginPolicy: 'PASSWORD',
+      roles: [{ roleId: 22, name: 'New A reviewer' }],
+    });
+    await second;
+    tenantB.next({
+      tenantId: 7,
+      tenantName: 'Tenant B',
+      tenantType: 'INDIVIDUAL',
+      loginPolicy: 'SSO',
+      roles: [{ roleId: 71, name: 'B reviewer' }],
+    });
+    await first;
+    harness.detectChanges();
+    expect(component.createOptions()?.tenantId).toBe(4);
+    expect(component.createOptions()?.roles?.map((role) => role.roleId)).toEqual([22]);
+    expect(component.selectedCreateRole()).toBeNull();
+    expect(component.createRoleLoading()).toBe(false);
+    expect(harness.routeNativeElement?.textContent).not.toContain('B reviewer');
+  });
+  it('disables role choices when none are assignable and rejects a forged selection', async () => {
+    const { component, element } = await page('/user/users/new');
+    expect((element.querySelector('#create-role') as HTMLSelectElement).disabled).toBe(true);
+    expect(element.textContent).toContain('without a role');
+    component.createForm.setValue({ email: 'forged-role@example.com', displayName: 'Forged role' });
+    component.selectedCreateRole.set(999);
+    await component.createUser();
+    expect(api['create']).not.toHaveBeenCalled();
+    expect(component.error()).toContain('selected tenant');
   });
   it('keeps activation separate from profile editing and selected-account only', async () => {
     api['details'].mockReturnValue(

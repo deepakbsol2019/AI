@@ -37,7 +37,7 @@ export class BookUploadService {
   private acceptedNotification: number | null = null;
   readonly completed$ = this.completedSubject.asObservable();
   readonly phase = signal<UploadPhase>('idle');
-  readonly busy = computed(() => ['uploading', 'processing', 'unknown'].includes(this.phase()));
+  readonly busy = computed(() => ['uploading', 'processing'].includes(this.phase()));
   readonly progress = signal<number | null>(null);
   readonly fileName = signal('');
   readonly message = signal('');
@@ -75,6 +75,7 @@ export class BookUploadService {
     if (file.size === 0 || file.size > this.config.maxUploadBytes) {
       this.validationError.set('Choose a non-empty PDF of 100 MiB or less.');
       this.fail('Choose a non-empty PDF of 100 MiB or less.');
+      this.notifications.show(this.message(), 'error');
       return;
     }
     this.phase.set('uploading');
@@ -183,9 +184,16 @@ export class BookUploadService {
       this.phase.set('unknown');
       this.message.set(
         error instanceof BackgroundAuthenticationPausedError
-          ? 'Automatic status checks are paused. Select Resume status check to verify your sign-in and continue. The server may still be processing your PDF.'
-          : `Status check interrupted. The server may still be processing your PDF. ${message}`,
+          ? 'Automatic status checks are paused. Open My Uploads and use Refresh Status to verify your sign-in and check this upload. The server may still be processing your PDF.'
+          : `Status check interrupted. The server may still be processing your PDF. Open My Uploads to refresh its status. ${message}`,
       );
+      // The independent server job and its durable receipt remain available even if polling stops.
+      // An interrupted status check must not permanently disable the only upload control.
+      this.dismissAcceptedNotification();
+      this.notifications.show(this.message(), 'warning', {
+        label: 'View Upload Status',
+        url: `/user/uploads?uploadId=${this.receiptId()}`,
+      });
     } else {
       this.fail(message);
       this.notifications.show(message, 'error');

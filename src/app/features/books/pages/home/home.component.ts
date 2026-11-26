@@ -8,7 +8,6 @@ import {
   ViewContainerRef,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { RouterLink } from '@angular/router';
 import { catchError, from, map, startWith, Subject, switchMap } from 'rxjs';
 import { ApplicationLayoutComponent } from '../../../../layout/application-layout/application-layout.component';
 import { IconComponent } from '../../../../shared/ui/icon.component';
@@ -29,13 +28,7 @@ const DEFAULT_PAGE_SIZE = 5;
 
 @Component({
   selector: 'app-home',
-  imports: [
-    ApplicationLayoutComponent,
-    IconComponent,
-    BookSearchComponent,
-    BookTableComponent,
-    RouterLink,
-  ],
+  imports: [ApplicationLayoutComponent, IconComponent, BookSearchComponent, BookTableComponent],
   templateUrl: './home.component.html',
   styleUrl: './home.component.css',
 })

@@ -130,4 +130,32 @@ describe('PdfReaderService', () => {
     await rejected;
     expect(getDocument).not.toHaveBeenCalled();
   });
+
+  it('bounds backing-store dimensions for a huge chart while retaining its CSS size and aspect ratio', async () => {
+    getPage.mockResolvedValueOnce({
+      getViewport: ({ scale }: { scale: number }) => ({
+        width: 40000 * scale,
+        height: 18000 * scale,
+      }),
+      render,
+      cleanup,
+    } as unknown as PDFPageProxy);
+    const handle = TestBed.inject(PdfReaderService).load(pdfBlob());
+    const pdf = await handle.promise;
+    const chart = await pdf.getPage(1);
+    const canvas = document.createElement('canvas');
+    await chart.render(canvas, 40000, 'original').promise;
+    expect(canvas.style.width).toBe('40000px');
+    expect(canvas.style.height).toBe('18000px');
+    expect(canvas.width).toBeGreaterThan(0);
+    expect(canvas.height).toBeGreaterThan(0);
+    expect(canvas.width).toBeLessThanOrEqual(16384);
+    expect(canvas.height).toBeLessThanOrEqual(16384);
+    // Ceil on each integer bitmap edge may add a small rounding margin to the pixel budget.
+    expect(canvas.width * canvas.height).toBeLessThanOrEqual(16020000);
+    expect(canvas.width / canvas.height).toBeCloseTo(40000 / 18000, 2);
+    expect(render).toHaveBeenCalledWith(expect.objectContaining({ canvas, background: '#ffffff' }));
+    chart.cleanup();
+    await handle.destroy();
+  });
 });

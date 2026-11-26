@@ -104,6 +104,7 @@ export interface CreateUserOptions {
   tenantName: string;
   tenantType: string;
   loginPolicy: string;
+  roles?: { roleId: number; name: string }[];
 }
 export interface CreatedUser {
   userId: number;
@@ -136,11 +137,12 @@ export class UserManagementApiService {
       params: tenantId === undefined ? {} : { tenantId },
     });
   }
-  create(email: string, displayName: string, tenantId?: number) {
+  create(email: string, displayName: string, tenantId?: number, roleId?: number) {
     return this.http.post<CreatedUser>(this.base, {
       email,
       displayName,
       ...(tenantId === undefined ? {} : { tenantId }),
+      ...(roleId === undefined ? {} : { roleId }),
     });
   }
   list(search: string, status: string, page: number, size: number) {

@@ -2,6 +2,8 @@
 
 Standalone Angular UI connected to the sibling `Book-Search-Download` Spring backend. Unauthenticated visitors go to Login; authenticated visitors reach the existing Home. Production has no mock mode or silent mock fallback.
 
+The current [viewer, profile and role update](../Book-Search-Download/VIEWER_PROFILE_ROLE_UPDATES.md) covers custom reading colors, stable fullscreen facing pages, 50–125% zoom, notification-only Home uploads, tenant-specific role selection and the header profile icon, including final verification and browser limits.
+
 Latest upload/reading/Home behavior is in the [upload history and Full Page reader guide](../Book-Search-Download/UPLOAD_HISTORY_READER.md): Upload Document, persistent private My Uploads, viewer-local dates, full-page covers/spreads/sound and bottom-aligned overflow/pagination. It supersedes conflicting older reader and layout descriptions below.
 
 The latest [profile, permission and role layout guide](../Book-Search-Download/PROFILE_ROLE_LAYOUT.md) covers cleanup/results, Copy Role, initially minimized profile boxes, own-information/permissions, tenant-aware Add User and Home half/full-width behavior. It supersedes conflicting descriptions below and records the actual backend/frontend checks.

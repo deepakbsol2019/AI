@@ -82,7 +82,7 @@ describe('Authenticated upload background work', () => {
     await vi.advanceTimersByTimeAsync(minute);
     http.expectNone('/api/upload-status/41');
     expect(upload.phase()).toBe('unknown');
-    expect(upload.message()).toContain('Resume status check');
+    expect(upload.message()).toContain('Open My Uploads and use Refresh Status');
   }
   beforeEach(async () => {
     vi.useFakeTimers();

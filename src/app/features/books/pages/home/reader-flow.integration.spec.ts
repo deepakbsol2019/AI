@@ -56,6 +56,9 @@ describe('Reader origin and Back state', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      drawImage: vi.fn(),
+    } as unknown as CanvasRenderingContext2D);
     Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
       configurable: true,
       value() {
@@ -83,7 +86,10 @@ describe('Reader origin and Back state', () => {
     });
   });
 
-  afterEach(() => TestBed.inject(HttpTestingController).verify());
+  afterEach(() => {
+    TestBed.inject(HttpTestingController).verify();
+    vi.restoreAllMocks();
+  });
 
   it('keeps the originating popup mounted through selected/individual reading and returns to the same results', async () => {
     const fixture = TestBed.createComponent(HomeComponent);

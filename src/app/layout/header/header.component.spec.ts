@@ -11,6 +11,44 @@ describe('Library header controls', () => {
     }),
   );
 
+  it('replaces the navigation toggle with a leftmost profile icon and compact identity tooltip', () => {
+    const fixture = TestBed.createComponent(HeaderComponent);
+    const toggled = vi.fn();
+    fixture.componentInstance.sidebarToggle.subscribe(toggled);
+    fixture.componentRef.setInput('sidebarAvailable', true);
+    fixture.componentRef.setInput('profileUsername', 'reader.name');
+    fixture.componentRef.setInput('profileName', 'Reader Name');
+    fixture.detectChanges();
+    const element = fixture.nativeElement as HTMLElement;
+    const control = element.querySelector('.profile-control') as HTMLElement;
+    const button = control.querySelector('button')!;
+    expect(control.querySelector('[role="tooltip"]')).toBeNull();
+    control.dispatchEvent(new MouseEvent('mouseenter'));
+    fixture.detectChanges();
+    const tooltip = control.querySelector('[role="tooltip"]')!;
+    expect(element.querySelector('.header-content')?.firstElementChild).toBe(control);
+    expect(button.classList.contains('profile-trigger')).toBe(true);
+    expect(button.getAttribute('aria-label')).toBe('Open profile');
+    expect(button.getAttribute('aria-describedby')).toBe(tooltip.id);
+    expect(tooltip.textContent).toContain('reader.name');
+    expect(tooltip.textContent).toContain('Reader Name');
+    expect(tooltip.querySelector('button,a,select')).toBeNull();
+    expect(toggled).not.toHaveBeenCalled();
+    button.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    fixture.detectChanges();
+    expect(control.querySelector('[role="tooltip"]')).toBeNull();
+    button.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+    fixture.detectChanges();
+    expect(control.querySelector('[role="tooltip"]')).not.toBeNull();
+    button.click();
+    expect(toggled).toHaveBeenCalledTimes(1);
+    fixture.componentRef.setInput('sidebarExpanded', true);
+    fixture.detectChanges();
+    expect(button.getAttribute('aria-expanded')).toBe('true');
+    expect(button.getAttribute('aria-label')).toBe('Close profile');
+    expect(control.querySelector('[role="tooltip"]')).toBeNull();
+  });
+
   it('does not emit a selection when the picker is cancelled', () => {
     const fixture = TestBed.createComponent(HeaderComponent);
     const selected = vi.fn();

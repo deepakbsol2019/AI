@@ -249,7 +249,8 @@ describe('Actual authentication route integration', () => {
     expect((home.querySelector('#book-collection-section') as HTMLElement).hidden).toBe(false);
     expect(home.querySelector('app-sidebar')?.textContent).toContain('reader@example.com');
     expect(home.querySelectorAll('.logout-button')).toHaveLength(1);
-    expect(home.querySelector('app-header .logout-button,app-header .profile-trigger')).toBeNull();
+    expect(home.querySelector('app-header .logout-button')).toBeNull();
+    expect(home.querySelector('app-header .profile-trigger')).not.toBeNull();
     (home.querySelector('.logout-button') as HTMLButtonElement).click();
     await routeWork(() =>
       http

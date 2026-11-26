@@ -163,9 +163,12 @@
 }
 .reader-content {
   position: relative;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-height: 0;
+  min-width: 0;
   overflow: auto;
+  scrollbar-gutter: stable;
+  overflow-anchor: none;
   overscroll-behavior: contain;
   background: var(--rbg);
   padding: 8px;
@@ -179,8 +182,10 @@
   display: none;
 }
 .book-spread {
+  position: relative;
   display: flex;
-  justify-content: center;
+  width: max-content;
+  justify-content: flex-start;
   align-items: flex-start;
   gap: 8px;
   min-width: 0;
@@ -195,8 +200,9 @@
 }
 .full-page .reader-content {
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
   padding: 16px;
   background: #e8edf4;
 }
@@ -205,7 +211,9 @@
 }
 .full-page .book-spread {
   align-items: center;
-  max-width: 100%;
+  flex: 0 0 auto;
+  margin: auto;
+  max-width: none;
   perspective: 1600px;
   filter: drop-shadow(0 9px 13px #10213740);
 }
@@ -343,8 +351,9 @@
   overflow-wrap: anywhere;
 }
 .render-status {
-  position: sticky;
-  top: 0;
+  position: absolute;
+  top: 4px;
+  left: 4px;
   z-index: 1;
   width: fit-content;
   margin: 0 0 0.3rem;
@@ -352,6 +361,42 @@
   border: 1px solid var(--rb);
   padding: 0.25rem 0.5rem;
   font-size: 0.7rem;
+  pointer-events: none;
+}
+.reader-color-filter {
+  position: absolute;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.full-reader-appearance {
+  flex: 0 0 auto;
+  padding: 0.45rem 0.75rem;
+  border-bottom: 1px solid var(--rb);
+  max-height: 40dvh;
+  overflow: auto;
+}
+.color-control {
+  margin: 0;
+  white-space: nowrap;
+}
+.color-control input[type='color'] {
+  width: 2rem;
+  height: 1.8rem;
+  padding: 2px;
+  border: 1px solid var(--rb);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.reader-dialog input:focus-visible {
+  outline: 3px solid var(--rfg);
+  outline-offset: 2px;
+}
+.book-spread .turning-sheet {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  backface-visibility: hidden;
 }
 .reader-footer {
   flex: 0 0 auto;

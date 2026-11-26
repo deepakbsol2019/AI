@@ -444,7 +444,7 @@ type PageMode = 'list' | 'details' | 'create' | 'delete';
           id="create-tenant"
           class="form-select"
           [value]="options.tenantId"
-          [disabled]="!access.capabilities()?.superUser || working()"
+          [disabled]="!access.capabilities()?.superUser || working() || loading()"
           (change)="selectCreateTenant($event)"
         >
           @for (tenant of createTenants(); track tenant.tenantId) {
@@ -477,15 +477,34 @@ type PageMode = 'list' | 'details' | 'create' | 'delete';
             maxlength="150"
             autocomplete="off"
           />
+          <label for="create-role">Select Role</label>
+          <select
+            id="create-role"
+            class="form-select"
+            [value]="selectedCreateRole() ?? ''"
+            [disabled]="working() || createRoleLoading() || !options.roles?.length"
+            (change)="selectCreateRole($event)"
+          >
+            <option value="">{{ createRoleLoading() ? 'Loading roles…' : 'Select Role' }}</option>
+            @for (role of options.roles || []; track role.roleId) {
+              <option [value]="role.roleId">{{ role.name }}</option>
+            }
+          </select>
+          @if (!createRoleLoading() && !options.roles?.length) {
+            <p>
+              No roles are available within your assignment permissions for this tenant. You can
+              create the account without a role.
+            </p>
+          }
           @if (createForm.touched && createForm.invalid) {
             <p role="alert">Enter a valid email and a name of 1 to 150 characters.</p>
           }
-          <p>
-            The new account starts without assigned roles. Existing authorized role-assignment
-            controls remain separate.
-          </p>
           <div class="page-actions">
-            <button type="submit" class="btn btn-primary" [disabled]="working()">
+            <button
+              type="submit"
+              class="btn btn-primary"
+              [disabled]="working() || createRoleLoading() || loading()"
+            >
               {{ working() ? 'Creating…' : 'Create User' }}</button><a
               [routerLink]="['/user/users']"
               [queryParams]="tableParams()"
@@ -860,6 +879,8 @@ export class UserManagementComponent {
   readonly details = signal<UserDetails | null>(null);
   readonly createOptions = signal<CreateUserOptions | null>(null);
   readonly createTenants = signal<CreateUserOptions[]>([]);
+  readonly selectedCreateRole = signal<number | null>(null);
+  readonly createRoleLoading = signal(false);
   readonly loading = signal(false);
   readonly working = signal(false);
   readonly error = signal<string | null>(null);
@@ -883,6 +904,8 @@ export class UserManagementComponent {
   private cleanupReturnFocus: HTMLElement | null = null;
   private cleanupEpoch = 0;
   private epoch = 0;
+  private createOptionsEpoch = 0;
+  private loadedCreateOptions: CreateUserOptions | null = null;
   private targetId = 0;
   private allowLeave = false;
   constructor() {
@@ -893,7 +916,11 @@ export class UserManagementComponent {
         this.result.set(null);
         this.details.set(null);
         this.createOptions.set(null);
+        this.loadedCreateOptions = null;
         this.createTenants.set([]);
+        this.selectedCreateRole.set(null);
+        this.createRoleLoading.set(false);
+        this.createOptionsEpoch++;
         this.deletePreview.set(null);
         this.job.set(null);
         this.recentJobs.set([]);
@@ -956,6 +983,7 @@ export class UserManagementComponent {
   }
   async load() {
     const epoch = ++this.epoch;
+    let optionsEpoch: number | null = null;
     this.loading.set(true);
     this.error.set(null);
     try {
@@ -972,6 +1000,9 @@ export class UserManagementComponent {
         }
         this.result.set(data);
       } else if (this.mode() === 'create') {
+        optionsEpoch = ++this.createOptionsEpoch;
+        this.createRoleLoading.set(true);
+        this.selectedCreateRole.set(null);
         const offered = await this.value(this.api.createTenants());
         const tenants = this.access.capabilities()?.superUser
           ? offered
@@ -984,7 +1015,11 @@ export class UserManagementComponent {
           ) || tenants[0];
         if (epoch === this.epoch) this.createTenants.set(tenants);
         const options = await this.value(this.api.createOptions(current?.tenantId));
-        if (epoch === this.epoch) this.createOptions.set(options);
+        if (epoch === this.epoch && optionsEpoch === this.createOptionsEpoch) {
+          this.createOptions.set(options);
+          this.loadedCreateOptions = options;
+          this.selectedCreateRole.set(null);
+        }
       } else {
         if (!Number.isSafeInteger(this.targetId) || this.targetId <= 0)
           throw new Error('Choose a valid user.');
@@ -1007,7 +1042,11 @@ export class UserManagementComponent {
         this.error.set(await apiErrorMessage(error));
       }
     } finally {
-      if (epoch === this.epoch) this.loading.set(false);
+      if (epoch === this.epoch) {
+        this.loading.set(false);
+        if (optionsEpoch !== null && optionsEpoch === this.createOptionsEpoch)
+          this.createRoleLoading.set(false);
+      }
     }
   }
   search() {
@@ -1167,22 +1206,36 @@ export class UserManagementComponent {
     }
   }
   async createUser() {
-    if (!this.createOptions() || !this.access.capabilities()?.canCreateUsers || this.working())
+    if (
+      !this.createOptions() ||
+      !this.access.capabilities()?.canCreateUsers ||
+      this.working() ||
+      this.loading() ||
+      this.createRoleLoading()
+    )
       return;
     this.createForm.markAllAsTouched();
     if (this.createForm.invalid || !this.createForm.controls.displayName.value.trim()) return;
+    const options = this.createOptions()!;
+    const roleId = this.selectedCreateRole();
+    if (
+      (options.roles?.length || roleId !== null) &&
+      !options.roles?.some((role) => role.roleId === roleId)
+    ) {
+      this.error.set('Select a role belonging to the selected tenant.');
+      return;
+    }
     this.working.set(true);
     this.error.set(null);
     try {
       const input = this.createForm.getRawValue();
       const created = await this.value(
-        this.api.create(
-          input.email.trim(),
-          input.displayName.trim(),
-          this.createOptions()!.tenantId,
-        ),
+        roleId === null
+          ? this.api.create(input.email.trim(), input.displayName.trim(), options.tenantId)
+          : this.api.create(input.email.trim(), input.displayName.trim(), options.tenantId, roleId),
       );
       this.createForm.reset();
+      this.selectedCreateRole.set(null);
       if (this.access.capabilities()?.canViewUsers) {
         this.allowLeave = true;
         await this.router.navigate(['/user/users'], {
@@ -1314,19 +1367,40 @@ export class UserManagementComponent {
     }
   }
   async selectCreateTenant(event: Event) {
-    if (!this.access.capabilities()?.superUser || this.working()) return;
+    if (!this.access.capabilities()?.superUser || this.working() || this.loading()) return;
     const id = Number((event.target as HTMLSelectElement).value);
-    if (!this.createTenants().some((tenant) => tenant.tenantId === id)) return;
-    this.working.set(true);
+    const tenant = this.createTenants().find((item) => item.tenantId === id);
+    if (!tenant) return;
+    const previous = this.loadedCreateOptions;
+    const epoch = ++this.createOptionsEpoch;
+    this.selectedCreateRole.set(null);
+    this.createOptions.set({ ...tenant, roles: [] });
+    this.createRoleLoading.set(true);
     this.error.set(null);
     try {
-      this.createOptions.set(await this.value(this.api.createOptions(id)));
+      const options = await this.value(this.api.createOptions(id));
+      if (epoch === this.createOptionsEpoch) {
+        this.createOptions.set(options);
+        this.loadedCreateOptions = options;
+      }
     } catch (error) {
-      this.error.set(await apiErrorMessage(error));
-      (event.target as HTMLSelectElement).value = String(this.createOptions()?.tenantId || '');
+      const message = await apiErrorMessage(error);
+      if (epoch === this.createOptionsEpoch) {
+        this.error.set(message);
+        this.createOptions.set(previous);
+        (event.target as HTMLSelectElement).value = String(previous?.tenantId || '');
+      }
     } finally {
-      this.working.set(false);
+      if (epoch === this.createOptionsEpoch) this.createRoleLoading.set(false);
     }
+  }
+  selectCreateRole(event: Event) {
+    if (this.working() || this.createRoleLoading()) return;
+    const id = Number((event.target as HTMLSelectElement).value);
+    this.selectedCreateRole.set(
+      this.createOptions()?.roles?.some((role) => role.roleId === id) ? id : null,
+    );
+    this.createForm.markAsDirty();
   }
   returnFromResult() {
     this.allowLeave = true;

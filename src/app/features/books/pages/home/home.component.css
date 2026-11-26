@@ -151,48 +151,6 @@
   color: var(--muted);
   min-height: 100px;
 }
-.upload-status {
-  padding: 10px 16px;
-  margin-bottom: 0;
-  overflow-wrap: anywhere;
-  flex: 0 0 auto;
-  background: #fff;
-}
-.upload-receipt {
-  font-size: 0.85rem;
-  margin-top: 0.4rem;
-}
-.status-top {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 10px;
-}
-.status-top strong {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.status-badge {
-  font-size: 0.72rem;
-  text-transform: capitalize;
-  white-space: nowrap;
-  color: var(--muted);
-  font-weight: 600;
-}
-.upload-error {
-  border-color: #d8a09a;
-}
-.upload-status p {
-  font-size: 0.85rem;
-}
-.download-notice {
-  color: var(--ink);
-  font-size: 0.85rem;
-}
-.progress {
-  height: 5px;
-}
 @media (max-width: 767px) {
   .library-main.search-open .workspace-body {
     grid-template-columns: minmax(0, 1fr);
@@ -230,10 +188,6 @@
     width: 100%;
     justify-content: flex-end;
     flex-wrap: wrap;
-  }
-  .status-top {
-    flex-direction: column;
-    gap: 4px;
   }
 }
 @media (max-height: 420px) {

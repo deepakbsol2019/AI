@@ -6,7 +6,7 @@ export interface ReaderRequest {
   topics: readonly BookTopic[];
 }
 
-export type PdfPageTheme = 'dark' | 'original' | 'inverted';
+export type PdfPageTheme = 'dark' | 'original' | 'inverted' | 'colorful';
 
 export interface PdfRenderHandle {
   readonly promise: Promise<void>;
