@@ -41,6 +41,14 @@ describe('BooksApiService — backend contract', () => {
     expect(request.request.params.keys()).toEqual([]);
     request.flush({ books: [], page: 0, size: 5, totalElements: 0, totalPages: 0 });
   });
+  it('loads durable upload history with pagination only, never a client tenant or uploader selector', () => {
+    api.myUploads(2, 20).subscribe();
+    const request = http.expectOne('/api/my-uploads?page=2&size=20');
+    expect(request.request.method).toBe('GET');
+    expect(request.request.params.keys()).toEqual(['page', 'size']);
+    expect(request.request.body).toBeNull();
+    request.flush({ content: [], totalElements: 0, totalPages: 0, number: 2, size: 20 });
+  });
 
   it('serializes actual filter names, omits empty values, and preserves page zero', () => {
     api

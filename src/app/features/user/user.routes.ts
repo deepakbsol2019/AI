@@ -10,6 +10,15 @@ export const USER_ROUTES: Routes = [
     component: UserComponent,
     children: [
       {
+        path: 'uploads',
+        title: 'My Uploads',
+        canMatch: [authGuard],
+        loadComponent: () =>
+          import('../books/pages/uploads/upload-history.component').then(
+            (m) => m.UploadHistoryComponent,
+          ),
+      },
+      {
         path: 'profile',
         title: 'Your Information',
         canMatch: [authGuard],

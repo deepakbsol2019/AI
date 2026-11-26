@@ -9,8 +9,8 @@
 .book-scroll-area {
   flex: 0 0 auto;
   min-height: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
+  /* Home owns the one scroll viewport so its horizontal bar stays beside pagination/footer. */
+  overflow: visible;
   overscroll-behavior: contain;
 }
 .book-table {

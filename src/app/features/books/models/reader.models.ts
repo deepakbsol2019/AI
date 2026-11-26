@@ -15,6 +15,7 @@ export interface PdfRenderHandle {
 
 export interface PdfReaderPage {
   readonly width: number;
+  readonly height?: number;
   render(canvas: HTMLCanvasElement, width: number, theme: PdfPageTheme): PdfRenderHandle;
   cleanup(): void;
 }

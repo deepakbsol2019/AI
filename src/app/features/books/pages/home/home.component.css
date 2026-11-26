@@ -2,12 +2,12 @@
   display: block;
 }
 .library-main {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-content: start;
-  align-items: start;
-  flex: 0 0 auto;
-  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
   gap: 16px;
   padding-top: 16px;
   padding-bottom: 16px;
@@ -15,12 +15,17 @@
   max-width: none;
   margin: 0;
 }
-.library-main.search-open {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+.workspace-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  gap: 16px;
 }
-.library-main > .upload-status,
-.library-main > .alert {
-  grid-column: 1 / -1;
+.library-main.search-open .workspace-body {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 .collection-panel {
   display: flex;
@@ -29,11 +34,18 @@
   min-height: 0;
   margin-top: 0;
   min-width: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #fff;
+  border-color: #d5deea;
+  color: #111827;
 }
 #library-search-section {
   flex: 0 1 auto;
   min-height: 0;
   min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 .library-main.search-only #library-search-section {
   display: flex;
@@ -47,6 +59,17 @@
 .collection-panel > app-book-table {
   flex: 1 1 0;
   min-height: 0;
+}
+.collection-table-viewport {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: #fff;
+}
+.collection-table-viewport > app-book-table {
+  min-width: 0;
 }
 .collection-panel > .empty-state,
 .collection-panel > .section-placeholder {
@@ -73,6 +96,7 @@
   justify-content: space-between;
   gap: 16px;
   border-bottom: 1px solid #dee5eb;
+  background: #fff;
 }
 .collection-heading > div {
   min-width: 0;
@@ -93,12 +117,15 @@
 .collection-footer {
   flex: 0 0 auto;
   padding: 10px 18px;
-  background: transparent;
+  background: #fff;
   border-top: 1px solid #e1e6eb;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 16px;
+  position: relative;
+  z-index: 3;
+  min-width: 0;
 }
 .pagination-controls {
   display: flex;
@@ -125,9 +152,15 @@
   min-height: 100px;
 }
 .upload-status {
-  padding: 20px 24px;
+  padding: 10px 16px;
   margin-bottom: 0;
   overflow-wrap: anywhere;
+  flex: 0 0 auto;
+  background: #fff;
+}
+.upload-receipt {
+  font-size: 0.85rem;
+  margin-top: 0.4rem;
 }
 .status-top {
   display: flex;
@@ -161,8 +194,9 @@
   height: 5px;
 }
 @media (max-width: 767px) {
-  .library-main.search-open {
+  .library-main.search-open .workspace-body {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 2fr) minmax(0, 3fr);
   }
   .library-main {
     padding-top: 16px;
@@ -200,6 +234,15 @@
   .status-top {
     flex-direction: column;
     gap: 4px;
+  }
+}
+@media (max-height: 420px) {
+  .library-main {
+    overflow-y: auto;
+  }
+  .workspace-body {
+    min-height: 240px;
+    flex: 1 0 240px;
   }
 }
 @media (max-height: 700px) {

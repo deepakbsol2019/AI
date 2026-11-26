@@ -2,7 +2,12 @@ import { HttpClient, HttpContext, HttpEvent, HttpParams, HttpResponse } from '@a
 import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 import { API_CONFIG } from '../../../core/configuration/api.config';
-import { BookSearchCriteria, BookSearchResponse, UploadStatus } from '../models/book.models';
+import {
+  BookSearchCriteria,
+  BookSearchResponse,
+  UploadStatus,
+  UploadHistoryPage,
+} from '../models/book.models';
 import { BACKGROUND_AUTH_REQUEST } from '../../user/security/background-auth.context';
 
 @Injectable({ providedIn: 'root' })
@@ -40,6 +45,12 @@ export class BooksApiService {
   uploadStatus(id: number, options: { background?: boolean } = {}): Observable<UploadStatus> {
     return this.http.get<UploadStatus>(`${this.baseUrl}/upload-status/${id}`, {
       context: new HttpContext().set(BACKGROUND_AUTH_REQUEST, options.background === true),
+    });
+  }
+
+  myUploads(page = 0, size = 20): Observable<UploadHistoryPage> {
+    return this.http.get<UploadHistoryPage>(`${this.baseUrl}/my-uploads`, {
+      params: new HttpParams().set('page', page).set('size', size),
     });
   }
 

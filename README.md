@@ -2,6 +2,8 @@
 
 Standalone Angular UI connected to the sibling `Book-Search-Download` Spring backend. Unauthenticated visitors go to Login; authenticated visitors reach the existing Home. Production has no mock mode or silent mock fallback.
 
+Latest upload/reading/Home behavior is in the [upload history and Full Page reader guide](../Book-Search-Download/UPLOAD_HISTORY_READER.md): Upload Document, persistent private My Uploads, viewer-local dates, full-page covers/spreads/sound and bottom-aligned overflow/pagination. It supersedes conflicting older reader and layout descriptions below.
+
 The latest [profile, permission and role layout guide](../Book-Search-Download/PROFILE_ROLE_LAYOUT.md) covers cleanup/results, Copy Role, initially minimized profile boxes, own-information/permissions, tenant-aware Add User and Home half/full-width behavior. It supersedes conflicting descriptions below and records the actual backend/frontend checks.
 
 The current [management pages and sidebar increment](../Book-Search-Download/MANAGEMENT_PAGES.md) supersedes the earlier no-sidebar/header-profile/details-popup descriptions: all routes share a stationary header/footer shell, authenticated users have a collapsible left profile/navigation/logout sidebar, and management/details/create/delete confirmation use full pages. The user table has the eight requested columns; creation requires its own server capability and trusted current tenant. Production has no mock mode; the ignored browser QA fixture is separate from the application.

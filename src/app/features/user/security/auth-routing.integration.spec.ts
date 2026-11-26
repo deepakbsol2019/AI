@@ -12,6 +12,9 @@ import { NavigationAccessService } from '../services/navigation-access.service';
 import { authInterceptor } from './auth.interceptor';
 
 describe('Actual authentication route integration', () => {
+  // Route chunks are deliberately lazy. A cold JIT import under a parallel full
+  // suite can take longer than vi.waitFor's default 1s, without an HTTP failure.
+  const routeWork = (work: () => void) => vi.waitFor(work, { timeout: 10_000, interval: 20 });
   beforeEach(() => {
     TestBed.configureTestingModule({
       providers: [
@@ -29,7 +32,16 @@ describe('Actual authentication route integration', () => {
       ],
     });
   });
-  afterEach(() => TestBed.inject(HttpTestingController).verify());
+  afterEach(() => {
+    try {
+      TestBed.inject(HttpTestingController).verify();
+    } finally {
+      // A failed request assertion must not leave the previous router/effects
+      // instantiated for a later authentication or upload-background test.
+      TestBed.resetTestingModule();
+      history.replaceState(null, '', '/');
+    }
+  });
   it('returns from emailed password setup to login only after success and shows confirmation', async () => {
     const http = TestBed.inject(HttpTestingController);
     const harness = await RouterTestingHarness.create();
@@ -51,7 +63,7 @@ describe('Actual authentication route integration', () => {
     expect(setup.request.body).toEqual({ token: 'setup-secret', password: 'a long new password' });
     expect(TestBed.inject(Router).url).toBe('/user/password/setup');
     setup.flush(null);
-    await vi.waitFor(() =>
+    await routeWork(() =>
       http.expectOne('/api/user/auth/features').flush({ googleEnabled: false, ssoEnabled: false }),
     );
     await harness.fixture.whenStable();
@@ -64,7 +76,7 @@ describe('Actual authentication route integration', () => {
     expect(TestBed.inject(AuthSessionService).user()).toBeNull();
     http.expectNone('/api/user/auth/login');
     http.expectNone('/api/user/auth/refresh');
-  });
+  }, 30_000);
   it('completes recovery through actual routes and HTTP, removes the secret and returns to login', async () => {
     const http = TestBed.inject(HttpTestingController);
     const harness = await RouterTestingHarness.create();
@@ -110,7 +122,7 @@ describe('Actual authentication route integration', () => {
     });
     expect(reset.request.headers.has('Authorization')).toBe(false);
     reset.flush(null);
-    await vi.waitFor(() =>
+    await routeWork(() =>
       http.expectOne('/api/user/auth/features').flush({ googleEnabled: false, ssoEnabled: false }),
     );
     await harness.fixture.whenStable();
@@ -120,12 +132,12 @@ describe('Actual authentication route integration', () => {
     expect(TestBed.inject(AuthSessionService).user()).toBeNull();
     http.expectNone('/api/user/auth/refresh');
     http.expectNone('/api/user/auth/login');
-  });
+  }, 30_000);
   it('bootstraps once from a cookie and shows Login instead of requesting the catalog when refresh is invalid', async () => {
     const http = TestBed.inject(HttpTestingController);
     const harness = await RouterTestingHarness.create();
     const pending = harness.navigateByUrl('/');
-    await vi.waitFor(() =>
+    await routeWork(() =>
       http.expectOne('/api/user/auth/csrf').flush({ token: 'csrf', headerName: 'X-XSRF-TOKEN' }),
     );
     http
@@ -134,7 +146,7 @@ describe('Actual authentication route integration', () => {
         { code: 'AUTHENTICATION_REQUIRED', detail: 'Please log in again.', status: 401 },
         { status: 401, statusText: 'Unauthorized' },
       );
-    await vi.waitFor(() =>
+    await routeWork(() =>
       http.expectOne('/api/user/auth/features').flush({ googleEnabled: false, ssoEnabled: false }),
     );
     await pending;
@@ -150,7 +162,7 @@ describe('Actual authentication route integration', () => {
     const http = TestBed.inject(HttpTestingController);
     const harness = await RouterTestingHarness.create();
     const navigation = harness.navigateByUrl('/user/login');
-    await vi.waitFor(() =>
+    await routeWork(() =>
       http.expectOne('/api/user/auth/features').flush({ googleEnabled: false, ssoEnabled: false }),
     );
     await navigation;
@@ -165,7 +177,7 @@ describe('Actual authentication route integration', () => {
     (login.querySelector('form') as HTMLFormElement).dispatchEvent(
       new Event('submit', { bubbles: true, cancelable: true }),
     );
-    await vi.waitFor(() =>
+    await routeWork(() =>
       http
         .expectOne('/api/user/auth/csrf')
         .flush({ token: 'csrf-login', headerName: 'X-XSRF-TOKEN' }),
@@ -193,7 +205,8 @@ describe('Actual authentication route integration', () => {
         tenantName: 'Library',
       },
     });
-    await vi.waitFor(() => {
+    await routeWork(() => {
+      harness.detectChanges();
       const search = http.expectOne('/api/search/books?size=5');
       expect(search.request.headers.get('Authorization')).toBe('Bearer real-flow-access');
       search.flush({ books: [], page: 0, size: 5, totalElements: 0, totalPages: 0 });
@@ -238,13 +251,13 @@ describe('Actual authentication route integration', () => {
     expect(home.querySelectorAll('.logout-button')).toHaveLength(1);
     expect(home.querySelector('app-header .logout-button,app-header .profile-trigger')).toBeNull();
     (home.querySelector('.logout-button') as HTMLButtonElement).click();
-    await vi.waitFor(() =>
+    await routeWork(() =>
       http
         .expectOne('/api/user/auth/csrf')
         .flush({ token: 'csrf-logout', headerName: 'X-XSRF-TOKEN' }),
     );
     http.expectOne('/api/user/auth/logout').flush(null, { status: 204, statusText: 'No Content' });
-    await vi.waitFor(() =>
+    await routeWork(() =>
       http.expectOne('/api/user/auth/features').flush({ googleEnabled: false, ssoEnabled: false }),
     );
     await harness.fixture.whenStable();
@@ -255,13 +268,13 @@ describe('Actual authentication route integration', () => {
     http.expectNone('/api/user/profile');
     http.expectNone('/api/user/users/capabilities');
     http.expectNone('/api/user/auth/refresh');
-  }, 15_000);
+  }, 30_000);
   it('keeps a failed server logout signed out when a protected route is requested again', async () => {
     const http = TestBed.inject(HttpTestingController);
     const harness = await RouterTestingHarness.create();
     const session = TestBed.inject(AuthSessionService);
     const bootstrap = session.token();
-    await vi.waitFor(() =>
+    await routeWork(() =>
       http
         .expectOne('/api/user/auth/csrf')
         .flush({ token: 'csrf-bootstrap', headerName: 'X-XSRF-TOKEN' }),
@@ -286,13 +299,13 @@ describe('Actual authentication route integration', () => {
     });
     await bootstrap;
     const logout = session.logout();
-    await vi.waitFor(() =>
+    await routeWork(() =>
       http
         .expectOne('/api/user/auth/csrf')
         .flush({ token: 'csrf-logout', headerName: 'X-XSRF-TOKEN' }),
     );
     http.expectOne('/api/user/auth/logout').error(new ProgressEvent('network-error'));
-    await vi.waitFor(() =>
+    await routeWork(() =>
       http.expectOne('/api/user/auth/features').flush({ googleEnabled: false, ssoEnabled: false }),
     );
     await logout;
@@ -309,5 +322,5 @@ describe('Actual authentication route integration', () => {
     http.expectNone('/api/user/auth/refresh');
     http.expectNone('/api/user/auth/csrf');
     http.expectNone('/api/search/books?size=5');
-  }, 15_000);
+  }, 30_000);
 });

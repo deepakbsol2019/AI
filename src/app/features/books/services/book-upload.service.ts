@@ -18,7 +18,7 @@ import { API_CONFIG } from '../../../core/configuration/api.config';
 import { apiErrorMessage } from '../../../shared/utils/api-error';
 import { NotificationService } from '../../../shared/services/notification.service';
 import { BooksApiService } from '../data-access/books-api.service';
-import { UploadStatus } from '../models/book.models';
+import { UploadStatus, uploadState } from '../models/book.models';
 import { AuthBoundaryService } from '../../user/services/auth-boundary.service';
 import { BackgroundAuthenticationPausedError } from '../../user/security/background-auth.context';
 
@@ -34,6 +34,7 @@ export class BookUploadService {
   private readonly completedSubject = new Subject<void>();
   private readonly stopWork = new Subject<void>();
   private workVersion = 0;
+  private acceptedNotification: number | null = null;
   readonly completed$ = this.completedSubject.asObservable();
   readonly phase = signal<UploadPhase>('idle');
   readonly busy = computed(() => ['uploading', 'processing', 'unknown'].includes(this.phase()));
@@ -48,6 +49,7 @@ export class BookUploadService {
       .resets.pipe(takeUntilDestroyed())
       .subscribe(() => {
         this.workVersion++;
+        this.dismissAcceptedNotification();
         this.stopWork.next();
         this.receiptId.set(null);
         this.fileName.set('');
@@ -69,19 +71,14 @@ export class BookUploadService {
     this.receiptId.set(null);
     this.fileName.set(file.name);
     this.progress.set(null);
-    // MIME is advisory; the backend validates PDF structure and actual content.
-    if (!/\.pdf$/i.test(file.name) || (file.type && file.type !== 'application/pdf')) {
-      this.validationError.set('Choose a PDF file with a .pdf extension.');
-      this.fail('Choose a PDF file with a .pdf extension.');
-      return;
-    }
+    // File type is decided from content by the backend; a browser MIME/extension is only a hint.
     if (file.size === 0 || file.size > this.config.maxUploadBytes) {
       this.validationError.set('Choose a non-empty PDF of 100 MiB or less.');
       this.fail('Choose a non-empty PDF of 100 MiB or less.');
       return;
     }
     this.phase.set('uploading');
-    this.message.set('Uploading your PDF…');
+    this.message.set('Uploading your document…');
     this.api
       .upload(file)
       .pipe(
@@ -97,7 +94,23 @@ export class BookUploadService {
           if (!event.body) throw new Error('The server returned an empty upload receipt.');
           return event.body;
         }),
-        tap((receipt) => this.receiptId.set(receipt.book_upload_id)),
+        tap((receipt) => {
+          if (!Number.isSafeInteger(receipt.book_upload_id) || receipt.book_upload_id <= 0)
+            throw new Error('The server returned an invalid Upload ID.');
+          this.receiptId.set(receipt.book_upload_id);
+          this.fileName.set(receipt.fileName || file.name);
+          if (!['COMPLETED', 'FAILED'].includes(uploadState(receipt))) {
+            this.dismissAcceptedNotification();
+            this.acceptedNotification = this.notifications.show(
+              `Your file is being processed in the background. Please check your upload status after some time. Upload ID: ${receipt.book_upload_id}.`,
+              'info',
+              {
+                label: 'View Upload Status',
+                url: `/user/uploads?uploadId=${receipt.book_upload_id}`,
+              },
+            );
+          }
+        }),
         switchMap((receipt) => this.followStatus(receipt, true)),
         takeUntil(this.stopWork),
         takeUntilDestroyed(this.destroyRef),
@@ -131,7 +144,7 @@ export class BookUploadService {
     receipt: UploadStatus,
     firstPollIsForeground: boolean,
   ): Observable<UploadStatus> {
-    if (receipt.status !== 'inprogress') return of(receipt);
+    if (['COMPLETED', 'FAILED'].includes(uploadState(receipt))) return of(receipt);
     this.phase.set('processing');
     this.message.set(receipt.message || 'Processing your book and preparing topic PDFs…');
     // Exhaust avoids overlapping requests when one status check takes longer than the interval.
@@ -141,18 +154,22 @@ export class BookUploadService {
           background: !firstPollIsForeground || tick > 0,
         }),
       ),
-      takeWhile((status) => status.status === 'inprogress', true),
+      takeWhile((status) => !['COMPLETED', 'FAILED'].includes(uploadState(status)), true),
     );
   }
 
   private updateStatus(receipt: UploadStatus): void {
-    if (receipt.status === 'Success') {
+    if (uploadState(receipt) === 'COMPLETED') {
+      this.dismissAcceptedNotification();
       this.phase.set('success');
       this.message.set(receipt.message || 'Your book is ready in the library.');
       this.notifications.show(this.message(), 'success');
       this.completedSubject.next();
-    } else if (receipt.status === 'failed') {
-      this.fail(receipt.message || 'The server could not process this PDF.');
+    } else if (uploadState(receipt) === 'FAILED') {
+      this.dismissAcceptedNotification();
+      this.fail(
+        receipt.failureReason || receipt.message || 'The server could not process this PDF.',
+      );
       this.notifications.show(this.message(), 'error');
     } else {
       this.message.set(receipt.message || 'Processing your book…');
@@ -178,5 +195,10 @@ export class BookUploadService {
   private fail(message: string): void {
     this.phase.set('error');
     this.message.set(message);
+  }
+
+  private dismissAcceptedNotification(): void {
+    if (this.acceptedNotification !== null) this.notifications.dismiss(this.acceptedNotification);
+    this.acceptedNotification = null;
   }
 }

@@ -38,7 +38,12 @@ import { IconComponent } from './icon.component';
             <span class="notification-mark" aria-hidden="true">
               <app-icon [name]="item.severity === 'success' ? 'check' : 'info'" />
             </span>
-            <p>{{ item.message }}</p>
+            <div class="notification-content">
+              <p>{{ item.message }}</p>
+              @if (item.action; as action) {
+                <a class="notification-action" [href]="action.url">{{ action.label }}</a>
+              }
+            </div>
             <button
               type="button"
               class="icon-action notification-close"
@@ -81,9 +86,17 @@ import { IconComponent } from './icon.component';
       box-shadow: 0 6px 24px #14233933;
       pointer-events: auto;
     }
-    .notification-card p {
+    .notification-content {
       flex: 1;
       min-width: 0;
+    }
+    .notification-action {
+      display: inline-block;
+      margin-top: 0.5rem;
+      font-weight: 700;
+      text-decoration: underline;
+    }
+    .notification-card p {
       margin: 0;
       padding-top: 0.2rem;
       font-size: 0.875rem;

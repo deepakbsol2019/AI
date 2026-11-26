@@ -120,15 +120,33 @@ describe('Reader origin and Back state', () => {
     fixture.detectChanges();
     popup.querySelector<HTMLButtonElement>('.selected-view')!.click();
     const openReader = async (url: string) => {
-      await vi.waitFor(() => {
-        const requests = http.match(url);
-        expect(requests).toHaveLength(1);
-        requests[0].flush(new Blob(['%PDF-inline'], { type: 'application/pdf' }));
-      });
+      await vi.waitFor(
+        () => {
+          // A cold lazy reader import compiles its template before the next render hook
+          // can start HTTP. Drive that render explicitly instead of assuming a 1s import.
+          fixture.detectChanges();
+          const requests = http.match(url);
+          expect(requests).toHaveLength(1);
+          requests[0].flush(new Blob(['%PDF-inline'], { type: 'application/pdf' }));
+        },
+        { timeout: 10_000 },
+      );
       await fixture.whenStable();
       expect(element.querySelector<HTMLDialogElement>('.reader-dialog')?.open).toBe(true);
       expect(popup.open).toBe(true);
       expect(element.querySelector('.topics-dialog')).toBe(popup);
+      // Full Page is an inner presentation of the same loaded reader, not a new
+      // navigation that would destroy the selected-topic popup or fetch another PDF.
+      const loaded = engine.load.mock.calls.length;
+      element.querySelector<HTMLButtonElement>('.reader-full-page')!.click();
+      await fixture.whenStable();
+      expect(element.querySelector('.reader-dialog.full-page')).not.toBeNull();
+      expect(popup.open).toBe(true);
+      element.querySelector<HTMLButtonElement>('.full-page-exit')!.click();
+      await fixture.whenStable();
+      expect(element.querySelector('.reader-dialog.full-page')).toBeNull();
+      expect(element.querySelector<HTMLDialogElement>('.reader-dialog')?.open).toBe(true);
+      expect(engine.load).toHaveBeenCalledTimes(loaded);
       element.querySelector<HTMLButtonElement>('.reader-back')!.click();
       await fixture.whenStable();
       expect(element.querySelector('.reader-dialog')).toBeNull();
@@ -148,11 +166,15 @@ describe('Reader origin and Back state', () => {
     select(21);
     select(76);
     popup.querySelector<HTMLButtonElement>('.topic-view')!.click();
-    await vi.waitFor(() => {
-      const requests = http.match('/api/read/topics?bookId=5&topicIds=21');
-      expect(requests).toHaveLength(1);
-      requests[0].flush(new Blob(['%PDF-single'], { type: 'application/pdf' }));
-    });
+    await vi.waitFor(
+      () => {
+        fixture.detectChanges();
+        const requests = http.match('/api/read/topics?bookId=5&topicIds=21');
+        expect(requests).toHaveLength(1);
+        requests[0].flush(new Blob(['%PDF-single'], { type: 'application/pdf' }));
+      },
+      { timeout: 10_000 },
+    );
     await fixture.whenStable();
     element.querySelector<HTMLButtonElement>('.reader-back')!.click();
     await fixture.whenStable();
@@ -163,11 +185,15 @@ describe('Reader origin and Back state', () => {
 
     await home.viewBook(book);
     fixture.detectChanges();
-    await vi.waitFor(() => {
-      const requests = http.match('/api/read/book?bookId=5');
-      expect(requests).toHaveLength(1);
-      requests[0].flush(new Blob(['%PDF-full'], { type: 'application/pdf' }));
-    });
+    await vi.waitFor(
+      () => {
+        fixture.detectChanges();
+        const requests = http.match('/api/read/book?bookId=5');
+        expect(requests).toHaveLength(1);
+        requests[0].flush(new Blob(['%PDF-full'], { type: 'application/pdf' }));
+      },
+      { timeout: 10_000 },
+    );
     await fixture.whenStable();
     expect(element.querySelector('#reader-scope')?.textContent).toContain('Complete book');
     element.querySelector<HTMLButtonElement>('.reader-back')!.click();
@@ -180,5 +206,5 @@ describe('Reader origin and Back state', () => {
     expect(engine.load).toHaveBeenCalledTimes(3);
     expect(destroy).toHaveBeenCalledTimes(3);
     http.expectNone(() => true);
-  }, 15_000);
+  }, 30_000);
 });

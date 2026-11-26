@@ -50,7 +50,7 @@
           accept=".pdf,application/pdf"
           class="visually-hidden"
           tabindex="-1"
-          aria-label="Choose a PDF book"
+          aria-label="Choose a document (PDF supported)"
           [disabled]="uploadBusy()"
           (change)="chooseFile($event)"
         />
@@ -65,7 +65,7 @@
           } @else {
             <app-icon name="upload" [size]="17" />
           }
-          {{ uploadBusy() ? 'Uploading PDF…' : 'Upload PDF Book' }}
+          {{ uploadBusy() ? 'Uploading Document…' : 'Upload Document' }}
         </button>
       }
       @if (!sidebarAvailable()) {

@@ -6,6 +6,7 @@ export interface NotificationItem {
   readonly id: number;
   readonly message: string;
   readonly severity: NotificationSeverity;
+  readonly action?: { readonly label: string; readonly url: string };
 }
 
 @Injectable({ providedIn: 'root' })
@@ -23,10 +24,17 @@ export class NotificationService {
     });
   }
 
-  show(message: string, severity: NotificationSeverity = 'info'): number {
+  show(
+    message: string,
+    severity: NotificationSeverity = 'info',
+    action?: NotificationItem['action'],
+  ): number {
     const id = this.nextId++;
     if (this.destroyed) return id;
-    this.entries.update((items) => [...items, { id, message, severity }]);
+    this.entries.update((items) => [
+      ...items,
+      { id, message, severity, ...(action ? { action } : {}) },
+    ]);
     this.timers.set(
       id,
       setTimeout(() => this.dismiss(id), 15_000),

@@ -9,6 +9,22 @@ describe('NotificationOutletComponent', () => {
   afterEach(() => {
     document.querySelectorAll('[data-notification-test]').forEach((element) => element.remove());
   });
+  it('provides an accessible upload-status action linked to the accepted Upload ID', async () => {
+    const fixture = TestBed.createComponent(NotificationOutletComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    TestBed.inject(NotificationService).show('Background work accepted. Upload ID: 41.', 'info', {
+      label: 'View Upload Status',
+      url: '/user/uploads?uploadId=41',
+    });
+    fixture.detectChanges();
+    const link = fixture.nativeElement.querySelector('a.notification-action') as HTMLAnchorElement;
+    expect(link.textContent).toBe('View Upload Status');
+    expect(link.getAttribute('href')).toBe('/user/uploads?uploadId=41');
+    (fixture.nativeElement.querySelector('.notification-close') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('a.notification-action')).toBeNull();
+  });
 
   it('shows accessible nonmodal messages without moving focus and offers manual dismissal', async () => {
     const fixture = TestBed.createComponent(NotificationOutletComponent);

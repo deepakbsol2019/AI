@@ -55,6 +55,7 @@ export class PdfReaderService {
     const base = page.getViewport({ scale: 1 });
     return {
       width: base.width,
+      height: base.height,
       render: (canvas, width, _theme) => {
         const viewport = page.getViewport({ scale: width / base.width });
         const ratio = Math.min(

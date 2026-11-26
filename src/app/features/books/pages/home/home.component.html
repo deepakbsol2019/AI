@@ -26,7 +26,7 @@
       <section
         class="glass-panel upload-status"
         [class.upload-error]="upload.phase() === 'error' || upload.phase() === 'unknown'"
-        aria-label="PDF upload status"
+        aria-label="Document upload status"
       >
         <div class="status-top">
           <strong
@@ -37,6 +37,12 @@
           }}</span>
         </div>
         <p aria-live="polite" class="mb-0">{{ upload.message() }}</p>
+        @if (upload.receiptId(); as uploadId) {
+          <p class="mb-0 upload-receipt">
+            Upload ID: <strong>{{ uploadId }}</strong> ·
+            <a [routerLink]="['/user/uploads']" [queryParams]="{ uploadId }">View Upload Status</a>
+          </p>
+        }
         @if (upload.phase() === 'uploading' && upload.progress() !== null) {
           <div
             class="progress mt-3"
@@ -60,134 +66,144 @@
       </section>
     }
 
-    <div id="library-search-section" [hidden]="searchMinimized()">
-      @defer (on immediate) {
-        <app-book-search
-          [busy]="loading()"
-          (searchSubmitted)="search($event)"
-          (resetRequested)="reset()"
-          (minimizeRequested)="searchMinimized.set(true)"
-        />
-      } @placeholder {
-        <section class="glass-panel section-placeholder" role="status">
-          Preparing search controls…
-        </section>
-      } @error {
-        <section class="glass-panel section-placeholder" role="alert">
-          Search controls could not load. Reload this page to try again.
-        </section>
-      }
-    </div>
-
-    <section
-      id="book-collection-section"
-      [hidden]="collectionMinimized()"
-      class="glass-panel collection-panel"
-      aria-labelledby="collection-title"
-      [attr.aria-busy]="loading()"
-    >
-      <div class="collection-heading">
-        <div>
-          <p class="eyebrow">THE COLLECTION</p>
-          <h2 id="collection-title" class="section-title">Find something worth reading</h2>
-        </div>
-        @if (results(); as response) {
-          <span class="count-pill"
-            >{{ response.totalElements }} {{ response.totalElements === 1 ? 'book' : 'books'
-            }}{{ activeFilterCount() ? ' matched' : ' in your library' }}</span
-          >
-        }
-        <button
-          type="button"
-          class="btn btn-sm minimize-button icon-action"
-          aria-label="Minimize Book Collection"
-          (click)="collectionMinimized.set(true)"
-        >
-          −
-        </button>
-      </div>
-      @if (dialogLoading()) {
-        <p class="px-4 muted" role="status">Opening book topics…</p>
-      }
-      @if (dialogError(); as message) {
-        <p class="alert alert-danger mx-4" role="alert">{{ message }}</p>
-      }
-      @if (error(); as message) {
-        <div class="empty-state" role="alert">
-          <app-icon name="info" />
-          <h3>We couldn’t load your books</h3>
-          <p>{{ message }}</p>
-          <button class="btn btn-primary" (click)="reload()">Try again</button>
-        </div>
-      } @else {
+    <div class="workspace-body">
+      <div id="library-search-section" [hidden]="searchMinimized()">
         @defer (on immediate) {
-          <app-book-table
-            [books]="results()?.books ?? []"
+          <app-book-search
             [busy]="loading()"
-            (viewBook)="viewBook($event)"
-            (viewTopics)="viewTopics($event)"
-            (metadataSaved)="onMetadataSaved($event)"
+            (searchSubmitted)="search($event)"
+            (resetRequested)="reset()"
+            (minimizeRequested)="searchMinimized.set(true)"
           />
         } @placeholder {
-          <div class="section-placeholder" role="status">Opening the collection…</div>
+          <section class="glass-panel section-placeholder" role="status">
+            Preparing search controls…
+          </section>
         } @error {
-          <div class="empty-state" role="alert">
-            The collection view could not load. Reload this page to try again.
-          </div>
+          <section class="glass-panel section-placeholder" role="alert">
+            Search controls could not load. Reload this page to try again.
+          </section>
         }
-      }
-      <div class="collection-footer">
-        <p class="mb-0 small muted" aria-live="polite">
-          @if (loading()) {
-            Searching your library…
-          } @else if (results(); as response) {
-            @if (response.totalElements) {
-              Showing {{ response.page * response.size + 1 }}–{{
-                response.page * response.size + response.books.length
-              }}
-              of {{ response.totalElements }} books
-            } @else {
-              Your next discovery is a search away.
+      </div>
+
+      <section
+        id="book-collection-section"
+        [hidden]="collectionMinimized()"
+        class="glass-panel collection-panel"
+        aria-labelledby="collection-title"
+        [attr.aria-busy]="loading()"
+      >
+        <div class="collection-heading">
+          <div>
+            <p class="eyebrow">THE COLLECTION</p>
+            <h2 id="collection-title" class="section-title">Find something worth reading</h2>
+          </div>
+          @if (results(); as response) {
+            <span class="count-pill"
+              >{{ response.totalElements }} {{ response.totalElements === 1 ? 'book' : 'books'
+              }}{{ activeFilterCount() ? ' matched' : ' in your library' }}</span
+            >
+          }
+          <button
+            type="button"
+            class="btn btn-sm minimize-button icon-action"
+            aria-label="Minimize Book Collection"
+            (click)="collectionMinimized.set(true)"
+          >
+            −
+          </button>
+        </div>
+        <div
+          class="collection-table-viewport"
+          data-collection-scroll
+          tabindex="0"
+          role="region"
+          aria-label="Book collection content"
+        >
+          @if (dialogLoading()) {
+            <p class="px-4 muted" role="status">Opening book topics…</p>
+          }
+          @if (dialogError(); as message) {
+            <p class="alert alert-danger mx-4" role="alert">{{ message }}</p>
+          }
+          @if (error(); as message) {
+            <div class="empty-state" role="alert">
+              <app-icon name="info" />
+              <h3>We couldn’t load your books</h3>
+              <p>{{ message }}</p>
+              <button class="btn btn-primary" (click)="reload()">Try again</button>
+            </div>
+          } @else {
+            @defer (on immediate) {
+              <app-book-table
+                [books]="results()?.books ?? []"
+                [busy]="loading()"
+                (viewBook)="viewBook($event)"
+                (viewTopics)="viewTopics($event)"
+                (metadataSaved)="onMetadataSaved($event)"
+              />
+            } @placeholder {
+              <div class="section-placeholder" role="status">Opening the collection…</div>
+            } @error {
+              <div class="empty-state" role="alert">
+                The collection view could not load. Reload this page to try again.
+              </div>
             }
           }
-        </p>
-        <div class="pagination-controls">
-          <label class="small muted" for="page-size">Per page</label
-          ><select
-            id="page-size"
-            class="form-select form-select-sm"
-            [value]="pageSize()"
-            [disabled]="loading()"
-            (change)="changeSize($event)"
-          >
-            <option value="5">5</option>
-            <option value="10">10</option>
-            <option value="20">20</option>
-            <option value="50">50</option>
-            <option value="100">100</option>
-          </select>
-          <nav aria-label="Book results pages">
-            <button
-              class="btn btn-light btn-sm"
-              aria-label="Previous page"
-              [disabled]="loading() || !results()?.page"
-              (click)="changePage((results()?.page ?? 0) - 1)"
-            >
-              <app-icon name="chevron-left" /></button
-            ><span class="page-label"
-              >{{ (results()?.page ?? 0) + 1 }} / {{ results()?.totalPages || 1 }}</span
-            ><button
-              class="btn btn-light btn-sm"
-              aria-label="Next page"
-              [disabled]="loading() || (results()?.page ?? 0) + 1 >= (results()?.totalPages ?? 0)"
-              (click)="changePage((results()?.page ?? 0) + 1)"
-            >
-              <app-icon name="chevron-right" />
-            </button>
-          </nav>
         </div>
-      </div>
-    </section>
+        <div class="collection-footer">
+          <p class="mb-0 small muted" aria-live="polite">
+            @if (loading()) {
+              Searching your library…
+            } @else if (results(); as response) {
+              @if (response.totalElements) {
+                Showing {{ response.page * response.size + 1 }}–{{
+                  response.page * response.size + response.books.length
+                }}
+                of {{ response.totalElements }} books
+              } @else {
+                Your next discovery is a search away.
+              }
+            }
+          </p>
+          <div class="pagination-controls">
+            <label class="small muted" for="page-size">Per page</label
+            ><select
+              id="page-size"
+              class="form-select form-select-sm"
+              [value]="pageSize()"
+              [disabled]="loading()"
+              (change)="changeSize($event)"
+            >
+              <option value="5">5</option>
+              <option value="10">10</option>
+              <option value="20">20</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+            <nav aria-label="Book results pages">
+              <button
+                class="btn btn-light btn-sm"
+                aria-label="Previous page"
+                [disabled]="loading() || !results()?.page"
+                (click)="changePage((results()?.page ?? 0) - 1)"
+              >
+                <app-icon name="chevron-left" /></button
+              ><span class="page-label"
+                >{{ (results()?.page ?? 0) + 1 }} / {{ results()?.totalPages || 1 }}</span
+              ><button
+                class="btn btn-light btn-sm"
+                aria-label="Next page"
+                [disabled]="loading() || (results()?.page ?? 0) + 1 >= (results()?.totalPages ?? 0)"
+                (click)="changePage((results()?.page ?? 0) + 1)"
+              >
+                <app-icon name="chevron-right" />
+              </button>
+            </nav>
+          </div>
+        </div>
+      </section>
+    </div>
   </main>
   <ng-container #dialogHost />
 </app-application-layout>

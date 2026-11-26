@@ -254,7 +254,9 @@ export class AuthSessionService {
     if (
       !this.router.url.startsWith('/user/') ||
       this.router.url.startsWith('/user/roles') ||
-      this.router.url.startsWith('/user/users')
+      this.router.url.startsWith('/user/users') ||
+      this.router.url.startsWith('/user/profile') ||
+      this.router.url.startsWith('/user/uploads')
     )
       void this.router.navigate(['/user/login'], { queryParams: reason ? { reason } : {} });
   }

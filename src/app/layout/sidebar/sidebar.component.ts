@@ -87,6 +87,9 @@ import { apiErrorMessage } from '../../shared/utils/api-error';
         }
       </section>
       <nav aria-label="Workspace navigation">
+        <a routerLink="/user/uploads" routerLinkActive="active" (click)="navigate.emit()"
+          >My Uploads</a
+        >
         <a
           routerLink="/"
           routerLinkActive="active"

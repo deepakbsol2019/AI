@@ -4,6 +4,7 @@ import { Subject } from 'rxjs';
 import { BooksApiService } from '../../data-access/books-api.service';
 import { BookDownloadService } from '../../data-access/book-download.service';
 import { PdfReaderService } from '../../data-access/pdf-reader.service';
+import { PageTurnSoundService } from '../../data-access/page-turn-sound.service';
 import type { Book } from '../../models/book.models';
 import type { PdfLoadHandle, PdfReaderDocument, ReaderRequest } from '../../models/reader.models';
 import { BookReaderComponent } from './book-reader.component';
@@ -114,6 +115,8 @@ describe('BookReaderComponent', () => {
   async function create(request = scopes[0]): Promise<ComponentFixture<BookReaderComponent>> {
     const fixture = TestBed.createComponent(BookReaderComponent);
     fixture.componentRef.setInput('request', request);
+    // Existing behavior remains available through the explicit Single Page choice.
+    fixture.componentInstance.pageMode.set('single');
     fixture.detectChanges();
     await settle(fixture);
     return fixture;
@@ -154,7 +157,7 @@ describe('BookReaderComponent', () => {
     books.next(response());
     await settle(fixture);
     expect(pdf.getPage).toHaveBeenCalledExactlyOnceWith(1);
-    expect(fixture.nativeElement.querySelectorAll('canvas')).toHaveLength(1);
+    expect(fixture.nativeElement.querySelectorAll('canvas:not([hidden])')).toHaveLength(1);
     expect(fixture.nativeElement.textContent).toContain('Page 1 of 3');
     (fixture.nativeElement.querySelector('.reader-next') as HTMLButtonElement).click();
     await settle(fixture);
@@ -298,6 +301,174 @@ describe('BookReaderComponent', () => {
     expect(fixture.componentInstance.status()).toBe('empty');
     expect(engine.load).not.toHaveBeenCalled();
     expect(fixture.nativeElement.textContent).toContain('No PDF content returned');
+  });
+
+  it('enters a separate covered book presentation with exactly five bottom controls and exits to the same reader position', async () => {
+    const fixture = await create();
+    books.next(response());
+    await settle(fixture);
+    await fixture.componentInstance.navigate(1);
+    await settle(fixture);
+    expect(fixture.componentInstance.pageNumber()).toBe(2);
+    const viewport = fixture.nativeElement.querySelector('.reader-content') as HTMLElement;
+    viewport.scrollTop = 240;
+    viewport.scrollLeft = 35;
+    const closed = vi.fn();
+    fixture.componentInstance.closed.subscribe(closed);
+    await fixture.componentInstance.enterFullPage();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.reader-header')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.reader-footer')).toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('.full-reader-controls').querySelectorAll('button'),
+    ).toHaveLength(5);
+    expect(fixture.componentInstance.stage()).toBe('front');
+    expect(fixture.nativeElement.querySelector('.front-cover h2').textContent).toContain(
+      book.bookName,
+    );
+    expect(fixture.componentInstance.canPrevious()).toBe(false);
+    await fixture.componentInstance.exitFullPage();
+    await settle(fixture);
+    expect(fixture.componentInstance.fullPage()).toBe(false);
+    expect(fixture.componentInstance.pageNumber()).toBe(2);
+    expect(viewport.scrollTop).toBe(240);
+    expect(viewport.scrollLeft).toBe(35);
+    expect(api.readBook).toHaveBeenCalledTimes(1);
+    expect(engine.load).toHaveBeenCalledTimes(1);
+    expect(closed).not.toHaveBeenCalled();
+  });
+
+  it('shows every PDF page in facing spreads between covers, keeps focus on mode switches and stops at the back cover', async () => {
+    const fixture = await create();
+    books.next(response());
+    await settle(fixture);
+    const reader = fixture.componentInstance;
+    await reader.setPageMode('double');
+    await reader.enterFullPage();
+    fixture.detectChanges();
+    await reader.navigate(1);
+    await settle(fixture);
+    expect(reader.visiblePages()).toEqual([1, 2]);
+    expect(fixture.nativeElement.querySelectorAll('canvas:not([hidden])')).toHaveLength(2);
+    await reader.navigate(1);
+    await settle(fixture);
+    expect(reader.visiblePages()).toEqual([3]);
+    await reader.setPageMode('single');
+    expect(reader.pageNumber()).toBe(3);
+    await reader.navigate(1);
+    fixture.detectChanges();
+    expect(reader.stage()).toBe('back');
+    expect(reader.canNext()).toBe(false);
+    await reader.navigate(1);
+    expect(reader.stage()).toBe('back');
+    await reader.navigate(-1);
+    await settle(fixture);
+    expect(reader.pageNumber()).toBe(3);
+    await reader.exitFullPage();
+    await settle(fixture);
+    expect(reader.pageNumber()).toBe(3);
+    expect(api.readBook).toHaveBeenCalledTimes(1);
+  });
+
+  it('turns sound on only by choice and plays only for a successful navigation, never toggles, mode changes or disabled moves', async () => {
+    const fixture = await create();
+    books.next(response());
+    await settle(fixture);
+    const reader = fixture.componentInstance;
+    const sound = fixture.debugElement.injector.get(PageTurnSoundService);
+    const play = vi.spyOn(sound, 'turn');
+    const enable = vi.spyOn(sound, 'enable');
+    await reader.enterFullPage();
+    fixture.detectChanges();
+    expect(reader.soundEnabled()).toBe(false);
+    expect(
+      fixture.nativeElement.querySelector('.sound-toggle').classList.contains('sound-on'),
+    ).toBe(false);
+    reader.toggleSound();
+    fixture.detectChanges();
+    expect(enable).toHaveBeenCalledOnce();
+    expect(play).not.toHaveBeenCalled();
+    expect(
+      fixture.nativeElement.querySelector('.sound-toggle').classList.contains('sound-on'),
+    ).toBe(true);
+    await reader.navigate(-1);
+    expect(play).not.toHaveBeenCalled();
+    await reader.setPageMode('double');
+    expect(play).not.toHaveBeenCalled();
+    await reader.navigate(1);
+    await settle(fixture);
+    expect(play).toHaveBeenCalledOnce();
+    reader.toggleSound();
+    await reader.navigate(1);
+    await settle(fixture);
+    expect(play).toHaveBeenCalledOnce();
+    expect(reader.soundEnabled()).toBe(false);
+  });
+
+  it('does not play sound for a failed render or advance the stored reading position', async () => {
+    const fixture = await create();
+    books.next(response());
+    await settle(fixture);
+    const reader = fixture.componentInstance;
+    const play = vi.spyOn(fixture.debugElement.injector.get(PageTurnSoundService), 'turn');
+    await reader.enterFullPage();
+    await reader.navigate(1);
+    await settle(fixture);
+    reader.toggleSound();
+    page.render.mockImplementationOnce(() => ({
+      promise: Promise.reject(new Error('Page unavailable')),
+      cancel,
+    }));
+    await reader.navigate(1);
+    await settle(fixture);
+    expect(reader.status()).toBe('error');
+    expect(reader.pageNumber()).toBe(1);
+    expect(play).not.toHaveBeenCalled();
+  });
+
+  it('keeps the selected even page when switching single/double and Escape exits only Full Page', async () => {
+    const fixture = await create();
+    books.next(response());
+    await settle(fixture);
+    const reader = fixture.componentInstance;
+    await reader.navigate(1);
+    await settle(fixture);
+    expect(reader.pageNumber()).toBe(2);
+    await reader.setPageMode('double');
+    await settle(fixture);
+    expect(reader.visiblePages()).toEqual([1, 2]);
+    expect(reader.pageNumber()).toBe(2);
+    await reader.setPageMode('single');
+    await settle(fixture);
+    expect(reader.pageNumber()).toBe(2);
+    await reader.enterFullPage();
+    const event = new Event('cancel', { cancelable: true });
+    reader.onCancel(event);
+    await settle(fixture);
+    expect(event.defaultPrevented).toBe(true);
+    expect(reader.fullPage()).toBe(false);
+    expect(reader.pageNumber()).toBe(2);
+    expect((fixture.nativeElement.querySelector('.reader-dialog') as HTMLDialogElement).open).toBe(
+      true,
+    );
+  });
+
+  it('uses responsive initial defaults without overwriting a user choice', async () => {
+    const old = Object.getOwnPropertyDescriptor(window, 'innerWidth')!;
+    Object.defineProperty(window, 'innerWidth', { value: 375, configurable: true });
+    const mobile = TestBed.createComponent(BookReaderComponent);
+    mobile.componentRef.setInput('request', scopes[0]);
+    expect(mobile.componentInstance.pageMode()).toBe('single');
+    mobile.destroy();
+    Object.defineProperty(window, 'innerWidth', { value: 1200, configurable: true });
+    const desktop = TestBed.createComponent(BookReaderComponent);
+    desktop.componentRef.setInput('request', scopes[0]);
+    expect(desktop.componentInstance.pageMode()).toBe('double');
+    desktop.componentInstance.pageMode.set('single');
+    Object.defineProperty(window, 'innerWidth', { value: 800, configurable: true });
+    expect(desktop.componentInstance.pageMode()).toBe('single');
+    desktop.destroy();
+    Object.defineProperty(window, 'innerWidth', old);
   });
 
   it('cancels rendering, destroys the PDF and emits Back once without closing the parent popup', async () => {

@@ -7,7 +7,7 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { DatePipe } from '@angular/common';
+import { ViewerDatePipe } from '../../../shared/pipes/viewer-date.pipe';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { combineLatest, firstValueFrom, Observable } from 'rxjs';
@@ -32,7 +32,7 @@ type PageMode = 'list' | 'details' | 'create' | 'delete';
 @Component({
   selector: 'app-user-management',
   standalone: true,
-  imports: [ReactiveFormsModule, RouterLink, DatePipe],
+  imports: [ReactiveFormsModule, RouterLink, ViewerDatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [
     `
@@ -524,16 +524,16 @@ type PageMode = 'list' | 'details' | 'create' | 'delete';
             <dt>Membership status</dt>
             <dd>{{ detail.membershipStatus }}</dd>
             <dt>Created</dt>
-            <dd>{{ (detail.user.createdAt | date: 'medium') || 'Not available' }}</dd>
+            <dd>{{ detail.user.createdAt | viewerDate }}</dd>
             <dt>Last login</dt>
-            <dd>{{ (detail.user.lastLogin | date: 'medium') || 'Not available' }}</dd>
+            <dd>{{ detail.user.lastLogin | viewerDate }}</dd>
             <dt>Email verified</dt>
-            <dd>{{ (detail.emailVerifiedAt | date: 'medium') || 'Not available' }}</dd>
+            <dd>{{ detail.emailVerifiedAt | viewerDate }}</dd>
             <dt>Updated</dt>
-            <dd>{{ (detail.updatedAt | date: 'medium') || 'Not available' }}</dd>
+            <dd>{{ detail.updatedAt | viewerDate }}</dd>
             @if (detail.user.deleted) {
               <dt>Soft-deleted</dt>
-              <dd>{{ (detail.user.deletedAt | date: 'medium') || 'Not available' }}</dd>
+              <dd>{{ detail.user.deletedAt | viewerDate }}</dd>
             }
           </dl>
           <form class="profile-form" [formGroup]="profileForm" (ngSubmit)="saveProfile()">
@@ -808,7 +808,7 @@ type PageMode = 'list' | 'details' | 'create' | 'delete';
                         </button>
                       }
                     </td>
-                    <td>{{ (item.updatedAt | date: 'medium') || 'Not available' }}</td>
+                    <td>{{ item.updatedAt | viewerDate }}</td>
                   </tr>
                 } @empty {
                   <tr>

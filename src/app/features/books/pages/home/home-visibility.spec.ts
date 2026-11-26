@@ -152,9 +152,10 @@ describe('Home section visibility', () => {
       expect(restoreCollection.disabled).toBe(false);
       expect(main.classList.contains('search-only')).toBe(false);
       expect(main.classList.contains('collection-only')).toBe(false);
-      expect(element.querySelectorAll('main > :not([hidden]):not(.visually-hidden)')).toHaveLength(
-        0,
-      );
+      const workspace = main.querySelector('.workspace-body') as HTMLElement;
+      expect(Array.from(workspace.children)).toEqual([searchSection, collectionSection]);
+      expect(workspace.querySelectorAll(':scope > :not([hidden])')).toHaveLength(0);
+      expect(element.querySelector('app-book-table')?.closest('[hidden]')).toBe(collectionSection);
       expect(element.querySelector('app-header')?.closest('[hidden]')).toBeNull();
       expect(element.querySelector('app-footer')?.closest('[hidden]')).toBeNull();
 

@@ -2,103 +2,126 @@
   #readerDialog
   class="reader-dialog"
   [class.dark-mode]="pageTheme() !== 'original'"
-  aria-labelledby="reader-title"
-  aria-describedby="reader-scope"
+  [class.full-page]="fullPage()"
+  [attr.aria-labelledby]="fullPage() ? null : 'reader-title'"
+  [attr.aria-describedby]="fullPage() ? null : 'reader-scope'"
+  [attr.aria-label]="fullPage() ? title() + ', Full Page reader' : null"
   (close)="onClosed()"
+  (cancel)="onCancel($event)"
 >
-  <app-notifications />
-  <header class="reader-header">
-    <div class="reader-heading">
-      <h2 id="reader-title" [title]="title()">{{ title() }}</h2>
-      <span id="reader-scope">{{ scopeLabel() }}</span>
-    </div>
-    <div class="reader-toolbar" aria-label="PDF controls">
-      <div class="reader-actions">
-        <button type="button" class="reader-button reader-back" autofocus (click)="close()">
-          <app-icon name="chevron-left" /> Back
-        </button>
-        <button
-          type="button"
-          class="reader-button reader-download"
-          [disabled]="downloading()"
-          (click)="download()"
-        >
-          <app-icon name="download" /> {{ downloading() ? 'Downloading…' : downloadLabel() }}
-        </button>
+  @if (!fullPage()) {
+    <app-notifications />
+    <header class="reader-header">
+      <div class="reader-heading">
+        <h2 id="reader-title" [title]="title()">{{ title() }}</h2>
+        <span id="reader-scope">{{ scopeLabel() }}</span>
       </div>
-      <div class="control-group page-controls">
-        <button
-          type="button"
-          class="reader-button reader-prev"
-          aria-label="Previous PDF page"
-          [disabled]="status() !== 'ready' || rendering() || pageNumber() <= 1"
-          (click)="navigate(-1)"
-        >
-          <app-icon name="chevron-left" />
-        </button>
-        <span class="page-count" aria-live="polite">{{
-          status() === 'ready' ? 'Page ' + pageNumber() + ' of ' + pageCount() : 'PDF pages'
-        }}</span>
-        <button
-          type="button"
-          class="reader-button reader-next"
-          aria-label="Next PDF page"
-          [disabled]="status() !== 'ready' || rendering() || pageNumber() >= pageCount()"
-          (click)="navigate(1)"
-        >
-          <app-icon name="chevron-right" />
-        </button>
+      <div class="reader-toolbar" aria-label="PDF controls">
+        <div class="reader-actions">
+          <button type="button" class="reader-button reader-back" autofocus (click)="close()">
+            <app-icon name="chevron-left" /> Back
+          </button>
+          <button
+            type="button"
+            class="reader-button reader-download"
+            [disabled]="downloading()"
+            (click)="download()"
+          >
+            <app-icon name="download" /> {{ downloading() ? 'Downloading…' : downloadLabel() }}
+          </button>
+          <button
+            type="button"
+            class="reader-button reader-full-page"
+            [disabled]="status() !== 'ready' || rendering()"
+            (click)="enterFullPage()"
+          >
+            Full Page
+          </button>
+          <button
+            type="button"
+            class="reader-button reader-page-mode"
+            aria-label="Single Page / Double Page"
+            [attr.aria-pressed]="pageMode() === 'double'"
+            [disabled]="rendering()"
+            (click)="setPageMode(pageMode() === 'single' ? 'double' : 'single')"
+          >
+            {{ pageMode() === 'single' ? 'Single Page' : 'Double Page' }}
+          </button>
+        </div>
+        <div class="control-group page-controls">
+          <button
+            type="button"
+            class="reader-button reader-prev"
+            aria-label="Previous PDF page"
+            [disabled]="!canPrevious()"
+            (click)="navigate(-1)"
+          >
+            <app-icon name="chevron-left" />
+          </button>
+          <span class="page-count" aria-live="polite">{{
+            status() === 'ready' ? pageLabel() : 'PDF pages'
+          }}</span>
+          <button
+            type="button"
+            class="reader-button reader-next"
+            aria-label="Next PDF page"
+            [disabled]="!canNext()"
+            (click)="navigate(1)"
+          >
+            <app-icon name="chevron-right" />
+          </button>
+        </div>
+        <div class="control-group zoom-controls">
+          <button
+            type="button"
+            class="reader-button zoom-out"
+            aria-label="Zoom out"
+            [disabled]="status() !== 'ready' || rendering() || zoom() <= 0.5"
+            (click)="changeZoom(-0.25)"
+          >
+            −
+          </button>
+          <span class="zoom-label">{{ (zoom() * 100).toFixed(0) }}%</span>
+          <button
+            type="button"
+            class="reader-button zoom-in"
+            aria-label="Zoom in"
+            [disabled]="status() !== 'ready' || rendering() || zoom() >= 3"
+            (click)="changeZoom(0.25)"
+          >
+            +
+          </button>
+          <button
+            type="button"
+            class="reader-button reader-fit"
+            [disabled]="status() !== 'ready' || rendering()"
+            (click)="fitWidth()"
+          >
+            Fit width
+          </button>
+        </div>
+        <div class="color-control">
+          <label for="reader-color-mode">Mode</label>
+          <select
+            id="reader-color-mode"
+            [value]="pageTheme()"
+            (change)="changeTheme($event)"
+            [disabled]="status() !== 'ready' || rendering()"
+          >
+            <option value="original">Light mode (original PDF)</option>
+            <option value="dark">Dark mode</option>
+          </select>
+          <details class="color-help">
+            <summary aria-label="About dark mode"><app-icon name="info" /></summary>
+            <p>
+              Dark mode also recolors scanned pages and photos. Use Light mode for the original PDF
+              colors.
+            </p>
+          </details>
+        </div>
       </div>
-      <div class="control-group zoom-controls">
-        <button
-          type="button"
-          class="reader-button zoom-out"
-          aria-label="Zoom out"
-          [disabled]="status() !== 'ready' || rendering() || zoom() <= 0.5"
-          (click)="changeZoom(-0.25)"
-        >
-          −
-        </button>
-        <span class="zoom-label">{{ (zoom() * 100).toFixed(0) }}%</span>
-        <button
-          type="button"
-          class="reader-button zoom-in"
-          aria-label="Zoom in"
-          [disabled]="status() !== 'ready' || rendering() || zoom() >= 3"
-          (click)="changeZoom(0.25)"
-        >
-          +
-        </button>
-        <button
-          type="button"
-          class="reader-button reader-fit"
-          [disabled]="status() !== 'ready' || rendering()"
-          (click)="fitWidth()"
-        >
-          Fit width
-        </button>
-      </div>
-      <div class="color-control">
-        <label for="reader-color-mode">Mode</label>
-        <select
-          id="reader-color-mode"
-          [value]="pageTheme()"
-          (change)="changeTheme($event)"
-          [disabled]="status() !== 'ready' || rendering()"
-        >
-          <option value="original">Light mode (original PDF)</option>
-          <option value="dark">Dark mode</option>
-        </select>
-        <details class="color-help">
-          <summary aria-label="About dark mode"><app-icon name="info" /></summary>
-          <p>
-            Dark mode also recolors scanned pages and photos. Use Light mode for the original PDF
-            colors.
-          </p>
-        </details>
-      </div>
-    </div>
-  </header>
+    </header>
+  }
   <section
     #pageViewport
     class="reader-content"
@@ -131,17 +154,103 @@
     @if (rendering() && status() === 'ready') {
       <p class="render-status" role="status">Rendering page {{ pageNumber() }}…</p>
     }
-    <canvas
-      #pageCanvas
-      class="reader-canvas"
-      [class.page-dark]="pageTheme() !== 'original'"
-      [hidden]="status() !== 'ready'"
-      role="img"
-      [attr.aria-label]="title() + ', page ' + pageNumber() + ' of ' + pageCount()"
-      >Your browser does not support PDF canvas rendering.</canvas
+    <div
+      #bookSurface
+      class="book-spread"
+      [class.facing-pages]="visiblePages().length === 2"
+      [class.showing-cover]="fullPage() && stage() !== 'pages'"
     >
+      <section
+        class="book-cover front-cover"
+        [hidden]="!fullPage() || stage() !== 'front'"
+        aria-label="Decorative front cover"
+      >
+        <span class="cover-spine" aria-hidden="true"></span>
+        <h2>{{ request().book.bookName }}</h2>
+        <p>{{ scopeLabel() }}</p>
+        <p class="cover-note">Front cover · All original PDF pages follow</p>
+      </section>
+      <section
+        class="book-cover back-cover"
+        [hidden]="!fullPage() || stage() !== 'back'"
+        aria-label="Plain back cover"
+      >
+        <span class="visually-hidden">End of the PDF — back cover</span>
+      </section>
+      <canvas
+        #pageCanvas
+        class="reader-canvas"
+        [class.page-dark]="pageTheme() !== 'original'"
+        [hidden]="status() !== 'ready' || (fullPage() && stage() !== 'pages')"
+        role="img"
+        [attr.aria-label]="title() + ', page ' + visiblePages()[0] + ' of ' + pageCount()"
+        >Your browser does not support PDF canvas rendering.</canvas
+      >
+      <canvas
+        #secondPageCanvas
+        class="reader-canvas facing-canvas"
+        [class.page-dark]="pageTheme() !== 'original'"
+        [hidden]="
+          status() !== 'ready' || visiblePages().length !== 2 || (fullPage() && stage() !== 'pages')
+        "
+        role="img"
+        [attr.aria-label]="title() + ', page ' + visiblePages()[1] + ' of ' + pageCount()"
+        >Your browser does not support PDF canvas rendering.</canvas
+      >
+    </div>
   </section>
-  <footer class="reader-footer">
-    <span>{{ scopeLabel() }} · PDF</span><span>One page rendered at a time</span>
-  </footer>
+  @if (fullPage()) {
+    <footer class="full-reader-controls" aria-label="Full Page reader controls">
+      <div class="controls-left">
+        <button
+          type="button"
+          class="reader-button sound-toggle"
+          [class.sound-on]="soundEnabled()"
+          [attr.aria-pressed]="soundEnabled()"
+          (click)="toggleSound()"
+        >
+          Sound {{ soundEnabled() ? 'On' : 'Off' }}
+        </button>
+        <button type="button" class="reader-button full-page-exit" (click)="exitFullPage()">
+          Exit
+        </button>
+      </div>
+      <div class="controls-center">
+        <span class="full-page-position" aria-live="polite">{{ pageLabel() }}</span>
+        <button
+          type="button"
+          class="reader-button full-page-mode"
+          aria-label="Single Page / Double Page"
+          [attr.aria-pressed]="pageMode() === 'double'"
+          [disabled]="rendering()"
+          (click)="setPageMode(pageMode() === 'single' ? 'double' : 'single')"
+        >
+          {{ pageMode() === 'single' ? 'Single Page' : 'Double Page' }}
+        </button>
+      </div>
+      <div class="controls-right">
+        <button
+          type="button"
+          class="reader-button full-page-prev"
+          [disabled]="!canPrevious()"
+          (click)="navigate(-1)"
+        >
+          Previous
+        </button>
+        <button
+          type="button"
+          class="reader-button full-page-next"
+          [disabled]="!canNext()"
+          (click)="navigate(1)"
+        >
+          Next
+        </button>
+      </div>
+    </footer>
+  } @else {
+    <footer class="reader-footer">
+      <span>{{ scopeLabel() }} · PDF</span
+      ><span>{{ pageMode() === 'single' ? 'Single Page' : 'Double Page' }}</span>
+    </footer>
+  }
 </dialog>

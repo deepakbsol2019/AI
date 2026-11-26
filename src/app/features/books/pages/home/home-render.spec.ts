@@ -162,4 +162,28 @@ describe('Home rendered integration', () => {
     expect(main.classList.contains('search-open')).toBe(false);
     expect(main.classList.contains('search-only')).toBe(true);
   });
+  it('keeps the sole book scroll viewport above bottom pagination for empty and populated results', async () => {
+    const fixture = TestBed.createComponent(HomeComponent);
+    TestBed.inject(HttpTestingController).expectOne('/api/search/books?size=5').flush(result);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const element = fixture.nativeElement as HTMLElement;
+    const viewport = element.querySelector('[data-collection-scroll]')!;
+    expect(element.querySelectorAll('[data-collection-scroll]')).toHaveLength(1);
+    expect(viewport.querySelector('app-book-table')).not.toBeNull();
+    expect(viewport.querySelector('.pagination-controls')).toBeNull();
+    expect(viewport.nextElementSibling?.classList.contains('collection-footer')).toBe(true);
+    expect(element.querySelector('.collection-heading .pagination-controls')).toBeNull();
+    fixture.componentInstance.searchMinimized.set(false);
+    fixture.detectChanges();
+    expect(element.querySelector('main')?.classList.contains('search-open')).toBe(true);
+    fixture.componentInstance.results.set({
+      ...result,
+      books: [],
+      totalElements: 0,
+      totalPages: 0,
+    });
+    fixture.detectChanges();
+    expect(viewport.querySelector('.no-books')).not.toBeNull();
+  });
 });

@@ -52,13 +52,8 @@ describe('BookUploadService', () => {
     vi.useRealTimers();
   });
 
-  it('rejects non-PDF, empty, and oversized selections before making any request', () => {
-    const invalid = [
-      new File(['text'], 'book.txt', { type: 'text/plain' }),
-      new File(['image'], 'book.pdf', { type: 'image/png' }),
-      pdf('empty.pdf', ''),
-      pdf('large.pdf', 'x'.repeat(maxBytes + 1)),
-    ];
+  it('rejects empty and oversized selections before making any request', () => {
+    const invalid = [pdf('empty.pdf', ''), pdf('large.pdf', 'x'.repeat(maxBytes + 1))];
     for (const file of invalid) {
       service.upload(file);
       expect(service.phase()).toBe('error');
@@ -69,6 +64,18 @@ describe('BookUploadService', () => {
     }
     expect(service.receiptId()).toBeNull();
     expect(notifications.items()).toEqual([]);
+  });
+
+  it('lets the backend determine content type instead of trusting a declared MIME or extension', async () => {
+    service.upload(new File(['not a PDF'], 'document.txt', { type: 'text/plain' }));
+    const request = http.expectOne('/api/upload-file');
+    request.flush(
+      { message: 'Only PDF documents are supported.' },
+      { status: 415, statusText: 'Unsupported Media Type' },
+    );
+    await Promise.resolve();
+    expect(service.phase()).toBe('error');
+    expect(service.message()).toContain('Only PDF');
   });
 
   it('uploads, polls through inprogress, emits completion once, and stops polling at Success', () => {
@@ -82,7 +89,12 @@ describe('BookUploadService', () => {
     upload.flush(pending, { status: 202, statusText: 'Accepted' });
     expect(service.phase()).toBe('processing');
     expect(service.receiptId()).toBe(41);
-    expect(notifications.items()).toEqual([]);
+    expect(notifications.items()).toMatchObject([
+      {
+        severity: 'info',
+        action: { label: 'View Upload Status', url: '/user/uploads?uploadId=41' },
+      },
+    ]);
     http.expectNone('/api/upload-status/41');
     vi.advanceTimersByTime(pollInterval);
     const firstStatus = http.expectOne('/api/upload-status/41');
@@ -146,7 +158,7 @@ describe('BookUploadService', () => {
     expect(service.receiptId()).toBe(41);
     expect(service.busy()).toBe(true);
     expect(service.message()).toContain('server may still be processing');
-    expect(notifications.items()).toEqual([]);
+    expect(notifications.items()).toMatchObject([{ severity: 'info' }]);
     service.upload(pdf('same.pdf'));
     http.expectNone('/api/upload-file');
     service.retryStatus();
@@ -197,5 +209,38 @@ describe('BookUploadService', () => {
     http.expectOne('/api/upload-file').flush({ ...pending, status: 'Success' });
     expect(service.fileName()).toBe('new-user-book.pdf');
     expect(service.phase()).toBe('success');
+  });
+  it('auto-hides the background acceptance notice after fifteen seconds without stopping status work', () => {
+    service.upload(pdf());
+    http
+      .expectOne('/api/upload-file')
+      .flush({ ...pending, state: 'PENDING' }, { status: 202, statusText: 'Accepted' });
+    expect(notifications.items()[0].message).toContain('Upload ID: 41');
+    expect(notifications.items()[0].message).toContain('processed in the background');
+    expect(service.phase()).toBe('processing');
+    vi.advanceTimersByTime(15_000);
+    expect(notifications.items()).toEqual([]);
+    expect(service.phase()).toBe('processing');
+    const stillRunning = http.expectOne('/api/upload-status/41');
+    expect(stillRunning.cancelled).toBe(false);
+    stillRunning.flush({ ...pending, state: 'COMPLETED', status: 'Success' });
+    expect(service.phase()).toBe('success');
+  });
+  it('dismisses the notice without cancelling the accepted background upload', () => {
+    service.upload(pdf());
+    http.expectOne('/api/upload-file').flush(pending, { status: 202, statusText: 'Accepted' });
+    notifications.dismiss(notifications.items()[0].id);
+    expect(service.receiptId()).toBe(41);
+    expect(service.phase()).toBe('processing');
+    vi.advanceTimersByTime(pollInterval);
+    http
+      .expectOne('/api/upload-status/41')
+      .flush({
+        ...pending,
+        state: 'FAILED',
+        failureReason: 'Actual worker failure',
+        status: 'failed',
+      });
+    expect(service.message()).toBe('Actual worker failure');
   });
 });
