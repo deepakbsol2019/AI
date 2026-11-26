@@ -1,5 +1,6 @@
 <div
   class="table-responsive book-scroll-area"
+  [class.no-books]="!books().length"
   tabindex="0"
   role="region"
   aria-label="Library books"

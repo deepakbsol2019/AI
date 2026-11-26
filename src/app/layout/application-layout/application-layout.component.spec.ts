@@ -1,7 +1,7 @@
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
 import { HeaderComponent } from '../header/header.component';
 import { ApplicationLayoutComponent } from './application-layout.component';
@@ -133,6 +133,12 @@ describe('Application viewport layout', () => {
     expect(
       element.querySelector('app-header .logout-button,app-header .profile-trigger'),
     ).toBeNull();
+    expect(sidebar.hidden).toBe(true);
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    toggle.click();
+    fixture.detectChanges();
+    expect(sidebar.hidden).toBe(false);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
     toggle.click();
     fixture.detectChanges();
     expect(sidebar.hidden).toBe(true);
@@ -147,5 +153,10 @@ describe('Application viewport layout', () => {
     fixture.detectChanges();
     expect(sidebar.hidden).toBe(true);
     expect(document.activeElement).toBe(toggle);
+    await TestBed.inject(Router).navigateByUrl('/?profile=open');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(sidebar.hidden).toBe(false);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
   });
 });

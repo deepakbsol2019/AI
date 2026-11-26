@@ -18,24 +18,103 @@ import { apiErrorMessage } from '../../../shared/utils/api-error';
   standalone: true,
   imports: [ReactiveFormsModule, RouterLink],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  styles: `
+    :host {
+      display: block;
+      min-width: 0;
+    }
+    .management-heading {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-bottom: 1.25rem;
+    }
+    .management-heading h1 {
+      margin: 0;
+    }
+    .role-actions {
+      display: flex;
+      gap: 0.65rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .role-list {
+      list-style: none;
+      padding: 0;
+      display: grid;
+      gap: 0.85rem;
+      margin-block: 1rem;
+    }
+    .role-list li {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      padding: 0.9rem;
+      border: 1px solid var(--line);
+      border-radius: 0.6rem;
+    }
+    .role-identity {
+      flex: 1 1 12rem;
+      overflow-wrap: anywhere;
+    }
+    .role-note {
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+    .role-form {
+      margin-top: 1.25rem;
+    }
+    .role-form fieldset {
+      display: grid;
+      gap: 0.7rem;
+    }
+    .role-form code {
+      overflow-wrap: anywhere;
+    }
+  `,
   template: `
-    <h1>Role Management</h1>
+    <div class="management-heading">
+      <h1>Role Management</h1>
+      <div class="role-actions" aria-label="Role Management actions">
+        <button
+          class="btn btn-outline-primary"
+          type="button"
+          [disabled]="busy() || saving()"
+          (click)="viewExistingRoles()"
+        >
+          View Existing Roles
+        </button>
+        @if (catalog()?.canCreate) {
+          <button
+            class="btn btn-primary"
+            type="button"
+            [disabled]="busy() || saving()"
+            (click)="newRole()"
+          >
+            New Role
+          </button>
+        }
+        <a class="btn btn-outline-primary" routerLink="/">Back to Library</a>
+      </div>
+    </div>
     <p>Manage roles in your authorized tenant. System roles have additional protection.</p>
-    <a routerLink="/">Back to library</a>
     @if (error()) {
       <p role="alert" class="auth-error">{{ error() }}</p>
     }
     @if (busy()) {
       <p role="status">Loading roles…</p>
     }
-    @if (organizations().length) {
+    @if (organizations().length && viewingRoles()) {
       <div class="field">
         <label for="role-organization">Tenant Name</label>
         <select
           id="role-organization"
           class="form-select"
           [value]="tenantId()"
-          [disabled]="busy() || saving()"
+          [disabled]="busy() || saving() || !catalog()?.superUser"
           (change)="selectOrganization($event)"
         >
           @for (organization of organizations(); track organization.tenantId) {
@@ -47,43 +126,59 @@ import { apiErrorMessage } from '../../../shared/utils/api-error';
       </div>
     }
     @if (catalog(); as permissions) {
-      <section aria-label="Tenant roles">
-        <h2>Roles</h2>
-        <ul class="role-list">
-          @for (role of roles(); track role.roleId) {
-            <li>
-              <strong>{{ role.name }}</strong>
-              {{ role.systemRole ? '(' + role.systemRole + ')' : '' }}
-              <button
-                type="button"
-                class="btn btn-outline-primary"
-                [disabled]="!role.editable || busy() || saving()"
-                (click)="edit(role)"
-              >
-                Edit {{ role.name }}
-              </button>
-              @if (!role.editable) {
-                <span>Protected or outside your editing authority.</span>
-              }
-            </li>
-          } @empty {
-            <li>No roles in this tenant.</li>
-          }
-        </ul>
-        @if (permissions.canCreate) {
-          <button
-            type="button"
-            class="btn btn-primary"
-            [disabled]="saving() || busy()"
-            (click)="newRole()"
-          >
-            New role
-          </button>
-        }
-      </section>
+      @if (viewingRoles()) {
+        <section aria-label="Tenant roles">
+          <h2>Roles</h2>
+          <ul class="role-list">
+            @for (role of roles(); track role.roleId) {
+              <li>
+                <div class="role-identity">
+                  <strong>{{ role.name }}</strong>
+                  {{ role.systemRole ? '(' + role.systemRole + ')' : '' }}
+                </div>
+                @if (role.systemRole !== 'SUPER_USER') {
+                  <div class="role-actions">
+                    <button
+                      type="button"
+                      class="btn btn-outline-primary"
+                      [disabled]="!role.editable || busy() || saving()"
+                      (click)="edit(role)"
+                    >
+                      Edit {{ role.name }}
+                    </button>
+                    @if (permissions.canCreate) {
+                      <button
+                        type="button"
+                        class="btn btn-outline-primary"
+                        [disabled]="busy() || saving() || !canCopy(role)"
+                        (click)="copyRole(role)"
+                      >
+                        Copy Role <span class="visually-hidden">{{ role.name }}</span>
+                      </button>
+                    }
+                  </div>
+                  @if (!role.editable) {
+                    <span class="role-note">Protected or outside your editing authority.</span>
+                  }
+                } @else {
+                  <span class="role-note">Managed in the database.</span>
+                }
+              </li>
+            } @empty {
+              <li>No roles in this tenant.</li>
+            }
+          </ul>
+        </section>
+      }
       @if (editing() || creating()) {
-        <form [formGroup]="form" (ngSubmit)="save()" novalidate>
+        <form class="role-form" [formGroup]="form" (ngSubmit)="save()" novalidate>
           <h2>{{ editing() ? 'Edit role' : 'Create role' }}</h2>
+          <p>Tenant Name: {{ selectedTenantName() }}</p>
+          @if (copyingFrom()) {
+            <p role="status">
+              Copying {{ copyingFrom() }}. Enter a new role name; the original role will not change.
+            </p>
+          }
           <div class="field">
             <label for="role-name">Role name</label
             ><input
@@ -146,17 +241,19 @@ import { apiErrorMessage } from '../../../shared/utils/api-error';
               </div>
             }
           </fieldset>
-          <button class="btn btn-primary" type="submit" [disabled]="saving() || busy()">
-            {{ saving() ? 'Saving…' : 'Save role' }}
-          </button>
-          <button
-            class="btn btn-outline-secondary"
-            type="button"
-            [disabled]="saving()"
-            (click)="cancel()"
-          >
-            Cancel
-          </button>
+          <div class="role-actions">
+            <button class="btn btn-primary" type="submit" [disabled]="saving() || busy()">
+              {{ saving() ? 'Saving…' : 'Save Role' }}
+            </button>
+            <button
+              class="btn btn-outline-secondary"
+              type="button"
+              [disabled]="saving()"
+              (click)="cancel()"
+            >
+              Cancel
+            </button>
+          </div>
         </form>
       }
     }
@@ -177,6 +274,8 @@ export class RoleManagementComponent {
   readonly error = signal<string | null>(null);
   readonly editing = signal<ManagedRole | null>(null);
   readonly creating = signal(false);
+  readonly viewingRoles = signal(true);
+  readonly copyingFrom = signal<string | null>(null);
   readonly selected = signal(new Set<number>());
   readonly unavailablePermissions = signal(0);
   readonly form = this.fb.group({
@@ -222,16 +321,51 @@ export class RoleManagementComponent {
     }
   }
   selectOrganization(event: Event) {
+    if (!this.catalog()?.superUser || this.busy() || this.saving()) return;
     this.tenantId.set(Number((event.target as HTMLSelectElement).value));
     void this.load();
   }
   newRole() {
     if (!this.catalog()?.canCreate || this.saving()) return;
     this.cancel();
+    this.viewingRoles.set(false);
     this.creating.set(true);
   }
+  viewExistingRoles() {
+    if (this.busy() || this.saving()) return;
+    this.cancel();
+    void this.load();
+  }
+  selectedTenantName() {
+    return (
+      this.organizations().find((tenant) => tenant.tenantId === this.tenantId())?.name ||
+      'Not available'
+    );
+  }
+  canCopy(role: ManagedRole) {
+    if (!this.catalog()?.canCreate || role.systemRole === 'SUPER_USER') return false;
+    const available = new Set(
+      this.catalog()?.permissions.map((permission) => permission.permissionId),
+    );
+    return role.tenantId === this.tenantId() && role.permissionIds.every((id) => available.has(id));
+  }
+  copyRole(role: ManagedRole) {
+    if (!this.canCopy(role) || this.saving() || this.busy()) return;
+    this.newRole();
+    this.copyingFrom.set(role.name);
+    this.selected.set(new Set(role.permissionIds));
+    this.form.reset({ name: '', description: role.description || '', systemRole: '' });
+  }
   edit(role: ManagedRole) {
-    if (!role.editable || !this.catalog()?.canEdit || this.saving()) return;
+    if (
+      role.systemRole === 'SUPER_USER' ||
+      !role.editable ||
+      !this.catalog()?.canEdit ||
+      this.saving()
+    )
+      return;
+    this.copyingFrom.set(null);
+    this.viewingRoles.set(false);
     this.creating.set(false);
     this.editing.set(role);
     const grantable = new Set(
@@ -246,6 +380,8 @@ export class RoleManagementComponent {
   cancel() {
     this.editing.set(null);
     this.creating.set(false);
+    this.viewingRoles.set(true);
+    this.copyingFrom.set(null);
     this.selected.set(new Set());
     this.unavailablePermissions.set(0);
     this.form.reset();

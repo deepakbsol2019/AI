@@ -93,15 +93,18 @@ describe('BookTableComponent', () => {
     fixture.detectChanges();
     const element = fixture.nativeElement as HTMLElement;
     expect(element.textContent).toContain('Finding books');
+    expect(element.querySelector('.book-scroll-area')?.classList.contains('no-books')).toBe(true);
     expect(element.querySelector('tbody td')?.getAttribute('colspan')).toBe('7');
     expect(element.textContent).not.toContain('No matching books');
     fixture.componentRef.setInput('busy', false);
     fixture.detectChanges();
     expect(element.textContent).toContain('No matching books');
+    expect(element.querySelector('.book-scroll-area')?.classList.contains('no-books')).toBe(true);
     fixture.componentRef.setInput('books', [selectedBook]);
     fixture.componentRef.setInput('busy', true);
     fixture.detectChanges();
     expect(element.textContent).toContain('Updating your books');
     expect(element.textContent).toContain(selectedBook.bookName);
+    expect(element.querySelector('.book-scroll-area')?.classList.contains('no-books')).toBe(false);
   });
 });

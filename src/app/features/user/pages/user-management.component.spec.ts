@@ -87,6 +87,7 @@ describe('Routed User Management pages', () => {
     canCreateUsers: boolean;
     canManageRoles: boolean;
     superUser: boolean;
+    tenantId: number;
   };
   beforeEach(() => {
     currentUser = { userId: 1 };
@@ -115,6 +116,17 @@ describe('Routed User Management pages', () => {
           loginPolicy: 'PASSWORD',
         }),
       ),
+      createTenants: vi.fn(() =>
+        of([
+          {
+            tenantId: 4,
+            tenantName: 'Tenant A',
+            tenantType: 'ORGANIZATION',
+            loginPolicy: 'PASSWORD',
+          },
+          { tenantId: 7, tenantName: 'Tenant B', tenantType: 'INDIVIDUAL', loginPolicy: 'SSO' },
+        ]),
+      ),
       create: vi.fn(() => of({ userId: 18, message: 'Account setup instructions were sent.' })),
     };
     capabilities = {
@@ -122,6 +134,7 @@ describe('Routed User Management pages', () => {
       canCreateUsers: true,
       canManageRoles: true,
       superUser: true,
+      tenantId: 4,
     };
     const page = (path: string, userPage: string) => ({
       path,
@@ -196,6 +209,11 @@ describe('Routed User Management pages', () => {
     expect(api['list']).toHaveBeenCalledWith('', 'ACTIVE', 0, 20);
     expect(element.textContent).toContain('Inactive');
     expect(element.querySelector('tbody')?.textContent).toContain('Soft-deleted');
+    expect(
+      [...element.querySelectorAll('#user-status option')].map((option) =>
+        option.textContent?.trim(),
+      ),
+    ).toEqual(['Active', 'Inactive', 'All Users']);
   });
   it('loads dedicated details on a direct URL without exposing secrets or losing the return context', async () => {
     const { component, element, harness } = await page(
@@ -299,15 +317,23 @@ describe('Routed User Management pages', () => {
     );
     await component.refreshJob(9);
     harness.detectChanges();
-    expect(element.textContent).toContain('Database/account removal: completed');
+    api['jobs'].mockReturnValue(
+      of([{ ...job, status: 'FAILED', databasePurged: true, error: 'Cleanup requires review.' }]),
+    );
+    await component.loadJobs();
+    harness.detectChanges();
+    expect(element.querySelector('[role="dialog"] table')?.textContent).toContain('Completed');
     expect(element.textContent).toContain('Cleanup requires review.');
     expect(element.textContent).toContain('Retry validated cleanup');
     api['job'].mockReturnValue(of({ ...job, status: 'COMPLETE', databasePurged: true }));
     await component.refreshJob(9);
     harness.detectChanges();
-    expect(element.textContent).toContain('Deletion and required cleanup completed.');
+    component.closeCleanup();
+    harness.detectChanges();
+    expect(element.textContent).toContain('Deletion and required cleanup completed successfully.');
+    expect(element.querySelector('.result-success')).not.toBeNull();
   });
-  it('refreshes listing only after a confirmed successful soft deletion and preserves filters', async () => {
+  it('shows a failure or success result and returns only when requested with the previous filters', async () => {
     const soft = {
       ...preview,
       permanent: false,
@@ -329,17 +355,33 @@ describe('Routed User Management pages', () => {
     await component.confirmDelete();
     expect(api['list']).not.toHaveBeenCalled();
     expect(component.error()).toContain('scope changed');
+    harness.detectChanges();
+    expect(harness.routeNativeElement?.querySelector('.result-failure')).not.toBeNull();
+    expect(harness.routeNativeElement?.querySelector('a')).toBeNull();
+    component.returnFromResult();
+    await harness.fixture.whenStable();
+    const retry = await harness.navigateByUrl(
+      '/user/users/12/delete?hard=false&search=employee&status=ALL&page=2',
+      UserManagementComponent,
+    );
+    await harness.fixture.whenStable();
+    retry.confirmationForm.controls.confirmation.setValue(soft.confirmation);
     api['soft'].mockReturnValue(of(undefined));
-    await component.confirmDelete();
+    await retry.confirmDelete();
+    harness.detectChanges();
+    expect(harness.routeNativeElement?.querySelector('.result-success')).not.toBeNull();
+    expect(harness.routeNativeElement?.textContent).toContain('✓');
+    retry.returnFromResult();
     await harness.fixture.whenStable();
     expect(TestBed.inject(Router).url).toContain('search=employee&status=ALL&page=2');
     expect(api['list']).toHaveBeenCalledWith('employee', 'ALL', 2, 20);
     expect(api['hard']).not.toHaveBeenCalled();
   });
-  it('creates in the read-only current tenant with no client tenant or role fields and retains failed input', async () => {
+  it('uses the authorised tenant selector without an authentication type field and retains failed input', async () => {
     const { component, element, harness } = await page('/user/users/new');
     expect(element.textContent).toContain('Tenant A');
-    expect(element.querySelector('select')).toBeNull();
+    expect((element.querySelector('#create-tenant') as HTMLSelectElement).disabled).toBe(false);
+    expect(element.querySelectorAll('select')).toHaveLength(1);
     expect(element.querySelector('[role="dialog"]')).toBeNull();
     component.createForm.setValue({ email: 'new@example.com', displayName: 'New user' });
     api['create'].mockReturnValue(
@@ -354,7 +396,7 @@ describe('Routed User Management pages', () => {
     api['create'].mockReturnValue(of({ userId: 18, message: 'Setup sent.' }));
     await component.createUser();
     await harness.fixture.whenStable();
-    expect(api['create']).toHaveBeenLastCalledWith('new@example.com', 'New user');
+    expect(api['create']).toHaveBeenLastCalledWith('new@example.com', 'New user', 4);
     expect(TestBed.inject(Router).url).toContain('/user/users?');
     expect(TestBed.inject(Router).url).toContain('notice=created');
   });
@@ -408,6 +450,100 @@ describe('Routed User Management pages', () => {
     );
     harness.detectChanges();
     expect(harness.routeNativeElement?.textContent).toContain('No users match your search');
+  });
+  it('normalises the removed soft-delete filter to All Users and keeps the Library action in the heading', async () => {
+    const { element } = await page('/user/users?status=DELETED');
+    expect(api['list']).toHaveBeenCalledWith('', 'ALL', 0, 20);
+    expect(
+      element.querySelector('.management-heading .heading-actions a[href="/"]')?.textContent,
+    ).toContain('Back to Library');
+  });
+  it('opens recent cleanup as a table modal and refreshes status without navigation', async () => {
+    const { component, element, harness } = await page();
+    const before = TestBed.inject(Router).url;
+    await component.loadJobs();
+    harness.detectChanges();
+    expect(element.querySelector('[role="dialog"] table thead')?.textContent).toContain(
+      'Database Removal',
+    );
+    expect(element.querySelector('[role="dialog"] table tbody')?.textContent).toContain('PENDING');
+    api['jobs'].mockReturnValue(
+      of([
+        {
+          ...job,
+          status: 'FAILED',
+          databasePurged: true,
+          attempts: 2,
+          error: 'Cannot remove validated file',
+        },
+      ]),
+    );
+    await component.refreshCleanup();
+    harness.detectChanges();
+    expect(element.querySelector('[role="dialog"] table tbody')?.textContent).toContain('FAILED');
+    expect(element.querySelector('[role="dialog"] table tbody')?.textContent).toContain(
+      'Cannot remove validated file',
+    );
+    expect(TestBed.inject(Router).url).toBe(before);
+    api['retry'].mockReturnValue(
+      throwError(
+        () => new HttpErrorResponse({ status: 403, error: { detail: 'Retry authority changed' } }),
+      ),
+    );
+    await component.retryJob(9);
+    harness.detectChanges();
+    expect(element.querySelector('[role="dialog"]')?.textContent).toContain(
+      'Retry authority changed',
+    );
+    component.cleanupKeys(new KeyboardEvent('keydown', { key: 'Escape' }));
+    harness.detectChanges();
+    expect(element.querySelector('[role="dialog"]')).toBeNull();
+  });
+  it('keeps ordinary creators on their own disabled tenant and lets the super user select another tenant', async () => {
+    capabilities.superUser = false;
+    const { component, element, harness } = await page('/user/users/new');
+    expect((element.querySelector('#create-tenant') as HTMLSelectElement).disabled).toBe(true);
+    expect(element.querySelectorAll('#create-tenant option')).toHaveLength(1);
+    await component.selectCreateTenant({ target: { value: '7' } } as unknown as Event);
+    expect(component.createOptions()?.tenantId).toBe(4);
+    capabilities.superUser = true;
+    component.createTenants.set([
+      { tenantId: 4, tenantName: 'Tenant A', tenantType: 'ORGANIZATION', loginPolicy: 'PASSWORD' },
+      { tenantId: 7, tenantName: 'Tenant B', tenantType: 'INDIVIDUAL', loginPolicy: 'SSO' },
+    ]);
+    const failedSelect = { value: '7' };
+    api['createOptions'].mockReturnValue(
+      throwError(
+        () =>
+          new HttpErrorResponse({ status: 503, error: { detail: 'Tenant options unavailable' } }),
+      ),
+    );
+    await component.selectCreateTenant({ target: failedSelect } as unknown as Event);
+    expect(failedSelect.value).toBe('4');
+    api['createOptions'].mockReturnValue(
+      of({ tenantId: 7, tenantName: 'Tenant B', tenantType: 'INDIVIDUAL', loginPolicy: 'SSO' }),
+    );
+    await component.selectCreateTenant({ target: { value: '7' } } as unknown as Event);
+    harness.detectChanges();
+    expect(api['createOptions']).toHaveBeenLastCalledWith(7);
+    expect(component.createOptions()?.loginPolicy).toBe('SSO');
+    expect(element.querySelectorAll('select')).toHaveLength(1);
+    component.createForm.setValue({ email: 'selected@example.com', displayName: 'Selected user' });
+    await component.createUser();
+    expect(api['create']).toHaveBeenCalledWith('selected@example.com', 'Selected user', 7);
+  });
+  it('returns from the result close control to the previous detail page only', async () => {
+    api['preview'].mockReturnValue(of({ ...preview, permanent: false, preservesFiles: true }));
+    const { component, element, harness } = await page(
+      '/user/users/12/delete?hard=false&from=details&search=employee&status=ALL&page=2',
+    );
+    component.confirmationForm.controls.confirmation.setValue(preview.confirmation);
+    await component.confirmDelete();
+    harness.detectChanges();
+    expect(element.querySelector('.delete-result a')).toBeNull();
+    (element.querySelector('.result-close') as HTMLButtonElement).click();
+    await harness.fixture.whenStable();
+    expect(TestBed.inject(Router).url).toBe('/user/users/12?search=employee&status=ALL&page=2');
   });
   it('keeps activation separate from profile editing and selected-account only', async () => {
     api['details'].mockReturnValue(

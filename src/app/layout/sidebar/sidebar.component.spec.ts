@@ -23,6 +23,12 @@ describe('Shared account sidebar', () => {
   let logout: ReturnType<typeof vi.fn>;
   beforeEach(() => {
     current.set(identity);
+    profile.set({
+      username: identity.email,
+      displayName: identity.displayName,
+      tenantType: 'ORGANIZATION',
+      roles: ['Reader', 'Editor'],
+    });
     capabilities.set({ canViewUsers: false, canCreateUsers: false, canManageRoles: false });
     logout = vi.fn(() => current.set(null));
     TestBed.configureTestingModule({
@@ -62,6 +68,17 @@ describe('Shared account sidebar', () => {
     expect(element.textContent).toContain('Organisation');
     expect(element.textContent).toContain('Reader');
     expect(element.textContent).toContain('Editor');
+    expect([...element.querySelectorAll('dt')].map((item) => item.textContent?.trim())).toEqual([
+      'Username',
+      'Name',
+      'Account Type',
+      'Access Roles',
+    ]);
+    expect(element.querySelectorAll('dd')).toHaveLength(4);
+    expect(element.querySelector('dd button,dd input,dd a')).toBeNull();
+    expect(element.querySelector('a[href="/user/profile"]')?.textContent).toContain(
+      'View Your Detail',
+    );
     expect(element.textContent).not.toContain('permissions');
     expect(element.querySelector('input,select,textarea')).toBeNull();
   });
@@ -77,7 +94,7 @@ describe('Shared account sidebar', () => {
       'User Management',
     );
     expect(fixture.nativeElement.querySelector('a[href="/user/users/new"]')?.textContent).toContain(
-      'Create User',
+      'Add User',
     );
     expect(fixture.nativeElement.querySelector('a[href="/user/roles"]')).toBeNull();
     capabilities.set({ canViewUsers: true, canCreateUsers: false, canManageRoles: true });
@@ -85,6 +102,18 @@ describe('Shared account sidebar', () => {
     expect(fixture.nativeElement.querySelector('a[href="/user/roles"]')?.textContent).toContain(
       'Role Management',
     );
+  });
+  it('keeps Add User permission-based even for an Individual profile', async () => {
+    profile.set({ ...profile(), tenantType: 'INDIVIDUAL' });
+    capabilities.set({ canViewUsers: false, canCreateUsers: true, canManageRoles: false });
+    const fixture = TestBed.createComponent(SidebarComponent);
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Individual');
+    expect(fixture.nativeElement.querySelector('a[href="/user/users/new"]')?.textContent).toContain(
+      'Add User',
+    );
+    profile.set({ ...profile(), tenantType: 'ORGANIZATION' });
   });
   it('exposes collapse and logout actions and removes own identity on logout', async () => {
     const fixture = TestBed.createComponent(SidebarComponent);

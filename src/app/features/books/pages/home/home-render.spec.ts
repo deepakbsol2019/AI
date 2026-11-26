@@ -139,4 +139,27 @@ describe('Home rendered integration', () => {
     expect(harness.routeNativeElement?.querySelector('.welcome, .library-footnote')).toBeNull();
     expect(harness.routeNativeElement?.textContent).toContain('Find something worth reading');
   });
+  it('uses the split workspace only while search and the collection are both visible', async () => {
+    const fixture = TestBed.createComponent(HomeComponent);
+    TestBed.inject(HttpTestingController)
+      .expectOne('/api/search/books?size=5')
+      .flush({ ...result, books: [], totalElements: 0, totalPages: 0 });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const main = fixture.nativeElement.querySelector('main.library-main') as HTMLElement;
+    expect(main.classList.contains('collection-only')).toBe(true);
+    expect(main.classList.contains('search-open')).toBe(false);
+    fixture.componentInstance.searchMinimized.set(false);
+    fixture.detectChanges();
+    expect(main.classList.contains('search-open')).toBe(true);
+    fixture.componentInstance.searchMinimized.set(true);
+    fixture.detectChanges();
+    expect(main.classList.contains('search-open')).toBe(false);
+    expect(main.classList.contains('collection-only')).toBe(true);
+    fixture.componentInstance.searchMinimized.set(false);
+    fixture.componentInstance.collectionMinimized.set(true);
+    fixture.detectChanges();
+    expect(main.classList.contains('search-open')).toBe(false);
+    expect(main.classList.contains('search-only')).toBe(true);
+  });
 });

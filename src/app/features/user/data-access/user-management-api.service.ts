@@ -59,6 +59,23 @@ export interface CurrentProfile {
   createdAt: string | null;
   lastLogin: string | null;
 }
+export interface OwnUserDetails extends CurrentProfile {
+  tenantId: number;
+}
+export interface OwnPermission {
+  permissionId: number;
+  name: string;
+  description: string | null;
+  code: string;
+  component: string;
+  kind: string;
+  sourceRoles: string[];
+  routes: { service: string; method: string; url: string; operations: string[] }[];
+}
+export interface OwnPermissions {
+  username: string;
+  permissions: OwnPermission[];
+}
 export interface DeletionPreview {
   userId: number;
   tenantId: number;
@@ -105,11 +122,26 @@ export class UserManagementApiService {
   profile() {
     return this.http.get<CurrentProfile>(this.userBase + '/profile');
   }
-  createOptions() {
-    return this.http.get<CreateUserOptions>(this.base + '/create-options');
+  ownDetails() {
+    return this.http.get<OwnUserDetails>(this.userBase + '/profile/details');
   }
-  create(email: string, displayName: string) {
-    return this.http.post<CreatedUser>(this.base, { email, displayName });
+  ownPermissions() {
+    return this.http.get<OwnPermissions>(this.userBase + '/profile/permissions');
+  }
+  createTenants() {
+    return this.http.get<CreateUserOptions[]>(this.base + '/create-tenants');
+  }
+  createOptions(tenantId?: number) {
+    return this.http.get<CreateUserOptions>(this.base + '/create-options', {
+      params: tenantId === undefined ? {} : { tenantId },
+    });
+  }
+  create(email: string, displayName: string, tenantId?: number) {
+    return this.http.post<CreatedUser>(this.base, {
+      email,
+      displayName,
+      ...(tenantId === undefined ? {} : { tenantId }),
+    });
   }
   list(search: string, status: string, page: number, size: number) {
     return this.http.get<UserPage>(this.base, {

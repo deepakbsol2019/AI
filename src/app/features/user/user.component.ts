@@ -23,6 +23,6 @@ import { Router } from '@angular/router';
 export class UserComponent {
   private readonly router = inject(Router);
   managementPage(): boolean {
-    return /^\/user\/(users|roles)(\/|\?|$)/.test(this.router.url);
+    return /^\/user\/(users|roles|profile)(\/|\?|$)/.test(this.router.url);
   }
 }

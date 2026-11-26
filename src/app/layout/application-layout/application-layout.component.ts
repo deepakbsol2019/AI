@@ -6,7 +6,10 @@ import {
   input,
   output,
   signal,
+  DestroyRef,
 } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { HeaderComponent } from '../header/header.component';
 import { FooterComponent } from '../footer/footer.component';
 import { SidebarComponent } from '../sidebar/sidebar.component';
@@ -118,15 +121,20 @@ export class ApplicationLayoutComponent {
   protected readonly session = inject(AuthSessionService);
   private readonly element: ElementRef<HTMLElement> = inject(ElementRef);
   readonly libraryControls = input(true);
-  readonly sidebarExpanded = signal(
-    !(typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 767px)').matches),
-  );
+  readonly sidebarExpanded = signal(false);
   readonly uploadBusy = input(false);
   readonly searchMinimized = input(false);
   readonly collectionMinimized = input(false);
   readonly fileSelected = output<File>();
   readonly restoreSearch = output<void>();
   readonly restoreCollection = output<void>();
+  constructor() {
+    inject(ActivatedRoute)
+      .queryParamMap.pipe(takeUntilDestroyed(inject(DestroyRef)))
+      .subscribe((params) => {
+        if (params.get('profile') === 'open') this.sidebarExpanded.set(true);
+      });
+  }
   collapseSidebar() {
     this.sidebarExpanded.set(false);
     queueMicrotask(() =>

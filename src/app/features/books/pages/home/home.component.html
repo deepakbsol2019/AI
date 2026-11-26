@@ -11,6 +11,7 @@
     class="container library-main"
     [class.search-only]="!searchMinimized() && collectionMinimized()"
     [class.collection-only]="searchMinimized() && !collectionMinimized()"
+    [class.search-open]="!searchMinimized() && !collectionMinimized()"
     tabindex="-1"
   >
     <h1 class="visually-hidden">Book library</h1>

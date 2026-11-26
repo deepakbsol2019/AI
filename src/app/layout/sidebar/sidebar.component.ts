@@ -53,11 +53,11 @@ import { apiErrorMessage } from '../../shared/utils/api-error';
           <dd>{{ profiles.profile()?.username || user.email }}</dd>
           <dt>Name</dt>
           <dd>{{ profiles.profile()?.displayName || user.displayName || 'Not available' }}</dd>
-          <dt>Account type</dt>
+          <dt>Account Type</dt>
           <dd>
             {{ tenantType(profiles.profile()?.tenantType || access.capabilities()?.tenantType) }}
           </dd>
-          <dt>Assigned roles</dt>
+          <dt>Access Roles</dt>
           <dd>
             @for (role of profiles.profile()?.roles || []; track $index) {
               <span class="role-name">{{ role }}</span>
@@ -66,6 +66,16 @@ import { apiErrorMessage } from '../../shared/utils/api-error';
             }
           </dd>
         </dl>
+        <div class="profile-actions">
+          <a class="btn btn-outline-primary" routerLink="/user/profile" (click)="navigate.emit()"
+            >View Your Detail</a
+          >
+          @if (access.capabilities()?.canCreateUsers) {
+            <a class="btn btn-primary" routerLink="/user/users/new" (click)="navigate.emit()"
+              >Add User</a
+            >
+          }
+        </div>
         @if (profileLoading()) {
           <p role="status" class="sidebar-note">Loading profile…</p>
         }
@@ -91,11 +101,6 @@ import { apiErrorMessage } from '../../shared/utils/api-error';
             [routerLinkActiveOptions]="{ exact: true }"
             (click)="navigate.emit()"
             >User Management</a
-          >
-        }
-        @if (access.capabilities()?.canCreateUsers) {
-          <a routerLink="/user/users/new" routerLinkActive="active" (click)="navigate.emit()"
-            >Create User</a
           >
         }
         @if (access.capabilities()?.canManageRoles) {
@@ -167,9 +172,9 @@ import { apiErrorMessage } from '../../shared/utils/api-error';
       text-align: center;
     }
     .profile-avatar {
-      width: 84px;
-      height: 84px;
-      margin-bottom: 0.8rem;
+      width: 64px;
+      height: 64px;
+      margin-bottom: 0.5rem;
     }
     dl {
       margin: 0;
@@ -179,16 +184,32 @@ import { apiErrorMessage } from '../../shared/utils/api-error';
     dt {
       font-size: 0.7rem;
       color: var(--muted);
-      margin-top: 0.7rem;
+      margin-top: 0.5rem;
     }
     dd {
-      font-size: 0.86rem;
+      font-size: 0.78rem;
       font-weight: 600;
       margin: 0;
+      padding: 0.35rem 0.5rem;
+      border-radius: 0.35rem;
+      background: #174783;
+      color: #fff;
+      line-height: 1.4;
+      cursor: text;
     }
     .role-name {
       display: block;
       font-weight: 500;
+    }
+    .profile-actions {
+      display: grid;
+      gap: 0.5rem;
+      margin-top: 0.9rem;
+    }
+    .profile-actions .btn {
+      min-height: 34px;
+      font-size: 0.8rem;
+      padding: 0.4rem 0.5rem;
     }
     nav {
       display: grid;

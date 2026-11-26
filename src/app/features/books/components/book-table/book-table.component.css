@@ -25,6 +25,19 @@
   --bs-table-border-color: #e5e5e5;
   color: var(--ink);
 }
+/* An empty/loading result has no data columns to scroll. Keep the empty message
+   within the available width; real rows retain their natural table overflow. */
+.no-books {
+  overflow: visible;
+}
+.no-books .book-table {
+  min-width: 0;
+  width: 100%;
+}
+.no-books colgroup,
+.no-books thead {
+  display: none;
+}
 .book-name-col {
   width: 22%;
 }

@@ -10,6 +10,13 @@ export const USER_ROUTES: Routes = [
     component: UserComponent,
     children: [
       {
+        path: 'profile',
+        title: 'Your Information',
+        canMatch: [authGuard],
+        loadComponent: () =>
+          import('./pages/own-user-details.component').then((m) => m.OwnUserDetailsComponent),
+      },
+      {
         path: 'users/new',
         title: 'Create User',
         canMatch: [authGuard, managementCapabilityGuard('canCreateUsers')],

@@ -165,6 +165,84 @@ describe('Organization role management', () => {
       'inactive or unavailable permissions will be removed',
     );
   });
+  it('keeps the own tenant selected and disabled for admins and cannot switch through a forged event', async () => {
+    const fixture = await page();
+    const select = fixture.nativeElement.querySelector('#role-organization') as HTMLSelectElement;
+    expect(select.value).toBe('10');
+    expect(select.disabled).toBe(true);
+    fixture.componentInstance.selectOrganization({ target: { value: '99' } } as unknown as Event);
+    expect(fixture.componentInstance.tenantId()).toBe(10);
+  });
+  it('hides every Edit Super User control while retaining Edit Administrator and spaced page actions', async () => {
+    api.list.mockReturnValue(
+      of([
+        protectedRole,
+        { ...ordinary, roleId: 5, name: 'Super User', systemRole: 'SUPER_USER', editable: false },
+      ]),
+    );
+    const fixture = await page();
+    const buttons = [...fixture.nativeElement.querySelectorAll('button')] as HTMLButtonElement[];
+    expect(buttons.some((b) => b.textContent?.includes('Edit Super User'))).toBe(false);
+    expect(buttons.some((b) => b.textContent?.includes('Edit Administrator'))).toBe(true);
+    expect(
+      fixture.nativeElement.querySelector('.management-heading .role-actions a')?.textContent,
+    ).toContain('Back to Library');
+  });
+  it('copies source permissions into a separate new role and can add permissions without changing its source', async () => {
+    const fixture = await page();
+    const component = fixture.componentInstance;
+    component.copyRole(ordinary);
+    expect(component.editing()).toBeNull();
+    expect(component.creating()).toBe(true);
+    expect([...component.selected()]).toEqual([1]);
+    expect(component.form.controls.name.value).toBe('');
+    component.form.controls.name.setValue('Developer');
+    component.toggle(component.catalog()!.permissions[1], {
+      target: { checked: true },
+    } as unknown as Event);
+    vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+    await component.save();
+    expect(api.create).toHaveBeenCalledWith({
+      tenantId: 10,
+      name: 'Developer',
+      description: '',
+      permissionIds: [1, 2],
+    });
+    expect(api.update).not.toHaveBeenCalled();
+    expect(ordinary.permissionIds).toEqual([1]);
+  });
+  it('returns to existing roles on Cancel and refreshes the selected tenant through View Existing Roles', async () => {
+    const fixture = await page();
+    const component = fixture.componentInstance;
+    component.copyRole(ordinary);
+    component.cancel();
+    fixture.detectChanges();
+    expect(component.viewingRoles()).toBe(true);
+    expect(component.copyingFrom()).toBeNull();
+    expect(fixture.nativeElement.querySelector('form')).toBeNull();
+    component.viewExistingRoles();
+    await fixture.whenStable();
+    expect(api.list).toHaveBeenCalledTimes(2);
+  });
+  it('allows a super user to select an authorized different tenant and rejects unavailable copy grants', async () => {
+    api.organizations.mockReturnValue(
+      of([
+        { tenantId: 10, name: 'Tenant A' },
+        { tenantId: 20, name: 'Tenant B' },
+      ]),
+    );
+    const fixture = await page();
+    api.catalog.mockReturnValue(of({ ...fixture.componentInstance.catalog()!, superUser: true }));
+    await fixture.componentInstance.load();
+    fixture.detectChanges();
+    expect(
+      (fixture.nativeElement.querySelector('#role-organization') as HTMLSelectElement).disabled,
+    ).toBe(false);
+    expect(fixture.componentInstance.canCopy({ ...ordinary, permissionIds: [999] })).toBe(false);
+    fixture.componentInstance.selectOrganization({ target: { value: '20' } } as unknown as Event);
+    await fixture.whenStable();
+    expect(api.list).toHaveBeenLastCalledWith(20);
+  });
   it('includes action prerequisites and removes dependent actions when View is unchecked', async () => {
     const component = (await page()).componentInstance;
     const catalog = component.catalog()!;
