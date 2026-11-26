@@ -108,12 +108,14 @@ class BookUploadSubmissionServiceTests extends com.book.user.TenantAwareTest {
         when(statuses.create("original.pdf")).thenReturn(status(7L,BookUploadStatus.IN_PROGRESS,"Uploading"));
         doAnswer(call -> {
             assertThat(com.book.user.security.TenantContext.requireTenantId()).isEqualTo(1L);
+            assertThat(com.book.user.security.TenantContext.requireUserId()).isEqualTo(1L);
             return null;
         }).when(background).process(any());
         service.submit(source(new byte[]{1}));
         try (var executor=java.util.concurrent.Executors.newSingleThreadExecutor()) {
             executor.submit(pending.getFirst()).get();
             assertThat(executor.submit(com.book.user.security.TenantContext::currentTenantId).get()).isNull();
+            assertThat(executor.submit(com.book.user.security.TenantContext::currentUserId).get()).isNull();
         }
     }
 

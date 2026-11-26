@@ -58,6 +58,11 @@ public final class AuthTestDatabase {
             String profile=new ClassPathResource("db/manual/20261126_profile_permissions_add_user.sql").getContentAsString(StandardCharsets.UTF_8)
                     .replaceAll("(?m)^SET time_zone[^;]*;", "").replace("UTC_TIMESTAMP(6)","CURRENT_TIMESTAMP");
             new ResourceDatabasePopulator(new ByteArrayResource(profile.getBytes(StandardCharsets.UTF_8))).execute(jdbc.getDataSource());
+            String history=new ClassPathResource("db/manual/20261126_upload_history.sql").getContentAsString(StandardCharsets.UTF_8)
+                    .replaceAll("(?m)^SET time_zone[^;]*;", "")
+                    .replaceAll("(?s)DELIMITER \\$\\$.*?DELIMITER ;", "")
+                    .replace("UTC_TIMESTAMP(6)","CURRENT_TIMESTAMP");
+            new ResourceDatabasePopulator(new ByteArrayResource(history.getBytes(StandardCharsets.UTF_8))).execute(jdbc.getDataSource());
         } catch (IOException error) { throw new IllegalStateException("The authentication schema could not be loaded.", error); }
     }
 }

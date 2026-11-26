@@ -1,5 +1,7 @@
 package com.book.metadata.service;
 
+import static com.book.time.UtcDates.instant;
+
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
@@ -156,7 +158,7 @@ public class BookMetadataService {
         } catch (DataIntegrityViolationException failure) {
             for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
                 if (cause.getMessage() != null && cause.getMessage().toLowerCase(java.util.Locale.ROOT)
-                        .matches("(?s).*(uk_book_details_book_name|uk_book_tenant_name).*")) throw duplicate(bookName, failure);
+                        .matches("(?s).*(uk_book_details_book_name|uk_book_tenant_name|uk_book_tenant_canonical_name).*")) throw duplicate(bookName, failure);
             }
             throw failure;
         }
@@ -216,14 +218,14 @@ public class BookMetadataService {
     private static BookResult snapshot(BookDetails book, List<TopicDetails> entries) {
         AuthorDetails author = book.getAuthorDetails();
         AuthorResult authorResult = author == null ? null : new AuthorResult(author.getAuthorId(), author.getAuthorName(),
-                author.getCreatedAt(), author.getUpdatedAt());
+                instant(author.getCreatedAt()), instant(author.getUpdatedAt()));
         List<TopicResult> topicResults = entries.stream().sorted(Comparator.comparing(TopicDetails::getTopicId))
                 .map(topic -> new TopicResult(topic.getTopicId(), topic.getTopicName(), topic.getDetails(),
                         topic.getStartPage(), topic.getEndPage(), topic.getPrintedStartPage(), topic.getPrintedEndPage(),
-                        topic.getCreatedAt(), topic.getUpdatedAt())).toList();
+                        instant(topic.getCreatedAt()), instant(topic.getUpdatedAt()))).toList();
         return new BookResult(book.getBookId(), book.getBookName(), book.getBookType(),
                 author == null ? null : author.getAuthorName(), book.getBookDetails(), book.getTotalPages(),
-                book.getBookUploadId(), book.getCreatedAt(), book.getUpdatedAt(), authorResult,
+                book.getBookUploadId(), instant(book.getCreatedAt()), instant(book.getUpdatedAt()), authorResult,
                 topicResults.size(), topicResults);
     }
 }

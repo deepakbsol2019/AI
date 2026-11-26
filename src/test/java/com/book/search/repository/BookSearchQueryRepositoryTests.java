@@ -294,14 +294,21 @@ class BookSearchQueryRepositoryTests extends com.book.user.TenantAwareTest {
     void differentPersistentIdsRemainSeparateEvenForIdenticalTitles() {
         jdbc.execute("alter table book_details drop constraint uk_book_tenant_name");
         try {
-            new TransactionTemplate(transactions).executeWithoutResult(transaction -> {
-                BookDetails first = book("Legacy Same Title", "Same Writer", null, topic("Same Topic", null));
-                BookDetails second = book("Legacy Same Title", "Same Writer", null, topic("Same Topic", null));
-                SearchPage result = run(criteria("legacy same title", null, null, null, null, null, 0, 20));
-                assertIds(result, first, second);
-                assertThat(result.totalElements()).isEqualTo(2);
-                transaction.setRollbackOnly();
-            });
+            // This fixture deliberately represents legacy duplicate titles; production keeps both indexes.
+            jdbc.execute("alter table book_details drop constraint uk_book_tenant_canonical_name");
+            try {
+                new TransactionTemplate(transactions).executeWithoutResult(transaction -> {
+                    BookDetails first = book("Legacy Same Title", "Same Writer", null, topic("Same Topic", null));
+                    BookDetails second = book("Legacy Same Title", "Same Writer", null, topic("Same Topic", null));
+                    SearchPage result = run(criteria("legacy same title", null, null, null, null, null, 0, 20));
+                    assertIds(result, first, second);
+                    assertThat(result.totalElements()).isEqualTo(2);
+                    transaction.setRollbackOnly();
+                });
+            }
+            finally {
+                jdbc.execute("alter table book_details add constraint uk_book_tenant_canonical_name unique (tenant_id, canonical_book_name)");
+            }
         }
         finally {
             jdbc.execute("alter table book_details add constraint uk_book_tenant_name unique (tenant_id, book_name)");

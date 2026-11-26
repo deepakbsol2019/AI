@@ -30,7 +30,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-class UploadFileControllerTests {
+class UploadFileControllerTests extends com.book.user.TenantAwareTest {
     private final WebApplicationContextRunner contextRunner = new WebApplicationContextRunner()
             .withUserConfiguration(UploadWebConfiguration.class);
 
@@ -41,7 +41,7 @@ class UploadFileControllerTests {
             BookUploadSubmissionService submissions = context.getBean(BookUploadSubmissionService.class);
             String message = "book.pdf upload service is uploading book topic by topic. please check final upload status after some time.";
             when(submissions.submit(any())).thenReturn(uploadStatus(41L, "inprogress", message));
-            byte[] source = "The complete original PDF bytes".getBytes(StandardCharsets.UTF_8);
+            byte[] source = "%PDF-1.7\nThe complete original PDF bytes".getBytes(StandardCharsets.UTF_8);
 
             mvc.perform(multipart("/api/upload-file").file(
                     new MockMultipartFile("file", "book.pdf", "application/pdf", source)))
@@ -68,6 +68,33 @@ class UploadFileControllerTests {
     }
 
     @Test
+    void contentDetectionAcceptsPdfWithUnhelpfulBrowserMimeAndRejectsNonPdfDisguisedAsPdf() {
+        contextRunner.run(context->{
+            MockMvc mvc=MockMvcBuilders.webAppContextSetup(context).build();
+            var submissions=context.getBean(BookUploadSubmissionService.class);
+            when(submissions.submit(any())).thenReturn(uploadStatus(41L,"inprogress","Queued"));
+            mvc.perform(multipart("/api/upload-file").file(new MockMultipartFile("file","document.bin","application/octet-stream","%PDF-1.7\nfixture".getBytes(StandardCharsets.UTF_8))))
+                    .andExpect(status().isAccepted());
+            ArgumentCaptor<UploadFileDtlsDto> captured=ArgumentCaptor.forClass(UploadFileDtlsDto.class);
+            verify(submissions).submit(captured.capture());assertThat(captured.getValue().getContentType()).isEqualTo("application/pdf");
+            clearInvocations(submissions);
+            mvc.perform(multipart("/api/upload-file").file(new MockMultipartFile("file","disguised.pdf","application/pdf","PK unsupported archive".getBytes(StandardCharsets.UTF_8))))
+                    .andExpect(status().isUnsupportedMediaType());
+            verifyNoInteractions(submissions);
+        });
+    }
+    @Test
+    void historyUsesTheAuthenticatedScopeAndValidatesPaginationThroughItsService() {
+        contextRunner.run(context->{
+            MockMvc mvc=MockMvcBuilders.webAppContextSetup(context).build();
+            var statuses=context.getBean(BookUploadStatusService.class);
+            when(statuses.history(0,20)).thenReturn(new org.springframework.data.domain.PageImpl<>(java.util.List.of(uploadStatus(7L,"Success","Done"))));
+            mvc.perform(get("/api/my-uploads").param("tenantId","999").param("userId","999"))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.content[0].book_upload_id").value(7));
+            verify(statuses).history(0,20);
+        });
+    }
+    @Test
     void rejectedBackgroundSubmissionReturnsItsRecordedFailedStatus() {
         contextRunner.run(context -> {
             MockMvc mvc = MockMvcBuilders.webAppContextSetup(context).build();
@@ -75,7 +102,7 @@ class UploadFileControllerTests {
             when(submissions.submit(any())).thenReturn(uploadStatus(42L, "failed", "Upload queue is full"));
 
             mvc.perform(multipart("/api/upload-file").file(
-                    new MockMultipartFile("file", "book.pdf", "application/pdf", new byte[] {1})))
+                    new MockMultipartFile("file", "book.pdf", "application/pdf", "%PDF-1.7\n".getBytes(StandardCharsets.UTF_8))))
                     .andExpect(status().isServiceUnavailable())
                     .andExpect(header().string("Location", "/api/upload-status/42"))
                     .andExpect(jsonPath("$.book_upload_id").value(42))

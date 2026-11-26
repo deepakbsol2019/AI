@@ -219,12 +219,12 @@ public class BookMetadataExtractionService {
             if (cause instanceof org.hibernate.exception.ConstraintViolationException violation
                     && violation.getConstraintName() != null) {
                 return violation.getConstraintName().toLowerCase(java.util.Locale.ROOT)
-                        .matches(".*(uk_book_details_book_name|uk_book_tenant_name).*");
+                        .matches(".*(uk_book_details_book_name|uk_book_tenant_name|uk_book_tenant_canonical_name).*");
             }
         }
         for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
             if (cause.getMessage() != null && cause.getMessage().toLowerCase(java.util.Locale.ROOT)
-                    .matches("(?s).*(uk_book_details_book_name|uk_book_tenant_name).*")) {
+                    .matches("(?s).*(uk_book_details_book_name|uk_book_tenant_name|uk_book_tenant_canonical_name).*")) {
                 return true;
             }
         }

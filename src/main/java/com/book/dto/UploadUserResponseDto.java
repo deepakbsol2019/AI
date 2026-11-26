@@ -1,6 +1,7 @@
 package com.book.dto;
 
 import java.time.LocalDateTime;
+import com.fasterxml.jackson.annotation.JsonFormat;
 
 import com.book.constants.BookUploadStatus;
 
@@ -22,6 +23,7 @@ public class UploadUserResponseDto {
 	public void setFileName(String fileName) {
 		this.fileName = fileName;
 	}
+	@JsonFormat(pattern="yyyy-MM-dd'T'HH:mm:ss.SSSSSS'Z'")
 	public LocalDateTime getFileUploadDateTime() {
 		return fileUploadDateTime;
 	}

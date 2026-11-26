@@ -50,6 +50,16 @@ class UniqueBookNamePersistenceTests extends com.book.user.TenantAwareTest {
     }
 
     @Test
+    void canonicalNamesAreUniqueWithinTenantButMayRepeatAcrossTenants() {
+        String name="Scoped "+UUID.randomUUID();books.saveAndFlush(book("  "+name+"  "));
+        assertThatThrownBy(()->books.saveAndFlush(book(name.toUpperCase(java.util.Locale.ROOT)))).isInstanceOf(DataIntegrityViolationException.class);
+        try(var another=com.book.user.security.TenantContext.use(2L,2L,false)) {
+            assertThat(books.existsByCanonicalBookName(name)).isFalse();
+            assertThat(books.saveAndFlush(book(name)).getBookId()).isPositive();
+        }
+        assertThat(books.existsByCanonicalBookName(name)).isTrue();
+    }
+    @Test
     void concurrentExactNameInsertsAreProtectedByTheDatabaseConstraint() throws Exception {
         String name = "Concurrent " + UUID.randomUUID();
         CountDownLatch ready = new CountDownLatch(2);

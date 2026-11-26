@@ -5,6 +5,9 @@ import java.lang.reflect.UndeclaredThrowableException;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.Set;
+import java.time.Instant;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 
@@ -33,6 +36,9 @@ public class BookUploadStatusService {
             throw new IllegalArgumentException("The original upload filename is required.");
         }
         BookUploadStatus status = new BookUploadStatus();
+        status.setFileName(originalFileName);
+        status.setUploadedBy(TenantContext.currentUserId());
+        Instant now=Instant.now();status.setCreatedAt(now);status.setUpdatedAt(now);status.setState("PENDING");
         status.setStatus(BookUploadStatus.IN_PROGRESS);
         status.setMessage(originalFileName
                 + " upload service is uploading book topic by topic. please check final upload status after some time.");
@@ -42,6 +48,19 @@ public class BookUploadStatusService {
     @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
     public BookUploadStatus get(Long uploadId) {
         return required(uploadId).responseCopy();
+    }
+    @Transactional(propagation=Propagation.REQUIRES_NEW,readOnly=true)
+    public Page<BookUploadStatus> history(int page,int size) {
+        long tenant=TenantContext.requireTenantId(),user=TenantContext.requireUserId();
+        if(page<0 || size<1 || size>100 || (long)page*size>Integer.MAX_VALUE)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Choose a valid upload-history page and size (1–100).");
+        return statuses.history(tenant,user,PageRequest.of(page,size));
+    }
+    @Transactional(propagation=Propagation.REQUIRES_NEW)
+    public void processing(Long uploadId) {
+        validateId(uploadId);
+        if(statuses.markProcessing(uploadId,TenantContext.requireTenantId(),TenantContext.currentUserId(),Instant.now())!=1)
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,"Upload is unavailable for processing.");
     }
 
     /** Called after the book transaction has ended unsuccessfully. */
@@ -68,8 +87,8 @@ public class BookUploadStatusService {
         if (bookName == null || bookName.isBlank()) {
             throw new IllegalArgumentException("The successfully uploaded book name is required.");
         }
-        int changed = statuses.finishIfInProgress(uploadId, BookUploadStatus.IN_PROGRESS,
-                BookUploadStatus.SUCCESS, "uploaded " + bookName + " successfully.");
+        int changed = statuses.finishOwned(uploadId,BookUploadStatus.IN_PROGRESS,BookUploadStatus.SUCCESS,
+                "uploaded " + bookName + " successfully.",bookName,"COMPLETED",Instant.now(),TenantContext.requireTenantId(),TenantContext.currentUserId());
         if (changed != 1) {
             BookUploadStatus current = required(uploadId);
             throw new IllegalStateException("Upload " + uploadId + " is already " + current.getStatus()
@@ -87,6 +106,8 @@ public class BookUploadStatusService {
         copy.setTenantId(current.getTenantId());
         copy.setStatus(current.getStatus());
         copy.setMessage(current.getMessage());
+        copy.setUploadedBy(current.getUploadedBy());copy.setFileName(current.getFileName());copy.setBookName(current.getBookName());
+        copy.setCreatedAt(current.getCreatedAt());copy.setUpdatedAt(current.getUpdatedAt());copy.setState(current.getState());
         return copy;
     }
 

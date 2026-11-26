@@ -59,16 +59,56 @@ class BookUploadStatusPersistenceTests extends com.book.user.TenantAwareTest {
         assertThat(jdbc.queryForObject("""
                 select count(*) from information_schema.columns
                  where table_schema = 'PUBLIC' and table_name = 'BOOK_UPLOAD_STATUS'
-                """, Integer.class)).isEqualTo(4);
+                """, Integer.class)).isEqualTo(10);
 
         JsonMapper mapper = JsonMapper.builder().build();
         Map<?, ?> json = mapper.readValue(mapper.writeValueAsString(receipt), Map.class);
-        assertThat(json).hasSize(3);
+        assertThat(json).hasSize(10);
         assertThat(json.keySet().stream().map(String::valueOf).toList())
-                .containsExactlyInAnyOrder("book_upload_id", "status", "message");
+                .containsExactlyInAnyOrder("book_upload_id", "status", "message","fileName","bookName","uploadedBy","createdAt","updatedAt","state","failureReason");
+        assertThat(json.get("uploadedBy")).isEqualTo(1);
+        assertThat(json.get("state")).isEqualTo("PENDING");
+        assertThat(json.get("createdAt").toString()).endsWith("Z");
         assertThat(((Number) json.get("book_upload_id")).longValue()).isEqualTo(receipt.getBookUploadId());
     }
 
+    @Test
+    void historyAndIndividualStatusRequireBothTenantAndUploaderIncludingSuperUsers() {
+        var own=service.create("owned.pdf");
+        assertThat(own.getUploadedBy()).isEqualTo(1L);
+        assertThat(service.history(0,20).getContent()).extracting(BookUploadStatus::getBookUploadId).contains(own.getBookUploadId());
+        try(var peer=com.book.user.security.TenantContext.use(1L,2L,false)) {
+            assertThat(service.history(0,20).getContent()).isEmpty();
+            assertThatThrownBy(()->service.get(own.getBookUploadId())).hasMessageContaining("404");
+            assertThatThrownBy(()->service.fail(own.getBookUploadId(),new IOException("forged"))).hasMessageContaining("404");
+        }
+        try(var foreign=com.book.user.security.TenantContext.use(2L,1L,true)) {
+            assertThat(service.history(0,20).getContent()).isEmpty();
+            assertThatThrownBy(()->service.get(own.getBookUploadId())).hasMessageContaining("404");
+        }
+        assertThat(service.get(own.getBookUploadId()).getStatus()).isEqualTo(BookUploadStatus.IN_PROGRESS);
+        assertThatThrownBy(()->service.history(-1,20)).hasMessageContaining("400");
+        assertThatThrownBy(()->service.history(0,101)).hasMessageContaining("400");
+    }
+    @Test
+    void legacyUnownedReceiptsAreNotAdoptedAndPendingProcessingTerminalTimesAreServerUtc() {
+        var legacy=new BookUploadStatus();legacy.setUploadedBy(null);legacy.setStatus(BookUploadStatus.IN_PROGRESS);legacy.setMessage("legacy");
+        legacy=statuses.saveAndFlush(legacy);
+        Long legacyId=legacy.getBookUploadId();
+        assertThatThrownBy(()->service.get(legacyId)).hasMessageContaining("404");
+        var started=java.time.Instant.now();var receipt=service.create("states.pdf");
+        assertThat(receipt.getCreatedAt()).isAfterOrEqualTo(started.minusSeconds(1));
+        assertThat(receipt.getCreatedAt()).isBeforeOrEqualTo(java.time.Instant.now());
+        assertThat(receipt.getState()).isEqualTo("PENDING");
+        service.processing(receipt.getBookUploadId());
+        assertThat(service.get(receipt.getBookUploadId()).getState()).isEqualTo("PROCESSING");
+        new TransactionTemplate(transactionManager).executeWithoutResult(tx->service.succeed(receipt.getBookUploadId(),"Completed name"));
+        var completed=service.get(receipt.getBookUploadId());
+        assertThat(completed.getState()).isEqualTo("COMPLETED");assertThat(completed.getBookName()).isEqualTo("Completed name");
+        assertThat(completed.getUpdatedAt()).isAfterOrEqualTo(completed.getCreatedAt());
+        assertThat(service.history(0,100).getContent()).extracting(BookUploadStatus::getBookUploadId).doesNotContain(legacyId);
+        assertThat(receipt.getState()).isEqualTo("PENDING");
+    }
     @Test
     void receiptCommitSurvivesTheCallerTransactionRollingBack() {
         AtomicReference<BookUploadStatus> receipt = new AtomicReference<>();

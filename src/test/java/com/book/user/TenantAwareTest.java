@@ -7,6 +7,6 @@ import org.junit.jupiter.api.BeforeEach;
 /** Catalog tests explicitly operate as tenant 1; security tests use their own scopes. */
 public abstract class TenantAwareTest {
     private TenantContext.Scope tenant;
-    @BeforeEach protected void beginTrustedTestTenant() { tenant = TenantContext.use(1L); }
+    @BeforeEach protected void beginTrustedTestTenant() { tenant = TenantContext.use(1L,1L,false); }
     @AfterEach protected void endTrustedTestTenant() { if (tenant != null) tenant.close(); }
 }

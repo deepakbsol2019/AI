@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.book.entity.BookUploadStatus;
+import com.book.dto.UploadHistoryPage;
 @RequestMapping("/api")
 public interface UploadFileController {
 
@@ -20,4 +21,7 @@ public interface UploadFileController {
 
 	@GetMapping("/upload-status/{bookUploadId}")
 	ResponseEntity<BookUploadStatus> uploadStatus(@PathVariable("bookUploadId") Long bookUploadId);
+
+    @GetMapping("/my-uploads")
+    ResponseEntity<UploadHistoryPage> history(@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size);
 }

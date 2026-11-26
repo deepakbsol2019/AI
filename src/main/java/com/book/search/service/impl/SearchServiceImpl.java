@@ -1,5 +1,7 @@
 package com.book.search.service.impl;
 
+import static com.book.time.UtcDates.instant;
+
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -82,14 +84,14 @@ public class SearchServiceImpl implements SearchService {
     private static BookResult toResponse(BookDetails book) {
         AuthorDetails author = book.getAuthorDetails();
         AuthorResult authorDetails = author == null ? null : new AuthorResult(author.getAuthorId(),
-                author.getAuthorName(), author.getCreatedAt(), author.getUpdatedAt());
+                author.getAuthorName(), instant(author.getCreatedAt()), instant(author.getUpdatedAt()));
         List<TopicResult> topics = book.getTopics() == null ? List.of() : book.getTopics().stream()
                 .sorted(Comparator.comparing(TopicDetails::getTopicId))
                 .map(topic -> new TopicResult(topic.getTopicId(), topic.getTopicName(), topic.getDetails(),
                         topic.getStartPage(), topic.getEndPage(), topic.getPrintedStartPage(), topic.getPrintedEndPage(),
-                        topic.getCreatedAt(), topic.getUpdatedAt())).toList();
+                        instant(topic.getCreatedAt()), instant(topic.getUpdatedAt()))).toList();
         return new BookResult(book.getBookId(), book.getBookName(), book.getBookType(), author == null ? null : author.getAuthorName(),
-                book.getBookDetails(), book.getTotalPages(), book.getBookUploadId(), book.getCreatedAt(),
-                book.getUpdatedAt(), authorDetails, topics.size(), topics);
+                book.getBookDetails(), book.getTotalPages(), book.getBookUploadId(), instant(book.getCreatedAt()),
+                instant(book.getUpdatedAt()), authorDetails, topics.size(), topics);
     }
 }

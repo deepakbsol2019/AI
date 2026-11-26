@@ -1,5 +1,7 @@
 package com.book.entity;
 
+import java.time.Instant;
+
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.book.user.security.TenantContext;
@@ -29,6 +31,20 @@ public class BookUploadStatus {
     @JsonIgnore
     private Long tenantId = TenantContext.currentTenantId();
 
+    // Numeric provenance intentionally survives account-only deletion; never cascade tenant content.
+    @Column(name = "uploader_user_id", updatable = false)
+    private Long uploadedBy = TenantContext.currentUserId();
+    @Column(name = "file_name", length = 1024, updatable = false)
+    private String fileName;
+    @Column(name = "book_name", length = 255)
+    private String bookName;
+    @Column(name = "created_at", updatable = false)
+    private Instant createdAt;
+    @Column(name = "updated_at")
+    private Instant updatedAt;
+    @Column(name = "processing_state", length = 16)
+    private String state;
+
     @Column(nullable = false, length = 16)
     private String status;
 
@@ -46,6 +62,22 @@ public class BookUploadStatus {
     public void setStatus(String status) { this.status = status; }
     public String getMessage() { return message; }
     public void setMessage(String message) { this.message = message; }
+    public Long getUploadedBy() { return uploadedBy; }
+    public void setUploadedBy(Long value) { uploadedBy=value; }
+    public String getFileName() { return fileName; }
+    public void setFileName(String value) { fileName=value; }
+    public String getBookName() { return bookName; }
+    public void setBookName(String value) { bookName=value; }
+    public Instant getCreatedAt() { return createdAt; }
+    public void setCreatedAt(Instant value) { createdAt=value; }
+    public Instant getUpdatedAt() { return updatedAt; }
+    public void setUpdatedAt(Instant value) { updatedAt=value; }
+    public String getState() {
+        if(state!=null)return state;
+        return SUCCESS.equals(status)?"COMPLETED":FAILED.equals(status)?"FAILED":"PROCESSING";
+    }
+    public void setState(String value) { state=value; }
+    public String getFailureReason() { return FAILED.equals(status)?message:null; }
 
     /** A running job cannot mutate the already-created HTTP acknowledgement. */
     public BookUploadStatus responseCopy() {
@@ -54,6 +86,8 @@ public class BookUploadStatus {
         copy.tenantId = tenantId;
         copy.status = status;
         copy.message = message;
+        copy.uploadedBy=uploadedBy;copy.fileName=fileName;copy.bookName=bookName;
+        copy.createdAt=createdAt;copy.updatedAt=updatedAt;copy.state=state;
         return copy;
     }
 }

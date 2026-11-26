@@ -7,8 +7,9 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.book.user.security.TenantContext;
 
 @Entity
-@Table(name = "book_details", uniqueConstraints =
-        @UniqueConstraint(name = "uk_book_tenant_name", columnNames = {"tenant_id", "book_name"}))
+@Table(name = "book_details", uniqueConstraints = {
+        @UniqueConstraint(name = "uk_book_tenant_name", columnNames = {"tenant_id", "book_name"}),
+        @UniqueConstraint(name = "uk_book_tenant_canonical_name", columnNames = {"tenant_id", "canonical_book_name"})})
 public class BookDetails extends AuditedEntity {
     public static final int MAX_BOOK_NAME_LENGTH = 255;
     public static final int MAX_BOOK_TYPE_LENGTH = 120;
@@ -27,6 +28,10 @@ public class BookDetails extends AuditedEntity {
 
     @Column(name = "book_name", nullable = false, length = MAX_BOOK_NAME_LENGTH)
     private String bookName;
+    @JsonIgnore
+    @Column(name="canonical_book_name",insertable=false,updatable=false,
+            columnDefinition="varchar(255) generated always as (lower(trim(book_name)))")
+    private String canonicalBookName;
 
     @Column(name = "book_type", nullable = false, length = MAX_BOOK_TYPE_LENGTH)
     private String bookType = UNKNOWN_BOOK_TYPE;

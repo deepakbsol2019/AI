@@ -51,7 +51,7 @@ public class UserAuthenticationFilter extends OncePerRequestFilter {
             UserPrincipal principal = sessions.validate(tokens.verify(header.substring(7)));
             SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(principal, null, List.of()));
             authorization.authorize(principal, request.getMethod(), path);
-            try (var ignored = TenantContext.use(principal.tenantId(), authorization.isSuperUser(principal))) {
+            try (var ignored = TenantContext.use(principal.tenantId(), principal.userId(), authorization.isSuperUser(principal))) {
                 chain.doFilter(request, response);
             }
         } catch (AuthException failure) {

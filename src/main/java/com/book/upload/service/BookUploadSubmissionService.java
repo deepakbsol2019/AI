@@ -32,6 +32,7 @@ public class BookUploadSubmissionService {
 
     public BookUploadStatus submit(UploadFileDtlsDto uploadedFile) {
         long tenantId = TenantContext.requireTenantId();
+        long userId = TenantContext.requireUserId();
         if (uploadedFile == null || uploadedFile.getFileName() == null || uploadedFile.getFileName().isBlank()
                 || uploadedFile.getFileData() == null || uploadedFile.getFileData().length == 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "An original filename and a non-empty PDF are required.");
@@ -47,7 +48,16 @@ public class BookUploadSubmissionService {
         source.setBookUploadId(acknowledgement.getBookUploadId());
         try {
             CompletableFuture.runAsync(() -> {
-                try (var ignored = TenantContext.use(tenantId)) { background.process(source); }
+                try (var ignored = TenantContext.use(tenantId,userId,false)) {
+                    try {
+                        statuses.processing(source.getBookUploadId());
+                        background.process(source);
+                    } catch(RuntimeException | Error failure) {
+                        try { statuses.fail(source.getBookUploadId(),failure); }
+                        catch(RuntimeException recordingFailure) { failure.addSuppressed(recordingFailure); }
+                        throw failure;
+                    }
+                }
             }, executor)
                     .whenComplete((ignored, failure) -> {
                         if (failure != null) {

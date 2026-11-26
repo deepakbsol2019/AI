@@ -2,6 +2,8 @@
 
 Spring Boot 4.2 / Java 25 backend with the existing Ollama, MySQL, PDFBox, upload-status, and local PDF storage flows.
 
+The latest [upload history, UTC events and Full Page reader guide](UPLOAD_HISTORY_READER.md) covers private tenant-plus-user upload history, Upload Document notices, tenant-name uniqueness, local timezone display and Home scrolling/pagination. It supersedes conflicting earlier upload/layout descriptions and records migration/verification details.
+
 Latest changes are in [profile, permissions and role layout](PROFILE_ROLE_LAYOUT.md): cleanup/permission modals, truthful delete results, Copy Role, minimized profile sidebar, half/full-width library layout and tenant-authorized Add User (including Individual accounts). This supersedes conflicting earlier layout/invitation descriptions.
 
 The current [management pages and sidebar guide](MANAGEMENT_PAGES.md) covers full-page user/details/create/confirmation routes, shared fixed shell, permission-based current-tenant invitations and distinct soft deletion. It supersedes earlier details-popup/header-profile layout descriptions while retaining the confirmed SUPER_USER policies.

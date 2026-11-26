@@ -17,6 +17,15 @@ public final class TenantContext {
         AccessScope scope = CURRENT.get();
         return scope != null && scope.superUser();
     }
+    public static Long currentUserId() {
+        AccessScope scope = CURRENT.get();
+        return scope == null ? null : scope.userId();
+    }
+    public static long requireUserId() {
+        Long id = currentUserId();
+        if (id == null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication is required.");
+        return id;
+    }
 
     public static long requireTenantId() {
         Long id = currentTenantId();
@@ -37,13 +46,19 @@ public final class TenantContext {
 
     /** Only the authenticated server-side security filter may grant application-wide access. */
     public static Scope use(long tenantId, boolean superUser) {
+        AccessScope current=CURRENT.get();
+        return use(tenantId,current!=null && current.tenantId()==tenantId?current.userId():null,superUser);
+    }
+    /** Trusted authenticated actor, captured before background dispatch. */
+    public static Scope use(long tenantId, Long userId, boolean superUser) {
         if (tenantId <= 0) throw new IllegalArgumentException("A positive trusted tenant ID is required.");
+        if (userId != null && userId <= 0) throw new IllegalArgumentException("A positive trusted user ID is required.");
         AccessScope previous = CURRENT.get();
-        CURRENT.set(new AccessScope(tenantId, superUser));
+        CURRENT.set(new AccessScope(tenantId, userId, superUser));
         return new Scope(previous, Thread.currentThread());
     }
 
-    private record AccessScope(long tenantId, boolean superUser) { }
+    private record AccessScope(long tenantId, Long userId, boolean superUser) { }
 
     public static final class Scope implements AutoCloseable {
         private final AccessScope previous;
