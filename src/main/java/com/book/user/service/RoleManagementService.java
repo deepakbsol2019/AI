@@ -53,6 +53,15 @@ public class RoleManagementService {
     public Role get(UserPrincipal actor,Long requestedTenant,long id) {
         long tenant=scope(actor,requestedTenant);begin(actor,tenant,"ROLE_VIEW");return read(actor,tenant,id);
     }
+    /** Create User exposes the same assignment ceiling, without granting separate role-management access. */
+    @Transactional
+    public List<Role> creationChoices(UserPrincipal actor,long tenant) {
+        scope(actor,tenant);
+        if(!has(actor,"ROLE_ASSIGN")) return List.of();
+        begin(actor,tenant,"ROLE_ASSIGN");
+        return jdbc.queryForList("SELECT role_id FROM roles WHERE tenant_id=? AND status='ACTIVE' ORDER BY display_name,role_id",Long.class,tenant)
+                .stream().map(id->read(actor,tenant,id)).filter(role->assignmentAllowed(actor,role)).toList();
+    }
     @Transactional
     public Role create(UserPrincipal actor,Write input) {
         if(input==null) throw invalid("Provide role details.");
@@ -93,8 +102,7 @@ public class RoleManagementService {
     @Transactional
     public void assign(UserPrincipal actor,Long requestedTenant,long roleId,long membershipId,boolean remove) {
         long tenant=scope(actor,requestedTenant);begin(actor,tenant,"ROLE_ASSIGN");Role role=read(actor,tenant,roleId);
-        if("SUPER_USER".equals(role.systemRole()) || (role.systemRole()!=null && !authorization.isSuperUser(actor))
-                || (!authorization.isSuperUser(actor) && !grantable(actor).containsAll(role.permissionIds()))) throw denied();
+        if(!assignmentAllowed(actor,role) || !remove && jdbc.queryForObject("SELECT COUNT(*) FROM roles WHERE tenant_id=? AND role_id=? AND status='ACTIVE'",Long.class,tenant,roleId)!=1) throw denied();
         if(jdbc.queryForObject("SELECT COUNT(*) FROM tenant_memberships m JOIN users u ON u.user_id=m.user_id WHERE m.tenant_id=? AND m.membership_id=? AND m.status='ACTIVE' AND u.deleted_at IS NULL",Long.class,tenant,membershipId)!=1) throw missing();
         if(jdbc.queryForObject("SELECT COUNT(*) FROM user_roles ur JOIN roles r ON r.role_id=ur.role_id AND r.tenant_id=ur.tenant_id WHERE ur.tenant_id=? AND ur.membership_id=? AND r.is_system=TRUE AND r.role_code='SUPER_USER'",Long.class,tenant,membershipId)>0)throw denied();
         if(!authorization.isSuperUser(actor) && jdbc.queryForObject("SELECT COUNT(*) FROM user_roles ur JOIN roles r ON r.role_id=ur.role_id AND r.tenant_id=ur.tenant_id WHERE ur.tenant_id=? AND ur.membership_id=? AND r.is_system=TRUE AND r.role_code='ADMIN'",Long.class,tenant,membershipId)>0)throw denied();
@@ -132,6 +140,10 @@ public class RoleManagementService {
         Set<Long> result=new HashSet<>(authorization.effectivePermissions(actor));
         if(!authorization.isSuperUser(actor)) result.retainAll(jdbc.queryForList("SELECT permission_id FROM permissions WHERE is_delegable=TRUE",Long.class));
         return result;
+    }
+    private boolean assignmentAllowed(UserPrincipal actor,Role role) {
+        boolean highest=authorization.isSuperUser(actor);
+        return !"SUPER_USER".equals(role.systemRole()) && (highest || role.systemRole()==null && grantable(actor).containsAll(role.permissionIds()));
     }
     private Role read(UserPrincipal actor,long tenant,long id) {
         var rows=jdbc.queryForList("SELECT * FROM roles WHERE tenant_id=? AND role_id=?",tenant,id);if(rows.size()!=1) throw missing();

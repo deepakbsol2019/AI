@@ -31,7 +31,7 @@ class TenantUserCreationTests {
     @org.springframework.boot.test.context.TestConfiguration(proxyBeanMethods=false)
     @Import({UserSecurityIntegrationTests.Config.class,TenantUserCreationController.class,TenantUserCreationService.class,
         UserManagementController.class,UserManagementService.class,UserDeletionService.class,UserDeletionFiles.class,
-        OwnProfileController.class,OwnProfileService.class}) static class Config{}
+        OwnProfileController.class,OwnProfileService.class,RoleManagementService.class}) static class Config{}
     AnnotationConfigWebApplicationContext context;MockMvc mvc;JdbcTemplate jdbc;SessionService sessions;PasswordService passwords;
     CredentialMailService mail;long creator,tenant,foreign,operator;Cookie csrfCookie;String csrf;JsonMapper json=JsonMapper.builder().build();
     @BeforeEach void setup()throws Exception{
@@ -156,6 +156,52 @@ class TenantUserCreationTests {
         assertThat(jdbc.queryForObject("SELECT tenant_type FROM tenants WHERE tenant_id=?",String.class,individualTenant)).isEqualTo("INDIVIDUAL");
         verify(mail).send(eq("individual-member@example.com"),eq(PasswordService.SETUP),anyString(),isNull(),any());
     }
+    @Test void selectedTenantOptionsAndCreationUseOnlyItsActiveAssignableRoles()throws Exception{
+        long selectedTenant=jdbc.queryForObject("SELECT tenant_id FROM tenant_memberships WHERE user_id=?",Long.class,foreign);
+        long selectedRole=role(selectedTenant,"Selected reviewer","ACTIVE");
+        role(tenant,"Other tenant reviewer","ACTIVE");role(selectedTenant,"Inactive reviewer","INACTIVE");
+        var actor=issue(operator);
+        var response=mvc.perform(get("/api/user/users/create-options").param("tenantId",Long.toString(selectedTenant)).header("Authorization",bearer(actor))).andExpect(status().isOk()).andReturn();
+        var options=json.readTree(response.getResponse().getContentAsString()).path("roles");
+        var names=new ArrayList<String>();for(var item:options)names.add(item.path("name").asText());
+        assertThat(names).contains("Selected reviewer").doesNotContain("Other tenant reviewer","Inactive reviewer","SUPER_USER");
+        var created=mvc.perform(mutate(post("/api/user/users"),json.writeValueAsString(Map.of("email","role-selected@example.com","displayName","Assigned member","tenantId",selectedTenant,"roleId",selectedRole))).header("Authorization",bearer(actor))).andExpect(status().isCreated()).andReturn();
+        long user=json.readTree(created.getResponse().getContentAsString()).path("userId").asLong();
+        assertThat(jdbc.queryForList("SELECT ur.role_id FROM user_roles ur JOIN tenant_memberships m ON m.membership_id=ur.membership_id AND m.tenant_id=ur.tenant_id WHERE m.user_id=? AND m.tenant_id=?",Long.class,user,selectedTenant)).containsExactly(selectedRole);
+        verify(mail).send(eq("role-selected@example.com"),eq(PasswordService.SETUP),anyString(),isNull(),any());
+    }
+    @Test void delegatedCreatorUsesExistingRoleAssignmentCeilingWithoutReceivingSystemRoles()throws Exception{
+        grant("USER_CREATE");grant("ROLE_VIEW");grant("ROLE_ASSIGN");
+        long allowedRole=role(tenant,"Allowed reviewer","ACTIVE"),tooPowerful=role(tenant,"Restricted reviewer","ACTIVE");
+        jdbc.update("INSERT INTO role_permissions(tenant_id,role_id,permission_id,is_explicit,created_at,updated_at) SELECT ?,?,permission_id,TRUE,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP FROM permissions WHERE permission_code='USER_HARD_DELETE'",tenant,tooPowerful);
+        var actor=issue(creator);
+        var response=mvc.perform(get("/api/user/users/create-options").header("Authorization",bearer(actor))).andExpect(status().isOk()).andReturn();
+        var options=json.readTree(response.getResponse().getContentAsString()).path("roles");
+        var choices=new ArrayList<Long>();for(var item:options)choices.add(item.path("roleId").asLong());
+        assertThat(choices).contains(allowedRole).doesNotContain(tooPowerful);
+        long before=jdbc.queryForObject("SELECT COUNT(*) FROM users",Long.class);
+        mvc.perform(mutate(post("/api/user/users"),json.writeValueAsString(Map.of("email","restricted-role@example.com","displayName","No escalation","roleId",tooPowerful))).header("Authorization",bearer(actor))).andExpect(status().isForbidden());
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM users",Long.class)).isEqualTo(before);verifyNoInteractions(mail);
+        var created=mvc.perform(mutate(post("/api/user/users"),json.writeValueAsString(Map.of("email","delegated-role@example.com","displayName","Allowed member","roleId",allowedRole))).header("Authorization",bearer(actor))).andExpect(status().isCreated()).andReturn();
+        long user=json.readTree(created.getResponse().getContentAsString()).path("userId").asLong();
+        assertThat(jdbc.queryForObject("SELECT role_id FROM user_roles WHERE membership_id IN(SELECT membership_id FROM tenant_memberships WHERE user_id=?)",Long.class,user)).isEqualTo(allowedRole);
+    }
+    @Test void forgedForeignInactiveAndReservedRolesCannotCreateAnAccountOrSendInvitation()throws Exception{
+        grant("USER_CREATE");long allowedRole=role(tenant,"Ordinary reviewer","ACTIVE");var creatorSession=issue(creator);
+        mvc.perform(get("/api/user/users/create-options").header("Authorization",bearer(creatorSession))).andExpect(status().isOk()).andExpect(jsonPath("$.roles.length()").value(0));
+        long before=jdbc.queryForObject("SELECT COUNT(*) FROM users",Long.class);
+        mvc.perform(mutate(post("/api/user/users"),json.writeValueAsString(Map.of("email","no-role-right@example.com","displayName","No right","roleId",allowedRole))).header("Authorization",bearer(creatorSession))).andExpect(status().isForbidden());
+        long foreignTenant=jdbc.queryForObject("SELECT tenant_id FROM tenant_memberships WHERE user_id=?",Long.class,foreign);
+        long foreignRole=role(foreignTenant,"Foreign reviewer","ACTIVE"),inactive=role(tenant,"Inactive reviewer","INACTIVE");
+        long reserved=jdbc.queryForObject("SELECT role_id FROM roles WHERE role_code='SUPER_USER' AND is_system=TRUE",Long.class);
+        var highest=issue(operator);
+        for(long roleId:List.of(foreignRole,inactive,reserved)){
+            mvc.perform(mutate(post("/api/user/users"),json.writeValueAsString(Map.of("email","forged-role-"+roleId+"@example.com","displayName","Forged role","tenantId",tenant,"roleId",roleId))).header("Authorization",bearer(highest))).andExpect(status().is4xxClientError());
+        }
+        long highestTenant=jdbc.queryForObject("SELECT tenant_id FROM tenant_memberships WHERE user_id=?",Long.class,operator);
+        mvc.perform(mutate(post("/api/user/users"),json.writeValueAsString(Map.of("email","reserved-role@example.com","displayName","No reserved role","tenantId",highestTenant,"roleId",reserved))).header("Authorization",bearer(highest))).andExpect(status().isForbidden());
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM users",Long.class)).isEqualTo(before);verifyNoInteractions(mail);
+    }
     @Test void ownDetailsAndPermissionsAreAuthenticatedSelfOnlyWithActualRouteMetadata()throws Exception{
         mvc.perform(get("/api/user/profile/details")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/user/profile/permissions")).andExpect(status().isUnauthorized());
@@ -182,6 +228,7 @@ class TenantUserCreationTests {
     }
     String confirm(MvcResult preview)throws Exception{var node=json.readTree(preview.getResponse().getContentAsString());return json.writeValueAsString(Map.of("version",node.path("version").asText(),"scope",node.path("scope").asText(),"affectedUsers",node.path("affectedUsers").asInt(),"confirmation",node.path("confirmation").asText()));}
     void grant(String code){jdbc.update("INSERT INTO role_permissions(tenant_id,role_id,permission_id,is_explicit,created_at,updated_at) SELECT r.tenant_id,r.role_id,p.permission_id,TRUE,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP FROM roles r CROSS JOIN permissions p WHERE r.tenant_id=? AND p.permission_code=?",tenant,code);}
+    long role(long tenantId,String name,String status){String code="ROLE_"+UUID.randomUUID().toString().replace("-","");jdbc.update("INSERT INTO roles(tenant_id,role_code,display_name,is_system,status,authz_version,created_at,updated_at) VALUES(?,?,?,FALSE,?,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",tenantId,code,name,status);return jdbc.queryForObject("SELECT role_id FROM roles WHERE tenant_id=? AND role_code=?",Long.class,tenantId,code);}
     SessionService.IssuedSession issue(long user){var row=jdbc.queryForMap("SELECT u.security_version,m.tenant_id,m.membership_id FROM users u JOIN tenant_memberships m ON m.user_id=u.user_id WHERE u.user_id=?",user);return sessions.issue(new AuthenticatedIdentity(user,((Number)row.get("tenant_id")).longValue(),((Number)row.get("membership_id")).longValue(),"PASSWORD",null,null,((Number)row.get("security_version")).longValue()));}
     String bearer(SessionService.IssuedSession session){return "Bearer "+session.response().accessToken();}
     MockHttpServletRequestBuilder mutate(MockHttpServletRequestBuilder request,String body){return request.cookie(csrfCookie).header("X-XSRF-TOKEN",csrf).contentType("application/json").content(body);}

@@ -21,12 +21,15 @@ import org.springframework.web.server.ResponseStatusException;
 public class TenantUserCreationService {
     private final JdbcTemplate jdbc;private final AuthorizationService authorization;private final PasswordService passwords;
     private final TrustedOidcProviders providers;private final TenantStoragePaths storage;private final Clock clock;
+    private final RoleManagementService roles;
     public TenantUserCreationService(JdbcTemplate jdbc,AuthorizationService authorization,PasswordService passwords,
-            TrustedOidcProviders providers,TenantStoragePaths storage,Clock clock){
+            TrustedOidcProviders providers,TenantStoragePaths storage,Clock clock,RoleManagementService roles){
         this.jdbc=jdbc;this.authorization=authorization;this.passwords=passwords;this.providers=providers;this.storage=storage;this.clock=clock;
+        this.roles=roles;
     }
-    public record Create(String email,String displayName,Long tenantId){@JsonAnySetter public void unsupported(String key,Object value){throw invalid("Only email, displayName and an authorized tenantId are accepted. Roles and authentication method are server-controlled.");}}
-    public record Options(long tenantId,String tenantName,String tenantType,String loginPolicy){}
+    public record Create(String email,String displayName,Long tenantId,Long roleId){@JsonAnySetter public void unsupported(String key,Object value){throw invalid("Only email, displayName, an authorized tenantId and roleId are accepted. Authentication method is server-controlled.");}}
+    public record RoleOption(long roleId,String name){}
+    public record Options(long tenantId,String tenantName,String tenantType,String loginPolicy,List<RoleOption> roles){}
     public record Capabilities(boolean canViewUsers,boolean canCreateUsers,boolean canManageRoles,long tenantId,String tenantName,String tenantType,boolean superUser){}
     public record Created(long userId,String username,String displayName,String tenantName,String tenantType,String status,String message){}
 
@@ -37,21 +40,23 @@ public class TenantUserCreationService {
         return new Capabilities(has(actor,"USER_VIEW") && (highest || admin && "ORGANIZATION".equals(row.get("tenant_type"))),
                 has(actor,"USER_CREATE"),has(actor,"ROLE_VIEW"),actor.tenantId(),(String)row.get("tenant_name"),(String)row.get("tenant_type"),highest);
     }
-    @Transactional(readOnly=true)
+    @Transactional
     public Options options(UserPrincipal actor){return options(actor,null);}
-    @Transactional(readOnly=true)
-    public Options options(UserPrincipal actor,Long selectedTenant){requireCreate(actor);long target=targetTenant(actor,selectedTenant);return options(target,tenant(target));}
+    @Transactional
+    public Options options(UserPrincipal actor,Long selectedTenant){requireCreate(actor);long target=targetTenant(actor,selectedTenant);
+        return options(target,tenant(target),roles.creationChoices(actor,target).stream().map(role->new RoleOption(role.roleId(),role.name())).toList());}
     @Transactional(readOnly=true)
     public List<Options> tenants(UserPrincipal actor){
         requireCreate(actor);boolean highest=authorization.isSuperUser(actor);
         return jdbc.queryForList("SELECT tenant_id,display_name tenant_name,tenant_type,login_policy,status tenant_status FROM tenants WHERE status='ACTIVE' AND (?=TRUE OR tenant_id=?) AND NOT EXISTS(SELECT 1 FROM user_deletion_jobs j WHERE j.tenant_id=tenants.tenant_id AND j.status<>'COMPLETE') ORDER BY display_name,tenant_id",highest,actor.tenantId())
-                .stream().map(row->options(AuthRows.number(row,"tenant_id"),row)).toList();
+                .stream().map(row->options(AuthRows.number(row,"tenant_id"),row,List.of())).toList();
     }
 
     @Transactional
     public Created create(UserPrincipal actor,Create input){
         requireCreate(actor);
         if(input==null)throw invalid("Provide user details.");
+        if(input.roleId()!=null && input.roleId()<=0)throw invalid("Choose a valid role.");
         long target=targetTenant(actor,input.tenantId());
         jdbc.queryForList("SELECT tenant_id FROM tenants WHERE tenant_id IN(?,?) ORDER BY tenant_id FOR UPDATE",actor.tenantId(),target);
         jdbc.queryForList("SELECT user_id FROM users WHERE user_id=? FOR UPDATE",actor.userId());
@@ -76,13 +81,17 @@ public class TenantUserCreationService {
                 statement.setString(1,name);statement.setString(2,email);statement.setTimestamp(3,now);statement.setTimestamp(4,now);return statement;},holder);
             long user=holder.getKey().longValue();
             jdbc.update("INSERT INTO tenant_memberships(tenant_id,user_id,status,authz_version,joined_at,created_at,updated_at) VALUES(?,?,'ACTIVE',1,?,?,?)",target,user,now,now,now);
-            // No role is implicitly copied from the creator. Separate role assignment retains its existing authority.
+            // Explicit selection uses the existing assignment capability, tenant boundary and grant ceiling.
+            if(input.roleId()!=null){
+                long membership=jdbc.queryForObject("SELECT membership_id FROM tenant_memberships WHERE tenant_id=? AND user_id=?",Long.class,target,user);
+                roles.assign(actor,target,input.roleId(),membership,false);
+            }
             passwords.inviteMember(user,provider);
-            jdbc.update("INSERT INTO audit_events(tenant_id,actor_user_id,event_code,target_type,target_id,outcome,details,occurred_at) VALUES(?,?,'USER_CREATE','USER',?,'SUCCESS',?,?)",target,actor.userId(),Long.toString(user),"{\"invitationSent\":true,\"rolesAssigned\":false}",now);
-            return new Created(user,email,name,(String)tenant.get("tenant_name"),(String)tenant.get("tenant_type"),"PENDING","User created. "+("PASSWORD".equals(tenant.get("login_policy"))?"A password setup link":"An SSO enrollment invitation")+" has been sent; role assignment is separate.");
+            jdbc.update("INSERT INTO audit_events(tenant_id,actor_user_id,event_code,target_type,target_id,outcome,details,occurred_at) VALUES(?,?,'USER_CREATE','USER',?,'SUCCESS',?,?)",target,actor.userId(),Long.toString(user),"{\"invitationSent\":true,\"rolesAssigned\":"+(input.roleId()!=null)+",\"selectedRoleId\":"+input.roleId()+"}",now);
+            return new Created(user,email,name,(String)tenant.get("tenant_name"),(String)tenant.get("tenant_type"),"PENDING","User created. "+("PASSWORD".equals(tenant.get("login_policy"))?"A password setup link":"An SSO enrollment invitation")+" has been sent."+(input.roleId()==null?"":" The selected role was assigned."));
         }catch(DataIntegrityViolationException duplicate){throw conflict("A user with this username already exists. Existing accounts cannot be joined or moved through Create User.");}
     }
-    private Options options(long tenant,Map<String,Object> row){return new Options(tenant,(String)row.get("tenant_name"),(String)row.get("tenant_type"),(String)row.get("login_policy"));}
+    private Options options(long tenant,Map<String,Object> row,List<RoleOption> choices){return new Options(tenant,(String)row.get("tenant_name"),(String)row.get("tenant_type"),(String)row.get("login_policy"),choices);}
     private Map<String,Object> requireCreate(UserPrincipal actor){var row=current(actor);if(!has(actor,"USER_CREATE"))throw denied();return row;}
     private long targetTenant(UserPrincipal actor,Long selected){long target=selected==null?actor.tenantId():selected;
         if(target<=0 || target!=actor.tenantId()&&!authorization.isSuperUser(actor))throw new ResponseStatusException(HttpStatus.NOT_FOUND,"Tenant not found in your authorized scope.");return target;}

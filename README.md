@@ -2,6 +2,8 @@
 
 Spring Boot 4.2 / Java 25 backend with the existing Ollama, MySQL, PDFBox, upload-status, and local PDF storage flows.
 
+The current [viewer, profile and role update](VIEWER_PROFILE_ROLE_UPDATES.md) covers custom reading colors, stable facing-page rendering, fullscreen zoom, notification-only Home uploads, tenant-specific Add User role selection and the header profile icon, with verification results and runtime limits.
+
 The latest [upload history, UTC events and Full Page reader guide](UPLOAD_HISTORY_READER.md) covers private tenant-plus-user upload history, Upload Document notices, tenant-name uniqueness, local timezone display and Home scrolling/pagination. It supersedes conflicting earlier upload/layout descriptions and records migration/verification details.
 
 Latest changes are in [profile, permissions and role layout](PROFILE_ROLE_LAYOUT.md): cleanup/permission modals, truthful delete results, Copy Role, minimized profile sidebar, half/full-width library layout and tenant-authorized Add User (including Individual accounts). This supersedes conflicting earlier layout/invitation descriptions.
