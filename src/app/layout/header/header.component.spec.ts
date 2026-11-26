@@ -1,12 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { provideHttpClient } from '@angular/common/http';
 import { HeaderComponent } from './header.component';
 
 describe('Library header controls', () => {
   beforeEach(() =>
     TestBed.configureTestingModule({
       imports: [HeaderComponent],
-      providers: [provideRouter([])],
+      providers: [provideRouter([]), provideHttpClient()],
     }),
   );
 

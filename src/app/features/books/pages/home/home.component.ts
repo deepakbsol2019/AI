@@ -49,7 +49,7 @@ export class HomeComponent {
   readonly activeFilterCount = signal(0);
   private criteria: BookSearchCriteria = {};
   private currentPage = 0;
-  private readonly requests = new Subject<BookSearchCriteria>();
+  private readonly requests = new Subject<{ criteria: BookSearchCriteria; background: boolean }>();
   private readonly dialogHost = viewChild.required('dialogHost', { read: ViewContainerRef });
   private activeDialog: ComponentRef<BookTopicDescriptionComponent> | null = null;
   private dialogSelection = 0;
@@ -59,14 +59,19 @@ export class HomeComponent {
   constructor() {
     this.requests
       .pipe(
-        startWith({ size: DEFAULT_PAGE_SIZE } as BookSearchCriteria),
-        switchMap((criteria) => {
+        startWith({
+          criteria: { size: DEFAULT_PAGE_SIZE } as BookSearchCriteria,
+          background: false,
+        }),
+        switchMap(({ criteria, background }) => {
           this.loading.set(true);
           this.error.set(null);
-          return this.api.search(criteria).pipe(
-            map((data) => ({ data, error: null })),
+          return this.api.search(criteria, { background }).pipe(
+            map((data) => ({ data, error: null, background })),
             catchError((error: unknown) =>
-              from(apiErrorMessage(error)).pipe(map((message) => ({ data: null, error: message }))),
+              from(apiErrorMessage(error)).pipe(
+                map((message) => ({ data: null, error: message, background })),
+              ),
             ),
           );
         }),
@@ -88,11 +93,11 @@ export class HomeComponent {
           this.pageSize.set(result.data.size);
           if (result.data.page > 0 && result.data.page >= result.data.totalPages) {
             this.currentPage = Math.max(0, result.data.totalPages - 1);
-            this.reload();
+            this.reload(result.background);
           }
         }
       });
-    this.upload.completed$.pipe(takeUntilDestroyed()).subscribe(() => this.reload());
+    this.upload.completed$.pipe(takeUntilDestroyed()).subscribe(() => this.reload(true));
     this.destroyRef.onDestroy(() => {
       this.dialogSelection++;
       this.readerSelection++;
@@ -118,11 +123,11 @@ export class HomeComponent {
     this.reload();
   }
 
-  reload(): void {
+  reload(background = false): void {
     const request = { ...this.criteria };
     if (this.currentPage > 0) request.page = this.currentPage;
     request.size = this.pageSize();
-    this.requests.next(request);
+    this.requests.next({ criteria: request, background });
   }
 
   changePage(page: number): void {

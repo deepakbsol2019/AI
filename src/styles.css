@@ -1,7 +1,7 @@
 :root,
 dialog::backdrop {
   /* The supplied original is shared by the page and the pop-up backdrop. */
-  --library-background-image: url('/assets/Flowering-Gurukul-by-the-River.png');
+  --library-background-image: url('/assets/Library%20knowledge%20streams%20into%20the%20laptop.png');
   --library-background-position: 50% 50%;
 }
 :root {
@@ -24,6 +24,10 @@ dialog::backdrop {
 * {
   box-sizing: border-box;
 }
+html {
+  height: 100%;
+  overflow: hidden;
+}
 body {
   margin: 0;
   min-width: 320px;
@@ -33,9 +37,13 @@ body {
   isolation: isolate;
   font-size: 0.925rem;
   -webkit-font-smoothing: antialiased;
+  height: 100%;
+  overflow: hidden;
 }
 app-root {
   display: block;
+  height: 100%;
+  min-height: 0;
 }
 html:has(app-home),
 body:has(app-home) {

@@ -9,6 +9,7 @@ import {
   of,
   Subject,
   switchMap,
+  takeUntil,
   takeWhile,
   tap,
   timer,
@@ -18,6 +19,8 @@ import { apiErrorMessage } from '../../../shared/utils/api-error';
 import { NotificationService } from '../../../shared/services/notification.service';
 import { BooksApiService } from '../data-access/books-api.service';
 import { UploadStatus } from '../models/book.models';
+import { AuthBoundaryService } from '../../user/services/auth-boundary.service';
+import { BackgroundAuthenticationPausedError } from '../../user/security/background-auth.context';
 
 type UploadPhase = 'idle' | 'uploading' | 'processing' | 'unknown' | 'success' | 'error';
 
@@ -29,6 +32,8 @@ export class BookUploadService {
   private readonly config = inject(API_CONFIG);
   private readonly destroyRef = inject(DestroyRef);
   private readonly completedSubject = new Subject<void>();
+  private readonly stopWork = new Subject<void>();
+  private workVersion = 0;
   readonly completed$ = this.completedSubject.asObservable();
   readonly phase = signal<UploadPhase>('idle');
   readonly busy = computed(() => ['uploading', 'processing', 'unknown'].includes(this.phase()));
@@ -38,8 +43,28 @@ export class BookUploadService {
   readonly receiptId = signal<number | null>(null);
   readonly validationError = signal<string | null>(null);
 
+  constructor() {
+    inject(AuthBoundaryService)
+      .resets.pipe(takeUntilDestroyed())
+      .subscribe(() => {
+        this.workVersion++;
+        this.stopWork.next();
+        this.receiptId.set(null);
+        this.fileName.set('');
+        this.message.set('');
+        this.validationError.set(null);
+        this.progress.set(null);
+        this.phase.set('idle');
+      });
+    this.destroyRef.onDestroy(() => {
+      this.stopWork.complete();
+      this.completedSubject.complete();
+    });
+  }
+
   upload(file: File): void {
     if (this.busy()) return;
+    const version = ++this.workVersion;
     this.validationError.set(null);
     this.receiptId.set(null);
     this.fileName.set(file.name);
@@ -73,39 +98,49 @@ export class BookUploadService {
           return event.body;
         }),
         tap((receipt) => this.receiptId.set(receipt.book_upload_id)),
-        switchMap((receipt) => this.followStatus(receipt)),
+        switchMap((receipt) => this.followStatus(receipt, true)),
+        takeUntil(this.stopWork),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe({
         next: (receipt) => this.updateStatus(receipt),
-        error: (error: unknown) => void this.handleError(error),
+        error: (error: unknown) => void this.handleError(error, version),
       });
   }
 
   retryStatus(): void {
     const id = this.receiptId();
     if (id === null || this.phase() !== 'unknown') return;
+    const version = ++this.workVersion;
     this.phase.set('processing');
     this.message.set('Checking the existing upload…');
     this.api
       .uploadStatus(id)
       .pipe(
-        switchMap((receipt) => this.followStatus(receipt)),
+        switchMap((receipt) => this.followStatus(receipt, false)),
+        takeUntil(this.stopWork),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe({
         next: (receipt) => this.updateStatus(receipt),
-        error: (error: unknown) => void this.handleError(error),
+        error: (error: unknown) => void this.handleError(error, version),
       });
   }
 
-  private followStatus(receipt: UploadStatus): Observable<UploadStatus> {
+  private followStatus(
+    receipt: UploadStatus,
+    firstPollIsForeground: boolean,
+  ): Observable<UploadStatus> {
     if (receipt.status !== 'inprogress') return of(receipt);
     this.phase.set('processing');
     this.message.set(receipt.message || 'Processing your book and preparing topic PDFs…');
     // Exhaust avoids overlapping requests when one status check takes longer than the interval.
     return timer(this.config.uploadPollIntervalMs, this.config.uploadPollIntervalMs).pipe(
-      exhaustMap(() => this.api.uploadStatus(receipt.book_upload_id)),
+      exhaustMap((tick) =>
+        this.api.uploadStatus(receipt.book_upload_id, {
+          background: !firstPollIsForeground || tick > 0,
+        }),
+      ),
       takeWhile((status) => status.status === 'inprogress', true),
     );
   }
@@ -124,12 +159,15 @@ export class BookUploadService {
     }
   }
 
-  private async handleError(error: unknown): Promise<void> {
+  private async handleError(error: unknown, version: number): Promise<void> {
     const message = await apiErrorMessage(error);
+    if (version !== this.workVersion) return;
     if (this.receiptId() !== null) {
       this.phase.set('unknown');
       this.message.set(
-        `Status check interrupted. The server may still be processing your PDF. ${message}`,
+        error instanceof BackgroundAuthenticationPausedError
+          ? 'Automatic status checks are paused. Select Resume status check to verify your sign-in and continue. The server may still be processing your PDF.'
+          : `Status check interrupted. The server may still be processing your PDF. ${message}`,
       );
     } else {
       this.fail(message);

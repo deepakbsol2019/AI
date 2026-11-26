@@ -6,6 +6,7 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import { routes } from '../../../../app.routes';
 import { Book, BookSearchResponse } from '../../models/book.models';
 import { HomeComponent } from './home.component';
+import { AuthSessionService } from '../../../user/services/auth-session.service';
 
 const book: Book = {
   bookId: 5,
@@ -60,7 +61,19 @@ describe('Home rendered integration', () => {
     });
     TestBed.configureTestingModule({
       imports: [HomeComponent],
-      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        {
+          provide: AuthSessionService,
+          useValue: {
+            token: () => Promise.resolve('authenticated-test-token'),
+            user: () => null,
+            loggingOut: () => false,
+          },
+        },
+      ],
       deferBlockBehavior: DeferBlockBehavior.Playthrough,
     });
     await TestBed.compileComponents();

@@ -64,4 +64,18 @@ describe('NotificationService', () => {
     vi.advanceTimersByTime(30_000);
     expect(dismiss).not.toHaveBeenCalled();
   });
+  it('clears prior-account messages and expiry work while allowing fresh notifications', () => {
+    notifications.show('Private old-user filename.pdf', 'success');
+    const dismiss = vi.spyOn(notifications, 'dismiss');
+    notifications.clear();
+    expect(notifications.items()).toEqual([]);
+    const current = notifications.show('New account message');
+    vi.advanceTimersByTime(14_999);
+    expect(dismiss).not.toHaveBeenCalled();
+    expect(notifications.items()).toEqual([
+      { id: current, message: 'New account message', severity: 'info' },
+    ]);
+    vi.advanceTimersByTime(1);
+    expect(notifications.items()).toEqual([]);
+  });
 });

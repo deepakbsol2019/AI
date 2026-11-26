@@ -1,0 +1,141 @@
+.auth-shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  color: #111827;
+}
+.auth-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 1rem clamp(1rem, 5vw, 5rem);
+  background: var(--panel-background, #fff);
+  border-bottom: 1px solid #dce3eb;
+}
+.auth-header nav {
+  display: flex;
+  gap: 0.5rem;
+}
+.auth-brand {
+  font:
+    700 1.8rem Georgia,
+    serif;
+  text-decoration: none;
+  color: #111827;
+}
+.auth-brand span {
+  color: #ba8c41;
+}
+.auth-brand small {
+  display: block;
+  font:
+    700 0.55rem 'Segoe UI',
+    sans-serif;
+  letter-spacing: 0.18em;
+  margin-top: 0.15rem;
+}
+.auth-card {
+  width: min(100% - 2rem, 540px);
+  margin: clamp(1rem, 5vh, 4rem) auto;
+  padding: clamp(1.2rem, 4vw, 2.2rem);
+  border: 1px solid #dce3eb;
+  border-radius: 1rem;
+  background: var(--panel-background, #fff);
+  box-shadow: 0 12px 35px #12264112;
+}
+.auth-card.management-page {
+  width: min(100% - 2rem, 1320px);
+  margin: 1rem auto;
+  padding: clamp(1rem, 2vw, 2rem);
+}
+.auth-card.management-page .table-responsive {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.auth-card h1 {
+  font:
+    700 1.8rem Georgia,
+    serif;
+  margin: 0 0 0.6rem;
+}
+.auth-card p {
+  color: #344054;
+}
+.auth-card form {
+  display: grid;
+  gap: 1rem;
+}
+.auth-card .field {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.auth-card label {
+  font-weight: 600;
+}
+.auth-card input,
+.auth-card select {
+  width: 100%;
+  min-width: 0;
+}
+.auth-card input[type='checkbox'] {
+  width: auto;
+  min-width: 1rem;
+  margin-right: 0.4rem;
+}
+.auth-card .auth-error {
+  color: #9a1c20;
+  background: #fff0ef;
+  border: 1px solid #efb3b3;
+  padding: 0.7rem;
+  border-radius: 0.5rem;
+  margin-block: 1rem;
+}
+.auth-card .auth-success {
+  color: #164c2d;
+  background: #effaf2;
+  padding: 1rem;
+  border: 1px solid #aacfb7;
+  border-radius: 0.5rem;
+}
+.auth-card .field-error {
+  font-size: 0.82rem;
+  color: #9a1c20;
+}
+.auth-card .providers {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 1.4rem;
+  border-top: 1px solid #dce3eb;
+  padding-top: 1.2rem;
+}
+.auth-card .provider-note,
+.auth-card .form-note {
+  font-size: 0.85rem;
+  margin: 0;
+}
+.auth-card .form-links {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+.auth-card .btn {
+  justify-content: center;
+}
+.auth-footer {
+  text-align: center;
+  margin-top: auto;
+  padding: 1rem;
+  background: var(--panel-background, #fff);
+  font-size: 0.8rem;
+}
+.auth-card .visually-busy {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}

@@ -1,12 +1,60 @@
 # Bookhaven · Book Search Download UI
 
-Standalone Angular UI connected to the sibling `Book-Search-Download` Spring backend. Home opens directly; unknown routes redirect to Home. No authentication, sidebar, mock mode, or silent mock fallback.
+Standalone Angular UI connected to the sibling `Book-Search-Download` Spring backend. Unauthenticated visitors go to Login; authenticated visitors reach the existing Home. Production has no mock mode or silent mock fallback.
 
-Book listings show **Book Type immediately after Book Name**, using the backend's persisted `bookType`. Missing legacy values display **Unknown**. **View Book** now reads the complete PDF; the separate **View Topic** action opens the existing topics popup. Existing downloads, the book SVG and the supplied Gurukul background asset remain intact.
+The current [management pages and sidebar increment](../Book-Search-Download/MANAGEMENT_PAGES.md) supersedes the earlier no-sidebar/header-profile/details-popup descriptions: all routes share a stationary header/footer shell, authenticated users have a collapsible left profile/navigation/logout sidebar, and management/details/create/delete confirmation use full pages. The user table has the eight requested columns; creation requires its own server capability and trusted current tenant. Production has no mock mode; the ignored browser QA fixture is separate from the application.
+
+The guarded `/user/users` page adds scoped User Management with searchable pagination, an editable details popup, separate activation/role assignment and explicit soft/hard deletion confirmations with durable cleanup status. All authenticated users get the top-right own-profile panel with profile and assigned roles only. See the [User Management API, migration, storage and verification guide](../Book-Search-Download/USER_MANAGEMENT.md).
+
+The guarded `/user/roles` page implements organization-scoped Role Management, current grantable permissions and protected ADMIN/SUPER_USER identities. New registration creates ordinary OWNER rather than ADMIN; files/search remain tenant-bound even for super users. See [role/storage migration and API guide](../Book-Search-Download/ROLE_MANAGEMENT_STORAGE.md); it supersedes older role defaults described below.
+
+Book listings show **Book Type immediately after Book Name**, using the backend's persisted `bookType`. Missing legacy values display **Unknown**. **View Book** now reads the complete PDF; the separate **View Topic** action opens the existing topics popup. The application background uses the supplied `Library knowledge streams into the laptop.png` image with responsive centered cover positioning. Existing downloads and the book SVG remain intact.
+
+## Authentication and registration
+
+The lazy `features/user/UserComponent` contains Login, Registration, forgot/setup/reset password, SSO enrollment and provider callback/error routes. Login uses **Email/Username** and Password; configured MFA challenges reveal an authenticator/recovery-code field. The header button is **Registration**. Google and SSO buttons remain visible, natively disabled and explained while their server feature flags are off; the server also enforces those flags.
+
+Registration never asks for a password. **Individual** hides Login Type and sends PASSWORD; the backend creates the individual tenant and its tenant-scoped administrator membership. **Organization** requires a unique organization code, organization name, first administrator name/email and Password or SSO Login Type. Password registration stays pending until the emailed Set Password link verifies the email and sets a password. SSO registration stays pending for trusted provider configuration and verified enrollment; no password email or fallback password is created. Setup passwords keep their existing policy. Reset passwords require exactly matching values of 5–25 UTF-16 code units with no composition rules. Successful reset clears local authentication and returns to login with a confirmation. See [password recovery configuration and API contract](../Book-Search-Download/PASSWORD_RESET.md). Accounts and organization codes are still validated authoritatively by the backend.
+
+| Route | Purpose |
+| --- | --- |
+| `/user/login`, `/user/register` | Local login and new-tenant registration |
+| `/user/password/forgot` | Non-enumerating reset request |
+| `/user/password/setup#token=…`, `/user/password/reset#token=…` | Email credential verification; fragment is read into memory and immediately removed with `history.replaceState` |
+| `/user/enroll#token=…&tenantCode=…` | Verified first-administrator SSO enrollment; fragment is immediately removed |
+| `/user/callback` | Backend OIDC callback has set the refresh cookie; obtain access through one coordinated refresh, then Home |
+| `/user/error` (`/user/provider-error` alias) | Safe provider failure view |
+
+Access tokens exist only in memory. Refresh secrets are never returned to Angular or written to local/session storage: the backend uses its HttpOnly cookie. Email setup/reset/enrollment secrets are distinct one-time credentials, never access/refresh tokens. They are posted in request bodies after their fragments are removed; do not place access/refresh tokens in links.
+
+The functional interceptor attaches bearer credentials only to the configured API origin and path boundary, fetches a fresh CSRF header for unsafe protected requests, and excludes public auth operations from authentication retry. It preserves XHR upload progress. A protected 401 gets at most one refresh/retry; permission 403s do not trigger refresh or logout. Login and the guard obtain access state through one session service; a failed/revoked refresh clears state and routes to Login. Header **Logout** clears local state immediately and asks the server to revoke the session; an offline failure is reported.
+
+The server issues **5-minute access tokens** and a rotating **10-minute refresh deadline**, with nullable earlier absolute expiry supported. Concurrent calls share one in-tab refresh. Origin-scoped **Web Locks** serialize cookie-changing login/refresh/logout across tabs; **BroadcastChannel** distributes only ephemeral access/expiry state and logout notifications. Delayed broadcasts retain their originating clock offset, and logged-out session broadcasts cannot restore old credentials. A different account/session in another tab clears the old Home view. Safe refresh requires a current browser with Web Locks on **HTTPS or localhost**; unsupported browsers fail closed with a visible explanation rather than racing refresh cookies. No credentials are persisted to coordinate tabs.
+
+Refresh runs only for foreground protected navigation/requests or an explicit provider callback, never from a keepalive interval. The first status check following an upload and an explicit **Resume status check** are foreground use; later automatic checks use only an already-valid in-memory access token. Access expiry or a background 401 stops the polling stream and shows an inline Resume message without any automatic refresh/retry. The collection reload triggered by upload completion is also background work, including its page-correction request; user Search/Reset/Retry remain foreground. Thus a long unattended upload cannot renew its session through status timers or a late completion response.
+
+The known refresh/absolute deadline has a clear-only timer, with equality expired and checks on visibility, focus, `pageshow` and protected use. Normal API responses do not extend it. Access expiry alone can refresh on the next explicit protected use while the refresh deadline remains valid. Logout, invalidation, deadline expiry or an account change cancels browser upload/poll/download work and clears private filenames, receipts, cached action feedback and notification items/timers before another account can see them. Async continuations cannot repopulate old-account feedback. This cancellation does not claim to undo server-side PDF processing. Successful login creates a fresh Home with Search minimized, Collection visible and size 5; same-session reader/popup Back and normal section controls continue to preserve their current Home state.
+
+All auth APIs use `/api/user/auth`:
+
+| Method/path | Body/result |
+| --- | --- |
+| `GET /features` | `{googleEnabled,ssoEnabled}` |
+| `GET /csrf` | `{token,headerName:'X-XSRF-TOKEN'}` plus CSRF cookie |
+| `POST /login` | `{email,password,mfaCode?}` → session response |
+| `POST /refresh`, `POST /logout` | `{}`; cookie + CSRF; refresh → session response, logout → 204 |
+| `GET /me` | Protected current principal |
+| `POST /register` | `{tenantType,loginType,email,displayName,tenantCode?,organizationName?}` → 202 `{message}` |
+| `POST /password/forgot` | `{email}` → 202 generic `{message}` |
+| `POST /password/setup`, `POST /password/reset` | `{token,password}` → 204 |
+| `GET /oidc/google` | Browser navigation to backend-controlled provider initiation |
+| `POST /oidc/sso` | `{tenantCode,enrollmentToken?}` → `{authorizationUrl}`; client permits only own-origin auth/provider initiation routes |
+
+Session responses contain `{accessToken,tokenType:'Bearer',accessExpiresAt,refreshExpiresAt,absoluteExpiresAt,serverTime,sessionId,user:{userId,tenantId,membershipId,email,displayName,tenantName}}`; timestamps are server UTC. Public errors use `{code,detail,status}`. No refresh secret is included. Registration/setup/reset mail, signing keys, trusted origins and provider flags/secrets are configured in the **backend**, as documented in its README. Google/SSO default off; enabling a provider requires trusted issuer/client/redirect configuration. A working mail configuration is needed for actual password onboarding; no development password or secret-bearing email log is provided.
 
 ## Homepage and topic popup
 
-Home retains this order: header, search, book listing, main footer. A **fresh Home instance starts with Search minimized and Book Collection visible**, filling the available middle region without reserving space for Search. There is no login route, authentication service or login redirect in this application; the requested fresh-login default therefore applies at fresh Home initialization. Data refreshes, section controls and returning from the still-mounted reader/topics popup do not reinitialize section state.
+Home retains this order: header, search, book listing, main footer. A **fresh Home instance starts with Search minimized and Book Collection visible**, filling the available middle region without reserving space for Search. Successful login reaches a fresh Home; data refreshes, section controls and returning from the still-mounted reader/topics popup do not reinitialize section state.
 
 The viewport shell uses `100vh` with `100dvh` support; header and footer stay outside the flexible middle region. In normal viewports the body and middle shell do not scroll: **only the book rows scroll**, with sticky column headers and the collection heading/pagination outside that scroller. Scrolling results does not move Search. Below **360 CSS pixels of viewport height**, the middle shell allows scrolling as a controlled fallback while header/footer remain outside it. Narrow tables scroll horizontally instead of compressing action buttons.
 
@@ -66,7 +114,7 @@ npm ci --cache .npm-cache
 npm start
 ```
 
-Open **http://localhost:4200/**. Run the existing backend separately on **http://localhost:9090**, with its database and processing dependencies. The development proxy forwards `/api/**`, including uploads and binary downloads.
+Open **http://localhost:4200/**. Run the existing backend separately on **http://localhost:9090**, with its database, auth migration, signing keys, mail and processing dependencies configured as described in the backend README. The development proxy forwards `/api/**`, `/oauth2/**` and `/login/oauth2/**`, including provider initiation/callbacks, uploads and binary downloads. Restart `ng serve` after proxy changes. Local HTTP cookie settings must be explicitly enabled in backend development configuration; deployed refresh cookies require HTTPS/Secure.
 
 Verified installed versions on 24 November 2026: Node **24.16.0**, npm **11.13.0**, Angular/CLI **22.3.0**, TypeScript **6.0.3**, Bootstrap **5.3.9**. Both Angular npm registry lookups returned 22.3.0. The starting lockfile already resolved that version, so no framework migration was needed. Node satisfies Angular 22's `^24.15.0` requirement; see [official compatibility](https://angular.dev/reference/versions) and [release policy](https://angular.dev/reference/releases).
 
@@ -79,9 +127,9 @@ Verified installed versions on 24 November 2026: Node **24.16.0**, npm **11.13.0
 - `--panel-background` is shared white **alpha 0.96** (4% transparency), increased after the earlier highly transparent panels proved hard to read. Near-black text has no outlined text shadow, and form fields use solid white backgrounds. The supplied background remains clear around the panels. Reader surfaces are opaque white by default, optionally black in Dark mode. No parent opacity fades text/buttons, and no image/backdrop blur is applied. Reduced-transparency/contrast preferences retain their accessibility overrides.
 - `pdfjs-dist` **6.5.438** is loaded only when reading. `angular.json` copies the matching worker, CMaps, standard fonts, WASM, ICC profiles and license to `assets/pdfjs/`. Restart `ng serve` after asset-configuration changes. These are local assets, with no CDN dependency.
 
-Build with `npm run build`. Deploy **`dist/Book-Search-Download-UI/browser/`**, with history fallback to `index.html` and `/api/**` reverse-proxied to the backend. The development proxy is not included in the production bundle.
+Build with `npm run build`. Deploy **`dist/Book-Search-Download-UI/browser/`**, with history fallback to `index.html` and **`/api/**`, `/oauth2/**`, `/login/oauth2/**`** reverse-proxied to the backend before that fallback. Provider callback `/login/oauth2/code/{code}` is a backend route; `/user/callback` is the Angular completion route. The development proxy is not included in the production bundle.
 
-For a separately hosted API, set `baseUrl` to its complete API prefix, for example `https://books.example.com/api`. The existing backend declares no CORS policy. Allow the UI origin, GET/POST/PATCH and necessary request headers, and expose **`Content-Disposition`** to preserve server filenames in downloads. Same-origin deployment needs no CORS changes. Reader controllers reuse the existing PDF assembly, ownership checks and storage confinement; download behavior and search URL/DTO shape are preserved. The latest search increment changes name matching to contains and the listing default size to five. No database migration is required for these changes.
+Same-origin reverse proxy deployment is recommended. For a separately hosted API, set `baseUrl` to its complete API prefix and explicitly configure the backend trusted-origin/CORS and cookie policy, credentials, GET/POST/PATCH, `Authorization`/`X-XSRF-TOKEN` headers, and exposed **`Content-Disposition`**. Wildcard credentialed origins are not supported. The browser provider redirect allowlist is intentionally own-origin; a separate API topology needs a deliberately reviewed provider initiation/proxy arrangement. Reader controllers reuse existing PDF assembly, ownership checks and storage confinement; download behavior and search DTO shape are preserved. The earlier contains-search change required no migration; **new authentication does require its backend migration**.
 
 ## Actual API integration
 
@@ -108,7 +156,7 @@ Six search controls match `query`, `bookName`, `authorName`, `topicName`, `bookD
 
 Pagination consumes server `books`, `page`, `size`, `totalElements`, `totalPages`. The fresh listing starts at **page 0, size 5**, and the backend search default agrees when size is omitted. Home explicitly includes the selected size on its initial request and subsequent searches/reloads. The existing dropdown offers **5, 10, 20, 50 and 100**; the backend still accepts sizes 1–100. Changing size returns to page 0 while preserving applied criteria and authoritative totals. User-selected larger sizes survive section minimize/restore, reader/popup Back, refresh and **Reset**; Reset clears only filters and the page index. Every book includes its **complete topic list**, reused by the modal without an extra endpoint. Search uses `switchMap` to prevent stale responses overwriting newer results; Angular does not fetch the whole catalog to emulate contains matching.
 
-Upload needs no metadata, so selecting a valid file starts it directly without a separate dialog. Picker cancellation sends nothing. Empty, non-PDF and oversize selections are rejected locally; backend validation remains authoritative. The 202 receipt is `{book_upload_id,status,message}`. Polling follows exact states **`inprogress`**, **`Success`**, **`failed`**, avoids overlapping checks, and refreshes the current filters/page on success. Interrupted polling offers **Resume status check** using the same receipt without re-uploading. XHR supplies transfer progress; server processing is indeterminate. Receipts are retained in the current app session, not across a full reload.
+Upload needs no metadata, so selecting a valid file starts it directly without a separate dialog. Picker cancellation sends nothing. Empty, non-PDF and oversize selections are rejected locally; backend validation remains authoritative. The 202 receipt is `{book_upload_id,status,message}`. Polling follows exact states **`inprogress`**, **`Success`**, **`failed`**, avoids overlapping checks, and requests a background refresh of the current filters/page on success. Interrupted or access-expired polling offers **Resume status check** using the same receipt without re-uploading; that explicit action may refresh sign-in before the ten-minute session deadline. The automatic timer never refreshes authentication. XHR supplies transfer progress; server processing is indeterminate. Receipts are retained only within the same authenticated app session and cleared on its auth boundary, not retained across a full reload.
 
 Home and modal share the full-book download service. It prevents duplicate active downloads while allowing unrelated downloads, reads binary Blobs and MIME type, honors safe `filename*`/`filename`, revokes temporary object URLs, and decodes JSON errors returned as Blobs. Binary download activity is indeterminate. One-topic PDFs contain only the selected topic content plus the backend-generated cover/contents pages.
 
@@ -138,6 +186,13 @@ src/app/
     models/metadata-*.ts              editable field limits and field-specific response merging
     data-access/                      HTTP, download and lazy PDF-engine services
     services/book-upload.service.ts   transfer and processing lifecycle
+  features/user/
+    user.component.ts, user.routes.ts lazy authentication parent and child routes
+    pages/                            login, registration, password and provider flows
+    data-access/auth-api.service.ts   cookie/CSRF API contracts
+    services/                         memory session, expiry and cross-tab coordination
+    security/                         book route guard and functional HTTP interceptor
+    components/                       header Logout control
   shared/
     ui/                               icons, notifications and measured full-text previews
     services/notification.service.ts  stable IDs and independent 15-second timers
@@ -171,13 +226,21 @@ npm run build -- --stats-json
 npm test -- --watch=false
 ```
 
-### Latest homepage layout, page-size and contains-search changes
+### Latest authentication verification
+
+Strict app/spec TypeScript checks pass. The final full Angular run passed **172 tests across 34 files**, including **39 auth tests across 8 files** and the existing book suites. The final production build passed with **no warnings**, **448.04 kB raw / 96.42 kB estimated transfer**. Executed commands were `ng test --watch=false`, `ng build`, and `tsc --noEmit -p tsconfig.app.json` / `tsconfig.spec.json` using the installed local executables. New coverage exercises single-flight refresh, usage-only rotation, exact/resume/absolute deadline handling, logout cancellation and offline logout latching, stale HTTP/broadcast session rejection, cross-tab locks, origin-safe bearer attachment, fresh CSRF, one protected retry, 403 distinction, guarded routes, provider-disabled controls, MFA challenges/account changes, registration branching and one-time credential fragments. Actual-route HTTP tests verify an invalid cookie reaches Login without requesting the catalog, and successful login reaches fresh Home with size five/bearer before Logout returns to Login without a refresh loop. Background-upload tests verify no automatic refresh from five through ten minutes, expiry redirect, one foreground Resume refresh at six minutes, and no renewal through a late completion reload. Auth-boundary tests verify cancellation of prior-account upload/download work, receipt/filename/status clearing and suppression of late saves, errors and notifications. A failed server logout blocks automatic sign-in in the current tab until manual login; a new tab/reload can still retain an unrevoked HttpOnly cookie if server logout could not be confirmed, which the UI explicitly reports.
+
+The final full backend verification also passed **565 tests run: 556 passed, 9 existing optional checks skipped**, and executable-JAR packaging. The migration was applied after isolated MySQL/idempotence/constraint checks; the historical 5 books, 39 topics and 9 receipts remain preserved and unassigned. After restarting the final JAR, **17 live HTTP checks** passed through the UI proxy without creating a user/session. See the sibling backend [AUTH_SETUP.md](../Book-Search-Download/AUTH_SETUP.md) for configuration and verification details.
+
+Actual browser login/provider/cookie/native-focus and mobile checks have **not** been performed: the browser access host was unavailable. Provider feature flags remain off by default; real email delivery/provider configuration and live password onboarding require backend setup. Unit tests use HTTP, browser-lock/channel, dialog and clock doubles and are not a substitute for those deployment checks.
+
+### Historical homepage layout, page-size and contains-search changes
 
 The latest Angular suite passed **127 tests across 26 files**. The production build passed strict TypeScript/template checks with **no warnings or budget failures**: initial output **438.10 kB raw / 94.07 kB estimated transfer**. Frontend checks cover fresh Search-minimized/Collection-visible initialization, all four visibility states and restore-button semantics, retained form/result/page state without section-toggle requests, the consistent initial size-five request, larger sizes including Reset preservation, partial-name request values, literal wildcard text and the updated matching guidance. Existing editing, preview, popup and reader regressions remain in the same passing suite. Latest backend search test totals are recorded separately in the sibling backend documentation.
 
 The latest backend run completed **69 tests: 68 passed and one optional live-AI test skipped**, with no failures or errors. Eleven read-only live API checks through the Angular proxy also passed after restarting the owned backend with no active uploads: default size 5, book/author/topic/general contains, distinct complete-topic results, literal percent/underscore, blank/no-match input, page ordering/counts and explicit larger size. No catalog data was changed. Backend query tests use seven matching books to verify a second size-five page beyond the live catalog's five books. Full backend tests and live AI/upload processing were not rerun for this increment.
 
-**Browser layout/mobile checks for this latest increment were not performed.** Automatic approval review rejected browser-state access and required browser reinitialization. Earlier screenshots and rendering checks below are historical evidence for their stated changes, not verification of the new single-section sizing or fresh default. The application has no actual login flow to exercise; the default is verified at Home initialization.
+**Browser layout/mobile checks for that pre-authentication increment were not performed.** Automatic approval review rejected browser-state access and required browser reinitialization. Earlier screenshots and rendering checks below are historical evidence for their stated changes, not verification of the new single-section sizing or fresh default. At that time no login flow existed; the new auth integration is documented and tested separately above.
 
 ### Historical compact-table and metadata-editing verification
 
@@ -197,7 +260,14 @@ Live regression requests to the original complete-book, single-topic and selecte
 
 For the readability fix, a desktop Edge screenshot confirmed the Search panel's clearer, near-white background and readable text with the unchanged image visible around it. Automated browser activation did not change the observed UI, so a complete interactive reader/mobile/keyboard/layout check remains unperformed. Separately, an actual PDF.js/Node canvas render of page 3 of the 20-page inline topic PDF produced **12971 dark text pixels** on white, and the same display filter produced **12971 white text pixels** on black. Both output images were visually inspected for readable full text (`tmp/reader-light-regression.png`, `tmp/reader-dark-regression.png`); this verifies the rendering/filter path outside the browser, not browser geometry or every scanned/color document. **Live upload processing was not exercised**; controlled status tests verify that success is announced only after a confirmed terminal API status.
 
-## Latest files changed: homepage defaults, section sizing and search guidance
+## Latest files changed: authentication integration
+
+- **User feature:** new `src/app/features/user/` parent/routes, models, API adapter, memory session/cross-tab coordinator, guards/interceptor, login/registration/password/provider pages, header session control and focused tests.
+- **Application wiring:** `app.routes.ts`, `app.config.ts`; lazy public auth routes, guarded books and functional interceptor with existing XHR preserved.
+- **Header integration:** header TS/HTML plus header/application-layout specs and authenticated `home-render.spec.ts` route fixture. Existing book business components and requests are unchanged.
+- **Development/deployment:** `proxy.conf.json` adds provider initiation/callback forwarding; this README records API contracts, session behavior and remaining configuration. Backend migration/security/configuration files are documented in the sibling README.
+
+## Historical files changed: homepage defaults, section sizing and search guidance
 
 - **Home initialization, visibility and pagination:** `src/app/features/books/pages/home/home.component.ts`, `.html`, `.css`; Home orchestration, rendered, visibility and reader-return test files in that directory. Fresh state and size-five requests are explicit; Reset preserves the selected size.
 - **Search presentation:** `src/app/features/books/components/book-search/book-search.component.html`, `.css`, `.spec.ts`; contains guidance/placeholders, expanded Search-only layout and focused form regressions. The existing request field names remain unchanged.

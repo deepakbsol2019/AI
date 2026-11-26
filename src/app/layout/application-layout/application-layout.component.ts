@@ -1,14 +1,28 @@
-import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  inject,
+  input,
+  output,
+  signal,
+} from '@angular/core';
 import { HeaderComponent } from '../header/header.component';
 import { FooterComponent } from '../footer/footer.component';
+import { SidebarComponent } from '../sidebar/sidebar.component';
+import { AuthSessionService } from '../../features/user/services/auth-session.service';
 
 @Component({
   selector: 'app-application-layout',
   standalone: true,
-  imports: [HeaderComponent, FooterComponent],
+  imports: [HeaderComponent, FooterComponent, SidebarComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `<a class="skip-link" href="#main-content">Skip to books</a
+  template: `<a class="skip-link" href="#main-content">Skip to main content</a
     ><app-header
+      [libraryControls]="libraryControls()"
+      [sidebarAvailable]="!!session.user()"
+      [sidebarExpanded]="sidebarExpanded()"
+      (sidebarToggle)="sidebarExpanded.set(!sidebarExpanded())"
       [uploadBusy]="uploadBusy()"
       [searchMinimized]="searchMinimized()"
       [collectionMinimized]="collectionMinimized()"
@@ -16,14 +30,28 @@ import { FooterComponent } from '../footer/footer.component';
       (restoreSearch)="restoreSearch.emit()"
       (restoreCollection)="restoreCollection.emit()"
     />
-    <div
-      class="library-scroll-region"
-      data-library-scroll-region
-      tabindex="0"
-      role="region"
-      aria-label="Library search and book results"
-    >
-      <ng-content />
+    <div class="application-middle">
+      @if (session.user()) {
+        <aside
+          id="application-sidebar"
+          aria-label="Account and workspace navigation"
+          [hidden]="!sidebarExpanded()"
+        >
+          <app-sidebar (collapse)="collapseSidebar()" (navigate)="sidebarNavigation()" />
+        </aside>
+      }
+      <div
+        class="library-scroll-region"
+        [class.library-workspace]="libraryControls()"
+        data-library-scroll-region
+        tabindex="0"
+        role="region"
+        [attr.aria-label]="
+          libraryControls() ? 'Library search and book results' : 'Main page content'
+        "
+      >
+        <ng-content />
+      </div>
     </div>
     <app-footer />`,
   styles: `
@@ -39,6 +67,23 @@ import { FooterComponent } from '../footer/footer.component';
     app-footer {
       flex: 0 0 auto;
     }
+    .application-middle {
+      display: flex;
+      flex: 1 1 0;
+      min-height: 0;
+      min-width: 0;
+      overflow: hidden;
+      position: relative;
+    }
+    aside {
+      flex: 0 0 16rem;
+      min-height: 0;
+      min-width: 0;
+      overflow: hidden;
+    }
+    aside[hidden] {
+      display: none;
+    }
     .library-scroll-region {
       display: flex;
       flex-direction: column;
@@ -46,8 +91,21 @@ import { FooterComponent } from '../footer/footer.component';
       min-height: 0;
       min-width: 0;
       overflow-x: hidden;
-      overflow-y: hidden;
+      overflow-y: auto;
       overscroll-behavior-y: contain;
+    }
+    .library-workspace {
+      overflow-y: auto;
+    }
+    @media (max-width: 767px) {
+      aside {
+        position: absolute;
+        inset-block: 0;
+        left: 0;
+        width: min(18rem, 88%);
+        z-index: 700;
+        box-shadow: 5px 0 25px #102d5230;
+      }
     }
     @media (max-height: 359px) {
       .library-scroll-region {
@@ -57,10 +115,26 @@ import { FooterComponent } from '../footer/footer.component';
   `,
 })
 export class ApplicationLayoutComponent {
+  protected readonly session = inject(AuthSessionService);
+  private readonly element: ElementRef<HTMLElement> = inject(ElementRef);
+  readonly libraryControls = input(true);
+  readonly sidebarExpanded = signal(
+    !(typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 767px)').matches),
+  );
   readonly uploadBusy = input(false);
   readonly searchMinimized = input(false);
   readonly collectionMinimized = input(false);
   readonly fileSelected = output<File>();
   readonly restoreSearch = output<void>();
   readonly restoreCollection = output<void>();
+  collapseSidebar() {
+    this.sidebarExpanded.set(false);
+    queueMicrotask(() =>
+      this.element.nativeElement.querySelector<HTMLButtonElement>('.sidebar-toggle')?.focus(),
+    );
+  }
+  sidebarNavigation() {
+    if (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 767px)').matches)
+      this.collapseSidebar();
+  }
 }

@@ -62,6 +62,15 @@
   min-width: 0;
   gap: 0.8rem;
 }
+.sidebar-toggle {
+  flex: 0 0 auto;
+  min-width: 40px;
+}
+.auth-links {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
 .section-restores {
   display: flex;
   flex-wrap: wrap;

@@ -5,6 +5,7 @@ import { Subject } from 'rxjs';
 import { Book, BookSearchResponse } from '../../models/book.models';
 import { BookUploadService } from '../../services/book-upload.service';
 import { HomeComponent } from './home.component';
+import { BACKGROUND_AUTH_REQUEST } from '../../../user/security/background-auth.context';
 
 describe('Home search orchestration', () => {
   const completed = new Subject<void>();
@@ -97,7 +98,9 @@ describe('Home search orchestration', () => {
     home.changePage(1);
     http.expectOne('/api/search/books?authorName=Ada&page=1&size=5').flush(response(1));
     completed.next();
-    http.expectOne('/api/search/books?authorName=Ada&page=1&size=5').flush(response(1));
+    const completionRefresh = http.expectOne('/api/search/books?authorName=Ada&page=1&size=5');
+    expect(completionRefresh.request.context.get(BACKGROUND_AUTH_REQUEST)).toBe(true);
+    completionRefresh.flush(response(1));
     expect(home.results()?.page).toBe(1);
     expect(home.activeFilterCount()).toBe(1);
   });
@@ -111,7 +114,9 @@ describe('Home search orchestration', () => {
     await fixture.whenStable();
     expect(home.error()).toBe('Try later');
     home.reload();
-    http.expectOne('/api/search/books?size=5').flush(response());
+    const retry = http.expectOne('/api/search/books?size=5');
+    expect(retry.request.context.get(BACKGROUND_AUTH_REQUEST)).toBe(false);
+    retry.flush(response());
     expect(home.error()).toBeNull();
   });
 

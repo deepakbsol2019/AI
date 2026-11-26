@@ -11,6 +11,10 @@ import { IconComponent } from '../../shared/ui/icon.component';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class HeaderComponent {
+  readonly libraryControls = input(true);
+  readonly sidebarAvailable = input(false);
+  readonly sidebarExpanded = input(false);
+  readonly sidebarToggle = output<void>();
   readonly uploadBusy = input(false);
   readonly searchMinimized = input(false);
   readonly collectionMinimized = input(false);

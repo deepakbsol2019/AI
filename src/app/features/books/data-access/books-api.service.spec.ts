@@ -4,6 +4,7 @@ import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 import { BooksApiService } from './books-api.service';
 import { UploadStatus } from '../models/book.models';
+import { BACKGROUND_AUTH_REQUEST } from '../../user/security/background-auth.context';
 
 describe('BooksApiService — backend contract', () => {
   let api: BooksApiService;
@@ -91,7 +92,13 @@ describe('BooksApiService — backend contract', () => {
     request.flush(receipt, { status: 202, statusText: 'Accepted' });
     expect(received).toEqual(receipt);
     api.uploadStatus(41).subscribe((status) => expect(status.status).toBe('Success'));
-    http.expectOne('/api/upload-status/41').flush({ ...receipt, status: 'Success' });
+    const foreground = http.expectOne('/api/upload-status/41');
+    expect(foreground.request.context.get(BACKGROUND_AUTH_REQUEST)).toBe(false);
+    foreground.flush({ ...receipt, status: 'Success' });
+    api.uploadStatus(41, { background: true }).subscribe();
+    const background = http.expectOne('/api/upload-status/41');
+    expect(background.request.context.get(BACKGROUND_AUTH_REQUEST)).toBe(true);
+    background.flush(receipt);
   });
 
   it('uses the whole-book and selected-topics binary routes with exactly one topic ID', () => {

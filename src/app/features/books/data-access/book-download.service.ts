@@ -2,10 +2,20 @@ import { DOCUMENT } from '@angular/common';
 import { HttpErrorResponse, HttpResponse } from '@angular/common/http';
 import { DestroyRef, inject, Injectable, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { catchError, finalize, from, ignoreElements, Observable, switchMap, tap } from 'rxjs';
+import {
+  catchError,
+  finalize,
+  from,
+  ignoreElements,
+  Observable,
+  switchMap,
+  takeUntil,
+  tap,
+} from 'rxjs';
 import { apiErrorMessage } from '../../../shared/utils/api-error';
 import { NotificationService } from '../../../shared/services/notification.service';
 import { downloadFilename } from '../../../shared/utils/download-filename';
+import { AuthBoundaryService } from '../../user/services/auth-boundary.service';
 import { Book, BookTopic } from '../models/book.models';
 import { BooksApiService } from './books-api.service';
 
@@ -13,11 +23,20 @@ import { BooksApiService } from './books-api.service';
 export class BookDownloadService {
   private readonly api = inject(BooksApiService);
   private readonly notifications = inject(NotificationService);
+  private readonly authBoundary = inject(AuthBoundaryService);
   private readonly document = inject(DOCUMENT);
   private readonly destroyRef = inject(DestroyRef);
   private readonly active = signal<ReadonlySet<string>>(new Set());
+  private generation = 0;
   readonly error = signal<string | null>(null);
   readonly message = signal<string | null>(null);
+
+  constructor() {
+    this.authBoundary.resets
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.reset());
+    this.destroyRef.onDestroy(() => this.reset());
+  }
 
   isBookDownloading(id: number): boolean {
     return this.active().has(`book:${id}`);
@@ -79,13 +98,15 @@ export class BookDownloadService {
 
   private download(key: string, request: Observable<HttpResponse<Blob>>, fallback: string): void {
     if (this.active().has(key)) return;
+    const generation = this.generation;
     this.active.update((current) => new Set([...current, key]));
     this.error.set(null);
     this.message.set(null);
     request
       .pipe(
-        switchMap((response) => from(this.save(response, fallback))),
+        switchMap((response) => from(this.save(response, fallback, generation))),
         tap((filename) => {
+          if (generation !== this.generation || filename === null) return;
           const message = `Download ready: ${filename}`;
           this.message.set(message);
           this.notifications.show(message, 'success');
@@ -93,25 +114,42 @@ export class BookDownloadService {
         catchError((error: unknown) =>
           from(apiErrorMessage(error)).pipe(
             tap((message) => {
+              if (generation !== this.generation) return;
               this.error.set(message);
               this.notifications.show(message, 'error');
             }),
             ignoreElements(),
           ),
         ),
-        finalize(() =>
+        finalize(() => {
+          if (generation !== this.generation) return;
           this.active.update((current) => {
             const next = new Set(current);
             next.delete(key);
             return next;
-          }),
-        ),
+          });
+        }),
+        takeUntil(this.authBoundary.resets),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe();
   }
 
-  private async save(response: HttpResponse<Blob>, fallback: string): Promise<string> {
+  private reset(): void {
+    this.generation++;
+    this.active.set(new Set());
+    this.error.set(null);
+    this.message.set(null);
+  }
+
+  private async save(
+    response: HttpResponse<Blob>,
+    fallback: string,
+    generation: number,
+  ): Promise<string | null> {
+    // A promise cannot be cancelled by RxJS. Recheck the account before any browser/file side effect.
+    await Promise.resolve();
+    if (generation !== this.generation) return null;
     const blob = response.body;
     if (!blob || blob.size === 0)
       throw new Error('The service returned an empty download. Please try again.');

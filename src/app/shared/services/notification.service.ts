@@ -19,9 +19,7 @@ export class NotificationService {
   constructor() {
     inject(DestroyRef).onDestroy(() => {
       this.destroyed = true;
-      for (const timer of this.timers.values()) clearTimeout(timer);
-      this.timers.clear();
-      this.entries.set([]);
+      this.clear();
     });
   }
 
@@ -41,5 +39,11 @@ export class NotificationService {
     if (timer !== undefined) clearTimeout(timer);
     this.timers.delete(id);
     this.entries.update((items) => items.filter((item) => item.id !== id));
+  }
+
+  clear(): void {
+    for (const timer of this.timers.values()) clearTimeout(timer);
+    this.timers.clear();
+    this.entries.set([]);
   }
 }

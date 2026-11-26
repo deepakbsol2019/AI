@@ -1,10 +1,10 @@
 # Website backgrounds
 
-## Active Gurukul background
+## Active laptop/library background
 
-`Flowering-Gurukul-by-the-River.png` is the exact original image supplied by the user for this website. It is served locally and copied unchanged into the production build. No replacement artwork, cropping of the source file, recoloring, filter, or compression has been applied. The same URL is used by the homepage and native modal backdrop; modal content stays pure white.
+`Library knowledge streams into the laptop.png` is the user-selected background, served locally and copied unchanged into the production build. The shared CSS URL encodes its spaces. The same image is used by the page and native modal backdrop; modal content stays white.
 
-The responsive CSS uses centered `cover` positioning to preserve the image aspect ratio and keep the central banyan tree, guru, and students in view. Neutral white overlays improve readability without adding a yellow tint. On narrow screens, cover positioning naturally crops the outer edges.
+The responsive CSS uses centered `cover` positioning to preserve the image aspect ratio. Neutral white overlays improve readability. On narrow screens, cover positioning naturally crops the outer edges. The earlier `Flowering-Gurukul-by-the-River.png` asset is retained.
 
 Configure the shared background URL and position in the `:root, dialog::backdrop` rule at the start of `src/styles.css`.
 

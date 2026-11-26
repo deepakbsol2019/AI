@@ -6,6 +6,8 @@ import { API_CONFIG } from '../../../core/configuration/api.config';
 import { NotificationService } from '../../../shared/services/notification.service';
 import { UploadStatus } from '../models/book.models';
 import { BookUploadService } from './book-upload.service';
+import { BACKGROUND_AUTH_REQUEST } from '../../user/security/background-auth.context';
+import { AuthBoundaryService } from '../../user/services/auth-boundary.service';
 
 describe('BookUploadService', () => {
   const pollInterval = 25;
@@ -83,12 +85,14 @@ describe('BookUploadService', () => {
     expect(notifications.items()).toEqual([]);
     http.expectNone('/api/upload-status/41');
     vi.advanceTimersByTime(pollInterval);
-    http.expectOne('/api/upload-status/41').flush(pending);
+    const firstStatus = http.expectOne('/api/upload-status/41');
+    expect(firstStatus.request.context.get(BACKGROUND_AUTH_REQUEST)).toBe(false);
+    firstStatus.flush(pending);
     expect(completed).not.toHaveBeenCalled();
     vi.advanceTimersByTime(pollInterval);
-    http
-      .expectOne('/api/upload-status/41')
-      .flush({ ...pending, status: 'Success', message: 'Book ready' });
+    const automaticStatus = http.expectOne('/api/upload-status/41');
+    expect(automaticStatus.request.context.get(BACKGROUND_AUTH_REQUEST)).toBe(true);
+    automaticStatus.flush({ ...pending, status: 'Success', message: 'Book ready' });
     expect(service.phase()).toBe('success');
     expect(service.message()).toBe('Book ready');
     expect(service.busy()).toBe(false);
@@ -173,6 +177,25 @@ describe('BookUploadService', () => {
     http
       .expectOne('/api/upload-file')
       .flush({ ...pending, status: 'Success' }, { status: 202, statusText: 'Accepted' });
+    expect(service.phase()).toBe('success');
+  });
+  it('cancels an in-flight browser transfer and clears its private state at an auth boundary', () => {
+    service.upload(pdf('private-user-book.pdf'));
+    const transfer = http.expectOne('/api/upload-file');
+    transfer.event({ type: HttpEventType.UploadProgress, loaded: 4, total: 8 });
+    TestBed.inject(AuthBoundaryService).reset();
+    expect(transfer.cancelled).toBe(true);
+    expect(service.phase()).toBe('idle');
+    expect(service.busy()).toBe(false);
+    expect(service.fileName()).toBe('');
+    expect(service.message()).toBe('');
+    expect(service.receiptId()).toBeNull();
+    expect(service.progress()).toBeNull();
+    vi.advanceTimersByTime(pollInterval * 3);
+    http.expectNone('/api/upload-status/41');
+    service.upload(pdf('new-user-book.pdf'));
+    http.expectOne('/api/upload-file').flush({ ...pending, status: 'Success' });
+    expect(service.fileName()).toBe('new-user-book.pdf');
     expect(service.phase()).toBe('success');
   });
 });

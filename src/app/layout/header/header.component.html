@@ -1,5 +1,17 @@
 <header class="site-header">
   <div class="container-xl header-content">
+    @if (sidebarAvailable()) {
+      <button
+        type="button"
+        class="btn btn-primary sidebar-toggle"
+        aria-controls="application-sidebar"
+        [attr.aria-expanded]="sidebarExpanded()"
+        [attr.aria-label]="sidebarExpanded() ? 'Collapse sidebar' : 'Expand sidebar'"
+        (click)="sidebarToggle.emit()"
+      >
+        &#9776;<span class="visually-hidden">Navigation</span>
+      </button>
+    }
     <a routerLink="/" class="brand" aria-label="Bookhaven home">
       <span class="brand-mark"><app-icon name="book" [size]="27" /></span>
       <span
@@ -8,52 +20,60 @@
       >
     </a>
     <div class="header-actions">
-      <div class="section-restores" role="group" aria-label="Restore minimized sections">
+      @if (libraryControls()) {
+        <div class="section-restores" role="group" aria-label="Restore minimized sections">
+          <button
+            type="button"
+            class="btn btn-primary restore-search"
+            [disabled]="!searchMinimized()"
+            aria-controls="library-search-section"
+            (click)="restoreSearchSection()"
+          >
+            <app-icon name="search" /> Search
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary restore-collection"
+            [disabled]="!collectionMinimized()"
+            aria-controls="book-collection-section"
+            (click)="restoreCollectionSection()"
+          >
+            <app-icon name="book" /> Book Collection
+          </button>
+        </div>
+        <span class="library-label"
+          ><span class="status-dot"></span> Your personal knowledge collection</span
+        >
+        <input
+          #pdfPicker
+          type="file"
+          accept=".pdf,application/pdf"
+          class="visually-hidden"
+          tabindex="-1"
+          aria-label="Choose a PDF book"
+          [disabled]="uploadBusy()"
+          (change)="chooseFile($event)"
+        />
         <button
           type="button"
-          class="btn btn-primary restore-search"
-          [disabled]="!searchMinimized()"
-          aria-controls="library-search-section"
-          (click)="restoreSearchSection()"
+          class="btn btn-primary upload-button"
+          [disabled]="uploadBusy()"
+          (click)="pdfPicker.click()"
         >
-          <app-icon name="search" /> Search
+          @if (uploadBusy()) {
+            <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+          } @else {
+            <app-icon name="upload" [size]="17" />
+          }
+          {{ uploadBusy() ? 'Uploading PDF…' : 'Upload PDF Book' }}
         </button>
-        <button
-          type="button"
-          class="btn btn-primary restore-collection"
-          [disabled]="!collectionMinimized()"
-          aria-controls="book-collection-section"
-          (click)="restoreCollectionSection()"
-        >
-          <app-icon name="book" /> Book Collection
-        </button>
-      </div>
-      <span class="library-label"
-        ><span class="status-dot"></span> Your personal knowledge collection</span
-      >
-      <input
-        #pdfPicker
-        type="file"
-        accept=".pdf,application/pdf"
-        class="visually-hidden"
-        tabindex="-1"
-        aria-label="Choose a PDF book"
-        [disabled]="uploadBusy()"
-        (change)="chooseFile($event)"
-      />
-      <button
-        type="button"
-        class="btn btn-primary upload-button"
-        [disabled]="uploadBusy()"
-        (click)="pdfPicker.click()"
-      >
-        @if (uploadBusy()) {
-          <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
-        } @else {
-          <app-icon name="upload" [size]="17" />
-        }
-        {{ uploadBusy() ? 'Uploading PDF…' : 'Upload PDF Book' }}
-      </button>
+      }
+      @if (!sidebarAvailable()) {
+        <nav class="auth-links" aria-label="Account">
+          <a class="btn btn-primary" routerLink="/user/login">Login</a
+          ><a class="btn btn-primary registration-link" routerLink="/user/register">Registration</a>
+        </nav>
+      }
     </div>
   </div>
 </header>

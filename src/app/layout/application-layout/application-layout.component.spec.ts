@@ -2,8 +2,12 @@ import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideRouter } from '@angular/router';
+import { provideHttpClient } from '@angular/common/http';
 import { HeaderComponent } from '../header/header.component';
 import { ApplicationLayoutComponent } from './application-layout.component';
+import { AuthSessionService } from '../../features/user/services/auth-session.service';
+import { CurrentProfileService } from '../../features/user/services/current-profile.service';
+import { NavigationAccessService } from '../../features/user/services/navigation-access.service';
 
 @Component({
   imports: [ApplicationLayoutComponent],
@@ -33,7 +37,7 @@ describe('Application viewport layout', () => {
   beforeEach(() =>
     TestBed.configureTestingModule({
       imports: [LayoutHost],
-      providers: [provideRouter([])],
+      providers: [provideRouter([]), provideHttpClient()],
     }),
   );
 
@@ -42,13 +46,13 @@ describe('Application viewport layout', () => {
     fixture.detectChanges();
     const layout = fixture.nativeElement.querySelector('app-application-layout') as HTMLElement;
     const region = layout.querySelector('[data-library-scroll-region]') as HTMLElement;
-    expect(region.parentElement).toBe(layout);
+    expect(region.parentElement?.classList.contains('application-middle')).toBe(true);
     expect(region.getAttribute('role')).toBe('region');
     expect(region.getAttribute('aria-label')).toBe('Library search and book results');
     expect(region.tabIndex).toBe(0);
     expect(region.querySelector('main')?.textContent).toContain('Projected search and results');
-    expect(region.previousElementSibling?.tagName).toBe('APP-HEADER');
-    expect(region.nextElementSibling?.tagName).toBe('APP-FOOTER');
+    expect(region.parentElement?.previousElementSibling?.tagName).toBe('APP-HEADER');
+    expect(region.parentElement?.nextElementSibling?.tagName).toBe('APP-FOOTER');
     expect(region.querySelector('app-header, app-footer')).toBeNull();
     expect(layout.querySelector('.skip-link')?.getAttribute('href')).toBe('#main-content');
   });
@@ -97,5 +101,51 @@ describe('Application viewport layout', () => {
     expect(fixture.componentInstance.collectionRestores).toBe(1);
     expect(collection.disabled).toBe(true);
     expect(fixture.nativeElement.querySelector('[data-library-scroll-region]')).toBe(region);
+  });
+
+  it('keeps sidebar collapse/reopen accessible and places the only logout within the middle sidebar', async () => {
+    TestBed.overrideProvider(AuthSessionService, {
+      useValue: {
+        user: signal({ userId: 1, email: 'own@example.com', displayName: 'Own User' }),
+        loggingOut: signal(false),
+        logout: vi.fn(),
+      },
+    });
+    TestBed.overrideProvider(CurrentProfileService, {
+      useValue: { profile: signal(null), refresh: vi.fn(() => Promise.resolve()) },
+    });
+    TestBed.overrideProvider(NavigationAccessService, {
+      useValue: {
+        capabilities: signal(null),
+        loading: signal(false),
+        error: signal(null),
+        ensure: vi.fn(() => Promise.resolve(null)),
+      },
+    });
+    const fixture = TestBed.createComponent(LayoutHost);
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const element = fixture.nativeElement as HTMLElement;
+    const sidebar = element.querySelector('#application-sidebar') as HTMLElement;
+    const toggle = element.querySelector('.sidebar-toggle') as HTMLButtonElement;
+    expect(sidebar.parentElement?.classList.contains('application-middle')).toBe(true);
+    expect(element.querySelectorAll('.logout-button')).toHaveLength(1);
+    expect(
+      element.querySelector('app-header .logout-button,app-header .profile-trigger'),
+    ).toBeNull();
+    toggle.click();
+    fixture.detectChanges();
+    expect(sidebar.hidden).toBe(true);
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle.getAttribute('aria-label')).toBe('Expand sidebar');
+    toggle.click();
+    fixture.detectChanges();
+    expect(sidebar.hidden).toBe(false);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    (element.querySelector('app-sidebar .sidebar-close') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(sidebar.hidden).toBe(true);
+    expect(document.activeElement).toBe(toggle);
   });
 });
