@@ -121,6 +121,17 @@ class RoleManagementSecurityTests {
         assertThatThrownBy(()->run(()->{roles.assign(principal(owner),other.tenantId(),role,other.membershipId(),false);return null;})).hasMessageContaining("404");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM user_roles WHERE membership_id=?",Long.class,other.membershipId())).isEqualTo(1);
     }
+    @Test void copiedPermissionSelectionCreatesASeparateRoleAndLeavesSourceUnchanged() {
+        grant(owner,"ROLE_VIEW","ROLE_CREATE","ROLE_EDIT");
+        var source=run(()->roles.create(principal(owner),write("Tester",List.of(id("BOOKS.VIEW")))));
+        var copied=run(()->roles.create(principal(owner),write("Developer",List.of(id("BOOKS.VIEW"),id("BOOKS.EDIT")))));
+        assertThat(copied.roleId()).isNotEqualTo(source.roleId());
+        assertThat(copied.permissionIds()).containsExactlyInAnyOrder(id("BOOKS.VIEW"),id("BOOKS.EDIT"));
+        var retained=run(()->roles.get(principal(owner),null,source.roleId()));
+        assertThat(retained.name()).isEqualTo("Tester");assertThat(retained.version()).isEqualTo(source.version());
+        assertThat(retained.permissionIds()).containsExactly(id("BOOKS.VIEW"));
+        assertThatThrownBy(()->run(()->roles.get(principal(other),owner.tenantId(),source.roleId()))).hasMessageContaining("404");
+    }
     @Test void concurrentVersionedUpdatesCannotBothSucceed() throws Exception {
         superUser(owner);var role=run(()->roles.create(principal(owner),write("Concurrent",List.of())));
         var input=edit(role,List.of(id("BOOKS.VIEW")));var actor=principal(owner);CountDownLatch start=new CountDownLatch(1);

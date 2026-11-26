@@ -55,6 +55,9 @@ public final class AuthTestDatabase {
                     .replaceAll("(?s)DELIMITER \\$\\$.*?DELIMITER ;", "ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP(6) NULL;")
                     .replace("UTC_TIMESTAMP(6)","CURRENT_TIMESTAMP");
             new ResourceDatabasePopulator(new ByteArrayResource(creation.getBytes(StandardCharsets.UTF_8))).execute(jdbc.getDataSource());
+            String profile=new ClassPathResource("db/manual/20261126_profile_permissions_add_user.sql").getContentAsString(StandardCharsets.UTF_8)
+                    .replaceAll("(?m)^SET time_zone[^;]*;", "").replace("UTC_TIMESTAMP(6)","CURRENT_TIMESTAMP");
+            new ResourceDatabasePopulator(new ByteArrayResource(profile.getBytes(StandardCharsets.UTF_8))).execute(jdbc.getDataSource());
         } catch (IOException error) { throw new IllegalStateException("The authentication schema could not be loaded.", error); }
     }
 }

@@ -46,6 +46,17 @@ class UserCreationMigrationTests {
         assertThat(grants(jdbc,"GET","/api/user/users/create-options")).containsExactly("USER_CREATE");
         assertThat(grants(jdbc,"GET","/api/user/users/capabilities")).containsExactly("ACCOUNT.VIEW");
     }
+    @Test void ownProfileAndTenantChoiceCatalogRerunsRemainIndependentOfManagementViewing() throws Exception {
+        var jdbc=AuthTestDatabase.create();
+        rerunCatalog(jdbc,"20261126_user_management.sql");
+        rerunCatalog(jdbc,"20261126_user_creation_soft_delete.sql");
+        rerunCatalog(jdbc,"20261126_profile_permissions_add_user.sql");
+        rerunCatalog(jdbc,"20261126_profile_permissions_add_user.sql");
+        assertThat(grants(jdbc,"GET","/api/user/profile/details")).containsExactly("ACCOUNT.VIEW");
+        assertThat(grants(jdbc,"GET","/api/user/profile/permissions")).containsExactly("ACCOUNT.VIEW");
+        assertThat(grants(jdbc,"GET","/api/user/users/create-tenants")).containsExactly("USER_CREATE");
+        assertCreationPolicies(jdbc);
+    }
     private List<String> grants(JdbcTemplate jdbc,String method,String path){return jdbc.queryForList("SELECT p.permission_code FROM endpoint_permissions ep JOIN permissions p ON p.permission_id=ep.permission_id JOIN api_endpoints e ON e.endpoint_id=ep.endpoint_id WHERE e.service_code='BOOK_SEARCH' AND e.http_method=? AND e.path_pattern=? ORDER BY p.permission_code",String.class,method,path);}
     private void addUnrelatedPolicy(JdbcTemplate jdbc){
         jdbc.update("INSERT INTO api_endpoints(service_code,http_method,path_pattern,description,is_public,is_active,created_at) VALUES('BOOK_SEARCH','GET','/api/user/users/custom-extension','Unrelated extension',FALSE,TRUE,CURRENT_TIMESTAMP)");
@@ -54,7 +65,8 @@ class UserCreationMigrationTests {
     private void rerunCatalog(JdbcTemplate jdbc,String name)throws Exception{
         String source=new ClassPathResource("db/manual/"+name).getContentAsString(StandardCharsets.UTF_8);
         // Actual production catalog SQL after the already-applied MySQL-only ALTER procedure.
-        String sql=source.substring(source.indexOf("DELIMITER ;")+"DELIMITER ;".length())
+        String sql=(source.contains("DELIMITER ;")?source.substring(source.indexOf("DELIMITER ;")+"DELIMITER ;".length()):source)
+                .replaceAll("(?m)^SET time_zone[^;]*;", "")
                 .replace(" ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci","")
                 .replace(") STORED",")").replace("UTC_TIMESTAMP(6)","CURRENT_TIMESTAMP");
         new ResourceDatabasePopulator(new ByteArrayResource(sql.getBytes(StandardCharsets.UTF_8))).execute(jdbc.getDataSource());

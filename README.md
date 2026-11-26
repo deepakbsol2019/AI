@@ -2,6 +2,8 @@
 
 Spring Boot 4.2 / Java 25 backend with the existing Ollama, MySQL, PDFBox, upload-status, and local PDF storage flows.
 
+Latest changes are in [profile, permissions and role layout](PROFILE_ROLE_LAYOUT.md): cleanup/permission modals, truthful delete results, Copy Role, minimized profile sidebar, half/full-width library layout and tenant-authorized Add User (including Individual accounts). This supersedes conflicting earlier layout/invitation descriptions.
+
 The current [management pages and sidebar guide](MANAGEMENT_PAGES.md) covers full-page user/details/create/confirmation routes, shared fixed shell, permission-based current-tenant invitations and distinct soft deletion. It supersedes earlier details-popup/header-profile layout descriptions while retaining the confirmed SUPER_USER policies.
 
 Current [User Management](USER_MANAGEMENT.md) implements `/user/users`, scoped details/editing, dedicated activation and role assignment, durable deletion jobs, the authenticated header profile, and standalone registration directories. Its deletion matrix and provisioning rules supersede earlier account-deletion exclusions and lazy individual-directory descriptions.

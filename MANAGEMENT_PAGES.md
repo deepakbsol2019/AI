@@ -1,5 +1,7 @@
 # Management pages, sidebar and current-tenant invitations
 
+The later [profile/role/layout update](PROFILE_ROLE_LAYOUT.md) replaces conflicting instructions below: three status options, cleanup and own-permissions modals, Copy Role, initially minimized profile panel, two-column Home layout and super-user-selected Add User tenants with no Individual exclusion. Existing protected-role, session and deletion safety remains in force.
+
 This increment supersedes the details-popup/header-profile layout in [USER_MANAGEMENT.md](USER_MANAGEMENT.md). The existing SUPER_USER global policies and confirmed whole-tenant deletion behavior remain in force, as explicitly confirmed for this update. Ordinary users cannot use foreign tenant/user/role IDs to escape their scope. No new cross-tenant administration bypass was added.
 
 ## Routes and shared layout

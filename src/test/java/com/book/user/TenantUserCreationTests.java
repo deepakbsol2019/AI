@@ -2,6 +2,7 @@ package com.book.user;
 
 import java.util.*;
 import com.book.user.controller.TenantUserCreationController;
+import com.book.user.controller.OwnProfileController;
 import com.book.user.controller.UserManagementController;
 import com.book.user.dto.AuthenticatedIdentity;
 import com.book.user.service.*;
@@ -29,7 +30,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class TenantUserCreationTests {
     @org.springframework.boot.test.context.TestConfiguration(proxyBeanMethods=false)
     @Import({UserSecurityIntegrationTests.Config.class,TenantUserCreationController.class,TenantUserCreationService.class,
-        UserManagementController.class,UserManagementService.class,UserDeletionService.class,UserDeletionFiles.class}) static class Config{}
+        UserManagementController.class,UserManagementService.class,UserDeletionService.class,UserDeletionFiles.class,
+        OwnProfileController.class,OwnProfileService.class}) static class Config{}
     AnnotationConfigWebApplicationContext context;MockMvc mvc;JdbcTemplate jdbc;SessionService sessions;PasswordService passwords;
     CredentialMailService mail;long creator,tenant,foreign,operator;Cookie csrfCookie;String csrf;JsonMapper json=JsonMapper.builder().build();
     @BeforeEach void setup()throws Exception{
@@ -73,21 +75,23 @@ class TenantUserCreationTests {
     }
     @Test void forgedTenantRoleAndCredentialFieldsAreRejectedAndDuplicateEmailsNeverLinkAcrossTenants()throws Exception{
         grant("USER_CREATE");var allowed=issue(creator);long before=jdbc.queryForObject("SELECT COUNT(*) FROM users",Long.class);
-        for(String field:List.of("tenantId","tenantCode","roleIds","password","status","is_system")){
+        for(String field:List.of("tenantCode","roleIds","password","status","is_system","authenticationType","loginPolicy")){
             var body=new LinkedHashMap<String,Object>();body.put("email","forged@example.com");body.put("displayName","Forged");body.put(field,999);
             mvc.perform(mutate(post("/api/user/users"),json.writeValueAsString(body)).header("Authorization",bearer(allowed))).andExpect(status().isBadRequest());
         }
+        long foreignTenant=jdbc.queryForObject("SELECT tenant_id FROM tenant_memberships WHERE user_id=?",Long.class,foreign);
+        mvc.perform(mutate(post("/api/user/users"),json.writeValueAsString(Map.of("email","forged@example.com","displayName","Forged","tenantId",foreignTenant))).header("Authorization",bearer(allowed))).andExpect(status().isNotFound());
         mvc.perform(mutate(post("/api/user/users"),"{\"email\":\"other@example.com\",\"displayName\":\"Do not link\"}").header("Authorization",bearer(allowed))).andExpect(status().isConflict());
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM users",Long.class)).isEqualTo(before);
         verifyNoInteractions(mail);
     }
-    @Test void invitationFailureRollsBackAccountMembershipAndCredentialAndIndividualCannotCreateAnotherMember()throws Exception{
+    @Test void invitationFailureRollsBackAccountMembershipAndCredentialWithoutHidingIndividualCapability()throws Exception{
         grant("USER_CREATE");var allowed=issue(creator);long before=jdbc.queryForObject("SELECT COUNT(*) FROM users",Long.class);
         doThrow(new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"Email unavailable")).when(mail).send(anyString(),anyString(),anyString(),any(),any());
         mvc.perform(mutate(post("/api/user/users"),"{\"email\":\"failure@example.com\",\"displayName\":\"No orphan\"}").header("Authorization",bearer(allowed))).andExpect(status().isServiceUnavailable());
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM users",Long.class)).isEqualTo(before);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM credential_tokens",Long.class)).isZero();
-        mvc.perform(get("/api/user/users/create-options").header("Authorization",bearer(issue(operator)))).andExpect(status().isForbidden());
+        mvc.perform(get("/api/user/users/create-options").header("Authorization",bearer(issue(operator)))).andExpect(status().isOk()).andExpect(jsonPath("$.tenantType").value("INDIVIDUAL"));
     }
     @Test void activeSsoTenantInvitesEmployeeWithProviderBoundSingleUseProofWithoutWeakeningOwnerOrEmailChecks()throws Exception{
         grant("USER_CREATE");
@@ -127,6 +131,54 @@ class TenantUserCreationTests {
         reset(mail);passwords.requestReset("deleted@example.com");verify(mail).requireAvailable();verifyNoMoreInteractions(mail);
         mvc.perform(get("/api/user/users").param("status","DELETED").header("Authorization",bearer(actor))).andExpect(status().isOk()).andExpect(jsonPath("$.total").value(1));
         mvc.perform(get("/api/user/users").param("status","INACTIVE").header("Authorization",bearer(actor))).andExpect(status().isOk()).andExpect(jsonPath("$.total").value(0));
+    }
+    @Test void tenantChoicesAndCreationAreSuperGlobalButOrdinaryCreatorsCannotForgeAnotherTenant()throws Exception{
+        grant("USER_CREATE");var actor=issue(creator);long foreignTenant=jdbc.queryForObject("SELECT tenant_id FROM tenant_memberships WHERE user_id=?",Long.class,foreign);
+        mvc.perform(get("/api/user/users/create-tenants").header("Authorization",bearer(actor))).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1)).andExpect(jsonPath("$[0].tenantId").value(tenant));
+        mvc.perform(get("/api/user/users/create-options").param("tenantId",Long.toString(foreignTenant)).header("Authorization",bearer(actor))).andExpect(status().isNotFound());
+        var highest=issue(operator);
+        mvc.perform(get("/api/user/users/create-tenants").header("Authorization",bearer(highest))).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(3));
+        mvc.perform(get("/api/user/users/create-options").param("tenantId",Long.toString(foreignTenant)).header("Authorization",bearer(highest))).andExpect(status().isOk()).andExpect(jsonPath("$.tenantId").value(foreignTenant));
+        var result=mvc.perform(mutate(post("/api/user/users"),json.writeValueAsString(Map.of("email","foreign-selected@example.com","displayName","Selected tenant member","tenantId",foreignTenant))).header("Authorization",bearer(highest))).andExpect(status().isCreated()).andReturn();
+        long user=json.readTree(result.getResponse().getContentAsString()).path("userId").asLong();
+        assertThat(jdbc.queryForObject("SELECT tenant_id FROM tenant_memberships WHERE user_id=?",Long.class,user)).isEqualTo(foreignTenant);
+        verify(mail).send(eq("foreign-selected@example.com"),eq(PasswordService.SETUP),anyString(),isNull(),any());
+    }
+    @Test void individualTenantCanAddAUserWhenExplicitCapabilityAllowsIt()throws Exception{
+        long individualTenant=jdbc.queryForObject("SELECT tenant_id FROM tenant_memberships WHERE user_id=?",Long.class,operator);
+        jdbc.update("UPDATE roles SET role_code='OWNER',is_system=FALSE WHERE tenant_id=?",individualTenant);
+        jdbc.update("INSERT INTO role_permissions(tenant_id,role_id,permission_id,is_explicit,created_at,updated_at) SELECT r.tenant_id,r.role_id,p.permission_id,TRUE,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP FROM roles r CROSS JOIN permissions p WHERE r.tenant_id=? AND p.permission_code='USER_CREATE'",individualTenant);
+        var actor=issue(operator);
+        mvc.perform(get("/api/user/users/capabilities").header("Authorization",bearer(actor))).andExpect(status().isOk()).andExpect(jsonPath("$.canCreateUsers").value(true));
+        var result=mvc.perform(mutate(post("/api/user/users"),json.writeValueAsString(Map.of("email","individual-member@example.com","displayName","Individual member","tenantId",individualTenant))).header("Authorization",bearer(actor))).andExpect(status().isCreated()).andReturn();
+        long user=json.readTree(result.getResponse().getContentAsString()).path("userId").asLong();
+        assertThat(jdbc.queryForObject("SELECT tenant_id FROM tenant_memberships WHERE user_id=?",Long.class,user)).isEqualTo(individualTenant);
+        assertThat(jdbc.queryForObject("SELECT tenant_type FROM tenants WHERE tenant_id=?",String.class,individualTenant)).isEqualTo("INDIVIDUAL");
+        verify(mail).send(eq("individual-member@example.com"),eq(PasswordService.SETUP),anyString(),isNull(),any());
+    }
+    @Test void ownDetailsAndPermissionsAreAuthenticatedSelfOnlyWithActualRouteMetadata()throws Exception{
+        mvc.perform(get("/api/user/profile/details")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/user/profile/permissions")).andExpect(status().isUnauthorized());
+        jdbc.update("UPDATE permissions SET description='Actual fixture permission description' WHERE permission_code='BOOKS.VIEW'");var actor=issue(creator);
+        mvc.perform(get("/api/user/profile/details").param("userId",Long.toString(operator)).header("Authorization",bearer(actor))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value("creator@example.com")).andExpect(jsonPath("$.tenantId").value(tenant)).andExpect(jsonPath("$.tenantName").value("Create Company"));
+        var response=mvc.perform(get("/api/user/profile/permissions").param("tenantId","999999").header("Authorization",bearer(actor))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value("creator@example.com")).andReturn();
+        var nodes=json.readTree(response.getResponse().getContentAsString()).path("permissions");boolean found=false;
+        for(var node:nodes)if("BOOKS.VIEW".equals(node.path("code").asText())){
+            found=true;assertThat(node.path("description").asText()).isEqualTo("Actual fixture permission description");assertThat(node.path("component").asText()).isEqualTo("BOOKS");
+            assertThat(node.path("sourceRoles").size()).isGreaterThan(0);assertThat(node.path("routes").size()).isGreaterThan(0);
+            assertThat(node.path("routes").get(0).path("service").asText()).isEqualTo("BOOK_SEARCH");
+            assertThat(node.path("routes").get(0).path("method").asText()).isEqualTo("GET");assertThat(node.path("routes").get(0).path("operations").get(0).asText()).isEqualTo("Read");
+        }
+        assertThat(found).isTrue();assertThat(response.getResponse().getContentAsString()).doesNotContain("password_hash","accessToken","refreshToken","immutable-fixture");
+        mvc.perform(get("/api/user/profile/permissions/"+operator).header("Authorization",bearer(actor))).andExpect(status().isForbidden());
+    }
+    @Test void ownPermissionPopupWorksForAuthenticatedUserWithoutManagementOrAccountGrants()throws Exception{
+        jdbc.update("DELETE FROM role_permissions WHERE tenant_id=?",tenant);var actor=issue(creator);
+        mvc.perform(get("/api/user/profile/details").header("Authorization",bearer(actor))).andExpect(status().isOk()).andExpect(jsonPath("$.username").value("creator@example.com"));
+        mvc.perform(get("/api/user/profile/permissions").header("Authorization",bearer(actor))).andExpect(status().isOk()).andExpect(jsonPath("$.permissions.length()").value(0));
+        mvc.perform(get("/api/user/users").header("Authorization",bearer(actor))).andExpect(status().isForbidden());
     }
     String confirm(MvcResult preview)throws Exception{var node=json.readTree(preview.getResponse().getContentAsString());return json.writeValueAsString(Map.of("version",node.path("version").asText(),"scope",node.path("scope").asText(),"affectedUsers",node.path("affectedUsers").asInt(),"confirmation",node.path("confirmation").asText()));}
     void grant(String code){jdbc.update("INSERT INTO role_permissions(tenant_id,role_id,permission_id,is_explicit,created_at,updated_at) SELECT r.tenant_id,r.role_id,p.permission_id,TRUE,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP FROM roles r CROSS JOIN permissions p WHERE r.tenant_id=? AND p.permission_code=?",tenant,code);}

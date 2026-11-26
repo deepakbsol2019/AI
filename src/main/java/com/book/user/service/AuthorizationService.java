@@ -97,7 +97,8 @@ public class AuthorizationService {
         if (matching.size() > 1 && paths.getPatternComparator(path).compare(selected.pattern(), matching.get(1).pattern()) == 0) throw denied();
         if (selected.isPublic()) return;
         // Authenticated self-profile is available to every signed-in user; the controller accepts no target ID.
-        if("GET".equals(method) && ("/api/user/profile".equals(path) || "/api/user/users/capabilities".equals(path))) return;
+        if("GET".equals(method) && ("/api/user/profile".equals(path) || "/api/user/profile/details".equals(path)
+                || "/api/user/profile/permissions".equals(path) || "/api/user/users/capabilities".equals(path))) return;
         List<Long> required = jdbc.queryForList("SELECT permission_id FROM endpoint_permissions WHERE endpoint_id=? ORDER BY permission_id", Long.class, selected.id());
         if (required.isEmpty()) throw denied();
         boolean superUser = isSuperUser(principal);
