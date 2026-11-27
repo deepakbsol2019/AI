@@ -71,7 +71,7 @@ public class TopicPageOffsetWriter {
         }
         String offsetName = bookName + "_offset";
         if (offsetName.length() > TopicDetails.MAX_TOPIC_NAME_LENGTH) {
-            issues.add(issue(null, "offset_name_too_long", "The required offset topic name exceeds topic_details.topic_name capacity."));
+            issues.add(issue(null, "offset_name_too_long", "The required offset topic name exceeds pdf_file_topic_details.topic_name capacity."));
         }
 
         List<TopicDetails> saved = topics.findAllLockedForBook(bookId);

@@ -114,7 +114,7 @@ class TopicPdfUploadTransactionTests extends com.book.user.TenantAwareTest {
         assertThat(prefix.getTopicName()).isEqualTo(bookName + "_offset");
         assertThat(prefix.getStartPage()).isEqualTo(1);
         assertThat(prefix.getEndPage()).isEqualTo(20);
-        assertThat(Path.of(prefix.getPdfPath())).hasParent(STORAGE_ROOT.resolve("1").resolve(bookName))
+        assertThat(Path.of(prefix.getPdfPath())).hasParent(STORAGE_ROOT.resolve("1/PDF/1").resolve(bookName))
                 .hasFileName(bookName + "_offset.pdf");
         try (PDDocument document = Loader.loadPDF(Path.of(prefix.getPdfPath()).toFile())) {
             assertThat(document.getNumberOfPages()).isEqualTo(20);
@@ -126,7 +126,7 @@ class TopicPdfUploadTransactionTests extends com.book.user.TenantAwareTest {
         assertThat(returned.getEndPage()).isEqualTo(23);
         assertThat(returned.getPdfPath()).isNotBlank();
         Path savedPdf = Path.of(returned.getPdfPath());
-        assertThat(savedPdf).isRegularFile().hasParent(STORAGE_ROOT.resolve("1").resolve(bookName)).hasFileName("Real Numbers.pdf");
+        assertThat(savedPdf).isRegularFile().hasParent(STORAGE_ROOT.resolve("1/PDF/1").resolve(bookName)).hasFileName("Real Numbers.pdf");
         try (PDDocument document = Loader.loadPDF(savedPdf.toFile())) {
             assertThat(document.getNumberOfPages()).isEqualTo(3);
             assertThat(new org.apache.pdfbox.text.PDFTextStripper().getText(document)).contains("Real Numbers");
@@ -161,8 +161,8 @@ class TopicPdfUploadTransactionTests extends com.book.user.TenantAwareTest {
     void pdfPathPersistenceFailureRollsBackAllRowsAndDeletesAlreadyWrittenPdfs() throws Exception {
         Counts before = counts();
         List<Path> existingFiles = regularFiles();
-        long priorMaxBookId = jdbc.queryForObject("select coalesce(max(book_id), 0) from book_details", Long.class);
-        jdbc.execute("alter table topic_details add constraint reject_atomic_pdf_path check (pdf_path is null or book_id <= "
+        long priorMaxBookId = jdbc.queryForObject("select coalesce(max(book_id), 0) from pdf_file_details", Long.class);
+        jdbc.execute("alter table pdf_file_topic_details add constraint reject_atomic_pdf_path check (pdf_path is null or book_id <= "
                 + priorMaxBookId + ")");
         try {
             assertThatThrownBy(() -> uploadService.uploadFile(upload())).isInstanceOf(RuntimeException.class);
@@ -171,7 +171,7 @@ class TopicPdfUploadTransactionTests extends com.book.user.TenantAwareTest {
             assertThat(regularFiles()).containsExactlyElementsOf(existingFiles);
             verify(analyzer, times(1)).analyze(any(), any());
         } finally {
-            jdbc.execute("alter table topic_details drop constraint reject_atomic_pdf_path");
+            jdbc.execute("alter table pdf_file_topic_details drop constraint reject_atomic_pdf_path");
         }
     }
 
@@ -257,7 +257,7 @@ class TopicPdfUploadTransactionTests extends com.book.user.TenantAwareTest {
         assertThat(result.topicDetails().getLast().getTopicName()).isEqualTo("Index");
         assertThat(result.topicDetails().getLast().getEndPage()).isEqualTo(372);
         assertThat(result.topicDetails()).allSatisfy(topic -> assertThat(Path.of(topic.getPdfPath()))
-                .hasParent(STORAGE_ROOT.resolve("1").resolve(bookName))
+                .hasParent(STORAGE_ROOT.resolve("1/PDF/1").resolve(bookName))
                 .hasFileName(TopicPdfFileStore.topicFileName(topic.getTopicName())));
         assertThat(fileStore.attempts.get()).isEqualTo(23);
         assertMergedMatchesSource(result, source);
@@ -279,9 +279,9 @@ class TopicPdfUploadTransactionTests extends com.book.user.TenantAwareTest {
     }
 
     private Counts counts() {
-        return new Counts(jdbc.queryForObject("select count(*) from book_details", Long.class),
-                jdbc.queryForObject("select count(*) from author_details", Long.class),
-                jdbc.queryForObject("select count(*) from topic_details", Long.class));
+        return new Counts(jdbc.queryForObject("select count(*) from pdf_file_details", Long.class),
+                jdbc.queryForObject("select count(*) from pdf_file_author_details", Long.class),
+                jdbc.queryForObject("select count(*) from pdf_file_topic_details", Long.class));
     }
 
     private List<Path> regularFiles() throws IOException {

@@ -3,7 +3,7 @@ package com.book.entity;
 import jakarta.persistence.*;
 
 @Entity
-@Table(name = "author_details")
+@Table(name = "pdf_file_author_details")
 public class AuthorDetails extends AuditedEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

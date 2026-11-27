@@ -22,10 +22,13 @@ public class UploadFileControllerImpl implements UploadFileController {
 
 	private final BookUploadSubmissionService submissions;
 	private final BookUploadStatusService statuses;
+	private final org.springframework.beans.factory.ObjectProvider<com.book.spreadsheet.upload.SpreadsheetUploadService> spreadsheets;
 
-	public UploadFileControllerImpl(BookUploadSubmissionService submissions, BookUploadStatusService statuses) {
+	public UploadFileControllerImpl(BookUploadSubmissionService submissions, BookUploadStatusService statuses,
+            org.springframework.beans.factory.ObjectProvider<com.book.spreadsheet.upload.SpreadsheetUploadService> spreadsheets) {
 		this.submissions = submissions;
 		this.statuses = statuses;
+        this.spreadsheets=spreadsheets;
 	}
 
 	@Override
@@ -33,24 +36,32 @@ public class UploadFileControllerImpl implements UploadFileController {
 		TenantContext.requireUserId();
 		String originalFileName = multipartFile.getOriginalFilename();
 		if (originalFileName == null || originalFileName.isBlank() || originalFileName.length()>1024 || multipartFile.isEmpty()) {
-			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A named, non-empty PDF upload is required.");
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A named, non-empty document is required.");
 		}
-		// Multipart resources belong to this request. Only independent bytes may outlive its cleanup.
-		byte[] pdfBytes = multipartFile.getBytes();
-		if (pdfBytes.length == 0) {
-			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Upload a non-empty PDF.");
-		}
+        if(multipartFile.getSize()>100L*1024*1024)throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE,"The document exceeds 100 MiB.");
+        byte[] header;
+        try(var input=multipartFile.getInputStream()){header=input.readNBytes(1029);}
         // Browser MIME/extension are hints; the server recognizes PDF content before acceptance.
         // Full parsing and all existing PDF processing remain in the background worker.
         boolean pdf=false;
-        for(int offset=0;offset<=Math.min(1024,pdfBytes.length-5);offset++) {
-            if(pdfBytes[offset]=='%' && pdfBytes[offset+1]=='P' && pdfBytes[offset+2]=='D'
-                    && pdfBytes[offset+3]=='F' && pdfBytes[offset+4]=='-'){pdf=true;break;}
+        for(int offset=0;offset<=Math.min(1024,header.length-5);offset++) {
+            if(header[offset]=='%' && header[offset+1]=='P' && header[offset+2]=='D'
+                    && header[offset+3]=='F' && header[offset+4]=='-'){pdf=true;break;}
         }
-        if(!pdf)throw new ResponseStatusException(HttpStatus.UNSUPPORTED_MEDIA_TYPE,"Only PDF documents are supported. The uploaded content is not a PDF.");
+        if(!pdf){
+            var format=com.book.spreadsheet.parse.SpreadsheetFormat.fromFilename(originalFileName);
+            var result=spreadsheets.getObject().submit(multipartFile,format);
+            BookUploadStatus receipt=result.upload();receipt.setFileId(result.fileId());receipt.setSheetCount(result.sheetCount());
+            return accepted(receipt);
+        }
+		// Preserve the existing PDF worker's detached-byte contract.
+		byte[] pdfBytes = multipartFile.getBytes();
 		UploadFileDtlsDto uploadedFile = new UploadFileDtlsDto(originalFileName, pdfBytes,
 				"application/pdf", null, null, (long) pdfBytes.length);
 		BookUploadStatus savedStatus = submissions.submit(uploadedFile);
+        return accepted(savedStatus);
+	}
+    private ResponseEntity<BookUploadStatus> accepted(BookUploadStatus savedStatus){
 		URI statusLocation = URI.create("/api/upload-status/" + savedStatus.getBookUploadId());
 		HttpStatus responseStatus = BookUploadStatus.FAILED.equals(savedStatus.getStatus())
 				? HttpStatus.SERVICE_UNAVAILABLE : HttpStatus.ACCEPTED;

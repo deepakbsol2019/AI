@@ -97,7 +97,7 @@ class TopicPdfFileStoreTests extends com.book.user.TenantAwareTest {
     void extractsTheInclusiveOneBasedRangeWithoutChangingTheSource() throws Exception {
         TopicPdfFileStore store = new TopicPdfFileStore(root.toString(), 3);
         Path operation = store.createOperationDirectory(7L, "Book");
-        assertThat(operation).hasParent(root.resolve("1")).hasFileName("Book");
+        assertThat(operation).hasParent(root.resolve("1/PDF/1")).hasFileName("Book");
         byte[] source = pdf(4);
         byte[] unchanged = source.clone();
 
@@ -282,7 +282,7 @@ class TopicPdfFileStoreTests extends com.book.user.TenantAwareTest {
 
         var saved = store.extractOffsetAndSave(pdf(4), 99L, "My Book_offset", 2, operation);
 
-        assertThat(Path.of(saved.pdfPath())).hasParent(root.resolve("1").resolve("My Book")).hasFileName("My Book_offset.pdf");
+        assertThat(Path.of(saved.pdfPath())).hasParent(root.resolve("1/PDF/1/My Book")).hasFileName("My Book_offset.pdf");
         try (PDDocument document = Loader.loadPDF(Path.of(saved.pdfPath()).toFile())) {
             assertThat(document.getNumberOfPages()).isEqualTo(2);
             assertThat(new PDFTextStripper().getText(document)).contains("Source page 1", "Source page 2")
@@ -342,16 +342,39 @@ class TopicPdfFileStoreTests extends com.book.user.TenantAwareTest {
     }
 
     @Test
-    void anExistingBookFolderIsNeverAdoptedOrModified() throws Exception {
-        Path existing = Files.createDirectory(Files.createDirectories(root.resolve("1")).resolve("Existing Book"));
+    void anExistingBookFolderRetainsOlderFilesWhileNewWritesUseExclusiveLeafNames() throws Exception {
+        Path existing = Files.createDirectories(root.resolve("1/PDF/1/Existing Book"));
         Path existingPdf = Files.writeString(existing.resolve("Opening.pdf"), "previous upload");
         TopicPdfFileStore store = new TopicPdfFileStore(root.toString(), 1);
 
-        assertThatThrownBy(() -> store.createOperationDirectory(8L, "Existing Book"))
-                .isInstanceOf(TopicPdfFileStore.TopicPdfStorageException.class);
-
+        Path operation=store.createOperationDirectory(8L,"Existing Book");
+        var saved=store.extractAndSave(pdf(1),15L,"Opening",1,1,operation);
+        assertThat(Path.of(saved.pdfPath())).isNotEqualTo(existingPdf).hasParent(existing);
+        assertThat(TopicPdfFileStore.matchesTopicFileName(Path.of(saved.pdfPath()).getFileName().toString(),"Opening")).isTrue();
         assertThat(existingPdf).hasContent("previous upload");
-        assertThatThrownBy(() -> store.cleanupOperation(existing)).isInstanceOf(IllegalArgumentException.class);
+        store.cleanupOperation(operation);
+        assertThat(existingPdf).hasContent("previous upload");
+        assertThat(Path.of(saved.pdfPath())).doesNotExist();
+    }
+
+    @Test
+    void lateRollbackCleanupCannotRemoveANewerUploadInTheSameBookFolder()throws Exception{
+        TopicPdfFileStore store=new TopicPdfFileStore(root.toString(),1);
+        Path first=store.createOperationDirectory(7L,"Book");var firstId=store.operationId(first);
+        store.extractAndSave(pdf(1),12L,"Opening",1,1,first);store.cleanupOperation(first);
+        Path second=store.createOperationDirectory(8L,"Book");
+        var saved=store.extractAndSave(pdf(1),13L,"Opening",1,1,second);
+        store.cleanupOperation(first,firstId);
+        assertThat(Path.of(saved.pdfPath())).isRegularFile();
+        store.cleanupOperation(second);
+    }
+
+    @Test
+    void aMissingUploadRootAndNestedPdfParentsAreCreatedBeforeWriting()throws Exception{
+        Path absent=root.resolve("missing/upload-root");var store=new TopicPdfFileStore(absent.toString(),1);
+        Path operation=store.createOperationDirectory(7L,"Book");
+        var saved=store.saveWholeBook(pdf(1),12L,"Book",operation);
+        assertThat(Path.of(saved.pdfPath())).hasParent(absent.resolve("1/PDF/1/Book")).isRegularFile();
     }
 
     private static byte[] pdf(int pages) throws IOException {

@@ -327,7 +327,7 @@ public class TopicPdfUploadService {
             }
             Path path = Path.of(saved.pdfPath()).toAbsolutePath().normalize();
             if (!Objects.equals(path.getParent(), operationRoot)
-                    || !path.getFileName().toString().equals(TopicPdfFileStore.topicFileName(inputs.get(i).topicName()))
+                    || !TopicPdfFileStore.matchesTopicFileName(path.getFileName().toString(),inputs.get(i).topicName())
                     || !Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)
                     || !seenPaths.add(path)) {
                 throw new TopicPdfUploadException("A topic PDF file is missing, duplicated or outside this operation's directory.");
@@ -343,12 +343,13 @@ public class TopicPdfUploadService {
     }
 
     private void registerCompletionCleanup(Path operationDirectory) {
+        java.util.UUID operationId=files.operationId(operationDirectory);
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCompletion(int status) {
                 try {
-                    if (status == STATUS_COMMITTED) files.retainOperation(operationDirectory);
-                    else files.cleanupOperation(operationDirectory);
+                    if (status == STATUS_COMMITTED) files.retainOperation(operationDirectory,operationId);
+                    else files.cleanupOperation(operationDirectory,operationId);
                 }
                 catch (RuntimeException failure) {
                     logger.error("Topic PDF completion cleanup failed for {} (transaction status {})",

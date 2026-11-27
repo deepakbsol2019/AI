@@ -35,7 +35,7 @@ class UniqueBookNamePersistenceTests extends com.book.user.TenantAwareTest {
                 .isInstanceOf(DataIntegrityViolationException.class);
 
         assertThat(books.findById(original.getBookId())).isPresent();
-        assertThat(jdbc.queryForObject("select count(*) from book_details where book_name = ?", Long.class, name))
+        assertThat(jdbc.queryForObject("select count(*) from pdf_file_details where book_name = ?", Long.class, name))
                 .isEqualTo(1);
         assertThat(authorCount()).isEqualTo(beforeAuthors);
     }
@@ -85,12 +85,12 @@ class UniqueBookNamePersistenceTests extends com.book.user.TenantAwareTest {
             assertThat(List.of(first.get(20, TimeUnit.SECONDS), second.get(20, TimeUnit.SECONDS)))
                     .containsExactlyInAnyOrder(true, false);
         }
-        assertThat(jdbc.queryForObject("select count(*) from book_details where book_name = ?", Long.class, name))
+        assertThat(jdbc.queryForObject("select count(*) from pdf_file_details where book_name = ?", Long.class, name))
                 .isEqualTo(1);
     }
 
     private long authorCount() {
-        return jdbc.queryForObject("select count(*) from author_details", Long.class);
+        return jdbc.queryForObject("select count(*) from pdf_file_author_details", Long.class);
     }
 
     private static BookDetails book(String name) {

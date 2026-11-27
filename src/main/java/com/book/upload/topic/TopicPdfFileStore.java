@@ -1,16 +1,15 @@
 package com.book.upload.topic;
 
 import java.io.IOException;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -42,19 +41,22 @@ public class TopicPdfFileStore {
         this.maxAttempts = maxAttempts;
     }
 
-    /** The requested book folder is exclusively owned by this upload until its transaction completes. */
+    /** The folder may contain older committed PDFs; only this attempt's tracked files are owned. */
     public Path createOperationDirectory(Long bookId, String bookName) {
         if (bookId == null || bookId <= 0) {
             throw new IllegalArgumentException("A persisted book ID is required for topic PDF storage.");
         }
         try {
             long tenantId=com.book.user.security.TenantContext.requireTenantId();
-            Path root = storage.provision(tenantId);
-            Path operation = root.resolve(bookFolderName(bookName)).toAbsolutePath().normalize();
-            // Never adopt an existing folder: it may contain another upload's committed PDFs.
-            Files.createDirectory(operation);
-            operations.put(operation, new OperationFiles(tenantId));
-            return operation;
+            long userId=com.book.user.security.TenantContext.requireUserId();
+            Path requested=storage.tenantPath(tenantId).resolve("PDF").resolve(Long.toString(userId)).resolve(bookFolderName(bookName));
+            synchronized(operations) {
+                if(operations.containsKey(requested))throw new TopicPdfStorageException("Another upload is still using this book directory; retry after it finishes.");
+                boolean created=!Files.exists(requested,LinkOption.NOFOLLOW_LINKS);
+                Path operation=storage.documentDirectory(tenantId,userId,"PDF",bookName);
+                operations.put(operation,new OperationFiles(tenantId,created));
+                return operation;
+            }
         }
         catch (IOException exception) {
             throw new TopicPdfStorageException("Could not create the book's topic PDF operation directory.", exception);
@@ -104,7 +106,6 @@ public class TopicPdfFileStore {
             files.activeWorkers++;
         }
         try {
-            Path destination = operation.resolve(filename);
             for (int attempt = 1; attempt <= maxAttempts; attempt++) {
                 Path temporary = null;
                 try {
@@ -116,10 +117,9 @@ public class TopicPdfFileStore {
                     files.paths.add(temporary);
                     if (wholeBook) writeWholeBookPdf(sourcePdf, temporary);
                     else writeTopicPdf(sourcePdf, startPage, endPage, temporary);
-                    if (Files.exists(destination, LinkOption.NOFOLLOW_LINKS)) {
-                        throw new IOException("A topic PDF already exists in this operation: " + destination);
-                    }
-                    moveCompletedFile(temporary, destination);
+                    Path destination=operation.resolve(filename);
+                    if(Files.exists(destination,LinkOption.NOFOLLOW_LINKS))destination=operation.resolve(collisionFileName(filename));
+                    moveCompletedFile(temporary, destination, files);
                     files.paths.remove(temporary);
                     files.paths.add(destination);
                     return new SavedTopicPdf(topicId, destination.toString());
@@ -146,7 +146,7 @@ public class TopicPdfFileStore {
     }
 
     public static String bookFolderName(String bookName) {
-        return com.book.storage.TenantStoragePaths.filename(windowsComponent(bookName, 255));
+        return com.book.storage.TenantStoragePaths.folderName(bookName);
     }
 
     public static String topicFileName(String topicName) {
@@ -195,13 +195,28 @@ public class TopicPdfFileStore {
         }
     }
 
-    private static void moveCompletedFile(Path temporary, Path destination) throws IOException {
-        try {
-            Files.move(temporary, destination, StandardCopyOption.ATOMIC_MOVE);
-        }
-        catch (AtomicMoveNotSupportedException exception) {
-            // Both paths have the same unique parent, so this never crosses filesystems.
-            Files.move(temporary, destination);
+    private static String collisionFileName(String filename) {
+        String base=filename.substring(0,filename.length()-4);
+        return base.substring(0,Math.min(base.length(),214))+"_"+UUID.randomUUID()+".pdf";
+    }
+    public static boolean matchesTopicFileName(String filename,String topicName) {
+        String ordinary=topicFileName(topicName);
+        if(ordinary.equals(filename))return true;
+        String base=ordinary.substring(0,ordinary.length()-4);
+        base=base.substring(0,Math.min(base.length(),214));
+        return filename.matches(java.util.regex.Pattern.quote(base)+"_[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\\.pdf");
+    }
+    private static void moveCompletedFile(Path temporary,Path destination,OperationFiles files) throws IOException {
+        boolean owned=false;
+        try(var input=Files.newInputStream(temporary)) {
+            var output=Files.newOutputStream(destination,java.nio.file.StandardOpenOption.CREATE_NEW,java.nio.file.StandardOpenOption.WRITE);
+            owned=true;files.paths.add(destination);
+            try(output){input.transferTo(output);}
+            Files.delete(temporary);
+        } catch(IOException failure) {
+            if(owned && !deleteAttempt(destination,files,failure))
+                throw new TopicPdfStorageException("A failed PDF write could not be removed safely.",failure);
+            throw failure;
         }
     }
 
@@ -218,12 +233,21 @@ public class TopicPdfFileStore {
             }
             throw new IllegalArgumentException("Refusing to clean a directory not owned by this operation.");
         }
-        synchronized (files) {
+        cleanupOperation(operation,files);
+    }
+    public UUID operationId(Path operationDirectory){return ownedOperation(normalized(operationDirectory)).id;}
+    /** Transaction callbacks cannot act on a newer upload that later reuses the same book folder. */
+    public void cleanupOperation(Path operationDirectory,UUID expectedId) {
+        Path operation=normalized(operationDirectory);OperationFiles files=operations.get(operation);
+        if(files!=null && files.id.equals(expectedId))cleanupOperation(operation,files);
+    }
+    private void cleanupOperation(Path operation,OperationFiles files) {
+      synchronized (files) {
+            if(files.cleaned || operations.get(operation)!=files)return;
             if (files.activeWorkers != 0) {
                 throw new IllegalStateException("Wait for all topic PDF workers before cleanup.");
             }
             files.closed = true;
-        }
         List<IOException> failures = new ArrayList<>();
         try {
             requireOperationDirectory(operation);
@@ -246,8 +270,11 @@ public class TopicPdfFileStore {
         }
         if (failures.isEmpty()) {
             try {
-                Files.deleteIfExists(operation);
-                operations.remove(operation, files);
+                synchronized(operations) {
+                    if(files.createdDirectory)Files.deleteIfExists(operation);
+                    files.cleaned=true;
+                    operations.remove(operation, files);
+                }
             }
             catch (IOException exception) {
                 failures.add(exception);
@@ -259,6 +286,7 @@ public class TopicPdfFileStore {
             failures.stream().skip(1).forEach(exception::addSuppressed);
             throw exception;
         }
+      }
     }
 
     /** Called after a successful database commit to release tracking while retaining the PDFs. */
@@ -271,6 +299,15 @@ public class TopicPdfFileStore {
             }
             files.closed = true;
             operations.remove(operation, files);
+        }
+    }
+    public void retainOperation(Path operationDirectory,UUID expectedId){
+        Path operation=normalized(operationDirectory);OperationFiles files=operations.get(operation);
+        if(files==null)return;
+        synchronized(files){
+            if(!files.id.equals(expectedId) || operations.get(operation)!=files)return;
+            if(files.activeWorkers!=0 || files.closed)throw new IllegalStateException("Cannot retain an active or closed topic PDF operation.");
+            files.closed=true;operations.remove(operation,files);
         }
     }
 
@@ -314,12 +351,15 @@ public class TopicPdfFileStore {
 
     private static final class OperationFiles {
         private final long tenantId;
-        private OperationFiles(long tenantId) { this.tenantId=tenantId; }
+        private final boolean createdDirectory;
+        private final UUID id=UUID.randomUUID();
+        private OperationFiles(long tenantId,boolean createdDirectory) { this.tenantId=tenantId;this.createdDirectory=createdDirectory; }
         private final Set<Path> paths = ConcurrentHashMap.newKeySet();
         private final Set<Long> claimedTopics = ConcurrentHashMap.newKeySet();
         private final Set<String> claimedFilenames = ConcurrentHashMap.newKeySet();
         private int activeWorkers;
         private boolean closed;
+        private boolean cleaned;
     }
 
     public record SavedTopicPdf(Long topicId, String pdfPath) { }

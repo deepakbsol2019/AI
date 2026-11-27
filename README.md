@@ -2,6 +2,10 @@
 
 Spring Boot 4.2 / Java 25 backend with the existing Ollama, MySQL, PDFBox, upload-status, and local PDF storage flows.
 
+The current [document table names, PDF reset and upload-directory guide](DOCUMENT_TABLE_LAYOUT.md) records the requested canonical names, verified row cleanup/backup, safe duplicate handling and `tenant/type/user/book` folder rule. It supersedes older physical names and folder examples below.
+
+The latest [CSV / Excel upload, preview and download guide](SPREADSHEETS.md) documents the three-table migration, fixed 500-row ingestion, exact originals and standalone sheets, PDF / CSV / XLSX tabs, tenant isolation, service-only JSON authentication and actual verification results.
+
 The current [viewer, profile and role update](VIEWER_PROFILE_ROLE_UPDATES.md) covers custom reading colors, stable facing-page rendering, fullscreen zoom, notification-only Home uploads, tenant-specific Add User role selection and the header profile icon, with verification results and runtime limits.
 
 The latest [upload history, UTC events and Full Page reader guide](UPLOAD_HISTORY_READER.md) covers private tenant-plus-user upload history, Upload Document notices, tenant-name uniqueness, local timezone display and Home scrolling/pagination. It supersedes conflicting earlier upload/layout descriptions and records migration/verification details.

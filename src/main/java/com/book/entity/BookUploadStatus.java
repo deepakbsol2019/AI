@@ -15,7 +15,7 @@ import jakarta.persistence.Table;
 
 /** Durable upload receipt, independent of the transaction that imports the book. */
 @Entity(name = "Book_upload_status")
-@Table(name = "book_upload_status")
+@Table(name = "pdf_file_status")
 public class BookUploadStatus {
     public static final String IN_PROGRESS = "inprogress";
     public static final String FAILED = "failed";
@@ -44,6 +44,10 @@ public class BookUploadStatus {
     private Instant updatedAt;
     @Column(name = "processing_state", length = 16)
     private String state;
+    @jakarta.persistence.Transient
+    private Long fileId;
+    @jakarta.persistence.Transient
+    private Integer sheetCount;
 
     @Column(nullable = false, length = 16)
     private String status;
@@ -77,6 +81,12 @@ public class BookUploadStatus {
         return SUCCESS.equals(status)?"COMPLETED":FAILED.equals(status)?"FAILED":"PROCESSING";
     }
     public void setState(String value) { state=value; }
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    public Long getFileId(){return fileId;}
+    public void setFileId(Long value){fileId=value;}
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    public Integer getSheetCount(){return sheetCount;}
+    public void setSheetCount(Integer value){sheetCount=value;}
     public String getFailureReason() { return FAILED.equals(status)?message:null; }
 
     /** A running job cannot mutate the already-created HTTP acknowledgement. */
@@ -88,6 +98,7 @@ public class BookUploadStatus {
         copy.message = message;
         copy.uploadedBy=uploadedBy;copy.fileName=fileName;copy.bookName=bookName;
         copy.createdAt=createdAt;copy.updatedAt=updatedAt;copy.state=state;
+        copy.fileId=fileId;copy.sheetCount=sheetCount;
         return copy;
     }
 }

@@ -50,6 +50,7 @@ class TopicPdfUploadServiceTests extends com.book.user.TenantAwareTest {
     private BookExtractionResult saved;
     private List<TopicDetails> stored;
     private Path operation;
+    private final java.util.UUID operationId=java.util.UUID.randomUUID();
     private TopicPdfUploadService service;
 
     @BeforeEach
@@ -92,6 +93,7 @@ class TopicPdfUploadServiceTests extends com.book.user.TenantAwareTest {
             return 1;
         });
         operation = root.resolve("Original Book Name");
+        when(files.operationId(operation)).thenReturn(operationId);
         when(files.createOperationDirectory(44L, "Original Book Name")).thenAnswer(invocation -> Files.createDirectory(operation));
         when(files.extractAndSave(any(byte[].class), anyLong(), anyString(), anyInt(), anyInt(), any(Path.class)))
                 .thenAnswer(invocation -> saveFile(invocation.getArgument(1), invocation.getArgument(5)));
@@ -107,6 +109,8 @@ class TopicPdfUploadServiceTests extends com.book.user.TenantAwareTest {
             }
             return null;
         }).when(files).cleanupOperation(any(Path.class));
+        doAnswer(invocation->{files.cleanupOperation(invocation.getArgument(0));return null;})
+                .when(files).cleanupOperation(any(Path.class),eq(operationId));
         service = new TopicPdfUploadService(workers, files, books, topics);
     }
 
@@ -151,7 +155,7 @@ class TopicPdfUploadServiceTests extends com.book.user.TenantAwareTest {
         verify(files, never()).extractOffsetAndSave(any(), anyLong(), anyString(), anyInt(), any());
         verify(topics).assignPdfPath(eq(44L), eq(12L), eq(1), eq(3), anyString());
         finishTransaction(TransactionSynchronization.STATUS_COMMITTED);
-        verify(files).retainOperation(operation);
+        verify(files).retainOperation(operation,operationId);
     }
 
     @Test
@@ -282,7 +286,7 @@ class TopicPdfUploadServiceTests extends com.book.user.TenantAwareTest {
         verify(topics).assignPdfPath(eq(44L), eq(1L), eq(1), eq(0), anyString());
         verify(files, never()).cleanupOperation(any());
         finishTransaction(TransactionSynchronization.STATUS_COMMITTED);
-        verify(files).retainOperation(operation);
+        verify(files).retainOperation(operation,operationId);
         try (var entries = Files.list(operation)) {
             assertThat(entries.toList()).hasSize(3);
         }
@@ -405,7 +409,7 @@ class TopicPdfUploadServiceTests extends com.book.user.TenantAwareTest {
         assertThat(result.topicDetails()).allSatisfy(topic -> assertThat(Files.exists(Path.of(topic.getPdfPath()))).isTrue());
         finishTransaction(TransactionSynchronization.STATUS_ROLLED_BACK);
         assertThat(Files.exists(operation)).isFalse();
-        verify(files).cleanupOperation(operation);
+        verify(files).cleanupOperation(operation,operationId);
         verify(files, never()).retainOperation(any());
     }
 

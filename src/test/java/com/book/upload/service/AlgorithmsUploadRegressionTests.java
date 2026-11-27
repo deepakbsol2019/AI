@@ -148,7 +148,7 @@ class AlgorithmsUploadRegressionTests extends com.book.user.TenantAwareTest {
         assertThat(completed.getMessage()).isEqualTo("uploaded " + source.getFileName() + " successfully.");
         assertThat(acknowledgement.getStatus()).isEqualTo(BookUploadStatus.IN_PROGRESS);
         assertThat(counts()).isEqualTo(new Counts(before.books() + 1, before.authors() + 1, before.topics() + 13));
-        Long bookId = jdbc.queryForObject("select book_id from book_details where book_upload_id = ?",
+        Long bookId = jdbc.queryForObject("select book_id from pdf_file_details where book_upload_id = ?",
                 Long.class, acknowledgement.getBookUploadId());
         List<TopicDetails> saved = topics.findAllByBookDetailsBookIdOrderByTopicIdAsc(bookId).stream()
                 .sorted(Comparator.comparing(TopicDetails::getStartPage)).toList();
@@ -190,9 +190,9 @@ class AlgorithmsUploadRegressionTests extends com.book.user.TenantAwareTest {
     }
 
     private Counts counts() {
-        return new Counts(jdbc.queryForObject("select count(*) from book_details", Long.class),
-                jdbc.queryForObject("select count(*) from author_details", Long.class),
-                jdbc.queryForObject("select count(*) from topic_details", Long.class));
+        return new Counts(jdbc.queryForObject("select count(*) from pdf_file_details", Long.class),
+                jdbc.queryForObject("select count(*) from pdf_file_author_details", Long.class),
+                jdbc.queryForObject("select count(*) from pdf_file_topic_details", Long.class));
     }
 
     private record Counts(long books, long authors, long topics) { }

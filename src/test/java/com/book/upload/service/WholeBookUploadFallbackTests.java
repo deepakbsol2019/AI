@@ -195,7 +195,7 @@ class WholeBookUploadFallbackTests extends com.book.user.TenantAwareTest {
         assertThat(regularFiles()).containsExactlyElementsOf(existing);
         assertThat(fileStore.wholeBookAttempts.get()).isEqualTo(2);
         assertThat(fileStore.splitAttempts.get()).isZero();
-        assertThat(STORAGE_ROOT.resolve("1").resolve(bookName)).doesNotExist();
+        assertThat(STORAGE_ROOT.resolve("1/PDF/1").resolve(bookName)).doesNotExist();
     }
 
     @Test
@@ -204,8 +204,8 @@ class WholeBookUploadFallbackTests extends com.book.user.TenantAwareTest {
         when(analyzer.analyze(any(), any())).thenReturn(response(false, false, "[]"));
         Counts before = counts();
         List<Path> existing = regularFiles();
-        long lastBookId = jdbc.queryForObject("select coalesce(max(book_id),0) from book_details", Long.class);
-        jdbc.execute("alter table topic_details add constraint reject_whole_book_path check (pdf_path is null or book_id <= "
+        long lastBookId = jdbc.queryForObject("select coalesce(max(book_id),0) from pdf_file_details", Long.class);
+        jdbc.execute("alter table pdf_file_topic_details add constraint reject_whole_book_path check (pdf_path is null or book_id <= "
                 + lastBookId + ")");
         try {
             BookUploadStatus receipt = submitAndWait(pdf);
@@ -216,7 +216,7 @@ class WholeBookUploadFallbackTests extends com.book.user.TenantAwareTest {
             assertThat(fileStore.splitAttempts.get()).isZero();
         }
         finally {
-            jdbc.execute("alter table topic_details drop constraint reject_whole_book_path");
+            jdbc.execute("alter table pdf_file_topic_details drop constraint reject_whole_book_path");
         }
     }
 
@@ -255,13 +255,13 @@ class WholeBookUploadFallbackTests extends com.book.user.TenantAwareTest {
         assertThat(completed.getStatus()).withFailMessage(completed.getMessage()).isEqualTo(BookUploadStatus.SUCCESS);
         assertThat(completed.getMessage()).isEqualTo("uploaded " + bookName + " successfully.");
         assertThat(counts()).isEqualTo(before.plus(1, 1, 1));
-        Long bookId = jdbc.queryForObject("select book_id from book_details where book_upload_id = ?",
+        Long bookId = jdbc.queryForObject("select book_id from pdf_file_details where book_upload_id = ?",
                 Long.class, receipt.getBookUploadId());
         BookDetails book = books.findById(bookId).orElseThrow();
         assertThat(book.getBookName()).isEqualTo(bookName);
         assertThat(book.getBookDetails()).isEqualTo(DESCRIPTION);
         assertThat(book.getBookUploadId()).isEqualTo(receipt.getBookUploadId());
-        assertThat(jdbc.queryForObject("select a.author_name from author_details a join book_details b on b.author_id=a.aouthor_id where b.book_id=?",
+        assertThat(jdbc.queryForObject("select a.author_name from pdf_file_author_details a join pdf_file_details b on b.author_id=a.aouthor_id where b.book_id=?",
                 String.class, bookId)).isEqualTo("Fallback Writer");
         List<TopicDetails> saved = topics.findAllByBookDetailsBookIdOrderByTopicIdAsc(bookId);
         assertThat(saved).singleElement().satisfies(topic -> {
@@ -274,7 +274,7 @@ class WholeBookUploadFallbackTests extends com.book.user.TenantAwareTest {
             assertThat(topic.getBookDetails().getBookId()).isEqualTo(bookId);
         });
         Path output = Path.of(saved.getFirst().getPdfPath());
-        assertThat(output).isRegularFile().hasParent(STORAGE_ROOT.resolve("1").resolve(bookName)).hasFileName(bookName + "_offset.pdf");
+        assertThat(output).isRegularFile().hasParent(STORAGE_ROOT.resolve("1/PDF/1").resolve(bookName)).hasFileName(bookName + "_offset.pdf");
         assertThat(Files.readAllBytes(output)).isEqualTo(original);
         try (PDDocument document = Loader.loadPDF(output.toFile())) {
             assertThat(document.getNumberOfPages()).isEqualTo(pages);
@@ -296,9 +296,9 @@ class WholeBookUploadFallbackTests extends com.book.user.TenantAwareTest {
     }
 
     private Counts counts() {
-        return new Counts(jdbc.queryForObject("select count(*) from book_details", Long.class),
-                jdbc.queryForObject("select count(*) from author_details", Long.class),
-                jdbc.queryForObject("select count(*) from topic_details", Long.class));
+        return new Counts(jdbc.queryForObject("select count(*) from pdf_file_details", Long.class),
+                jdbc.queryForObject("select count(*) from pdf_file_author_details", Long.class),
+                jdbc.queryForObject("select count(*) from pdf_file_topic_details", Long.class));
     }
 
     private List<Path> regularFiles() throws IOException {

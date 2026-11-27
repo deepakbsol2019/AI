@@ -16,7 +16,7 @@ class UtcPersistenceTests {
     @Test void physicalEventColumnAndApiInstantRepresentUtcWithoutApplyingTheJvmOffsetAgain() {
         Instant before=Instant.now().minusSeconds(2);
         var author=new AuthorDetails();author.setAuthorName("UTC event fixture");entities.persist(author);entities.flush();
-        var raw=jdbc.queryForObject("SELECT created_at FROM author_details WHERE aouthor_id=?",
+        var raw=jdbc.queryForObject("SELECT created_at FROM pdf_file_author_details WHERE aouthor_id=?",
                 (rs,n)->rs.getObject(1,LocalDateTime.class),author.getAuthorId());
         assertThat(raw.toInstant(ZoneOffset.UTC)).isBetween(before,Instant.now().plusSeconds(2));
         entities.clear();var loaded=entities.find(AuthorDetails.class,author.getAuthorId());

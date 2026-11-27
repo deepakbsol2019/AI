@@ -7,7 +7,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.book.user.security.TenantContext;
 
 @Entity
-@Table(name = "book_details", uniqueConstraints = {
+@Table(name = "pdf_file_details", uniqueConstraints = {
         @UniqueConstraint(name = "uk_book_tenant_name", columnNames = {"tenant_id", "book_name"}),
         @UniqueConstraint(name = "uk_book_tenant_canonical_name", columnNames = {"tenant_id", "canonical_book_name"})})
 public class BookDetails extends AuditedEntity {

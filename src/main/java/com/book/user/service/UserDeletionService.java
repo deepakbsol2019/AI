@@ -31,26 +31,26 @@ public class UserDeletionService {
     public Job request(UserPrincipal actor,long userId,Confirm input){
         var target=users.lock(actor,userId,"USER_HARD_DELETE");users.protect(actor,target);var preview=users.preview(actor,target,true);users.confirm(preview,input);
         long tenant=preview.tenantId();String key=UUID.randomUUID().toString();boolean purgeTenant=preview.scope().equals("TENANT_PURGE");
-        if(jdbc.queryForObject("SELECT COUNT(*) FROM book_upload_status WHERE tenant_id=? AND status='inprogress'",Long.class,tenant)>0)throw conflict("Wait for tenant uploads to finish before deletion.");
+        if(jdbc.queryForObject("SELECT COUNT(*) FROM pdf_file_status WHERE tenant_id=? AND status='inprogress'",Long.class,tenant)>0)throw conflict("Wait for tenant uploads to finish before deletion.");
         List<Long> userIds=purgeTenant?users.tenantUsers(tenant):List.of(userId);
         if(purgeTenant && target.get("owner_user_id")!=null && !userIds.contains(id(target,"owner_user_id")))throw conflict("Tenant ownership is ambiguous. Operator review is required.");
         for(long id:userIds)if(jdbc.queryForObject("SELECT COUNT(*) FROM tenants WHERE owner_user_id=? AND tenant_id<>?",Long.class,id,tenant)>0)throw conflict("Account owns another tenant. Resolve ownership before deletion.");
-        List<Long> books=purgeTenant?jdbc.queryForList("SELECT book_id FROM book_details WHERE tenant_id=?",Long.class,tenant):List.of();
-        List<Long> authors=purgeTenant?jdbc.queryForList("SELECT DISTINCT author_id FROM book_details WHERE tenant_id=?",Long.class,tenant):List.of();
+        List<Long> books=purgeTenant?jdbc.queryForList("SELECT book_id FROM pdf_file_details WHERE tenant_id=?",Long.class,tenant):List.of();
+        List<Long> authors=purgeTenant?jdbc.queryForList("SELECT DISTINCT author_id FROM pdf_file_details WHERE tenant_id=?",Long.class,tenant):List.of();
         UserDeletionFiles.Manifest manifest=new UserDeletionFiles.Manifest(storage.tenantPath(tenant).toString(),List.of());
         try {
             if(purgeTenant){
                 storage.lockDeletion(tenant,key);
                 TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization(){@Override public void afterCompletion(int status){if(status!=STATUS_COMMITTED)try{storage.unlockDeletion(tenant,key);}catch(Exception failure){org.slf4j.LoggerFactory.getLogger(UserDeletionService.class).error("DELETION_LOCK_ROLLBACK_REQUIRES_REVIEW");}}});
                 manifest=files.snapshot(tenant);
-                for(String path:jdbc.queryForList("SELECT t.pdf_path FROM topic_details t JOIN book_details b ON b.book_id=t.book_id WHERE b.tenant_id=? AND t.pdf_path IS NOT NULL",String.class,tenant)){
+                for(String path:jdbc.queryForList("SELECT t.pdf_path FROM pdf_file_topic_details t JOIN pdf_file_details b ON b.book_id=t.book_id WHERE b.tenant_id=? AND t.pdf_path IS NOT NULL",String.class,tenant)){
                     Path supplied=Path.of(path);Path candidate=(supplied.isAbsolute()?supplied:storage.tenantPath(tenant).resolve(supplied)).normalize();
                     if(!candidate.startsWith(storage.tenantPath(tenant)))throw conflict("Legacy shared paths require an ownership-reviewed migration before tenant deletion.");
                 }
                 users.assertNoHighestInTenant(tenant);
             } else if(preview.scope().equals("ACCOUNT_PURGE")){
                 var inventory=files.snapshot(tenant);
-                if(jdbc.queryForObject("SELECT COUNT(*) FROM book_details WHERE tenant_id=?",Long.class,tenant)>0 || jdbc.queryForObject("SELECT COUNT(*) FROM book_upload_status WHERE tenant_id=?",Long.class,tenant)>0 || inventory.entries().stream().anyMatch(e->!e.relative().isEmpty()))
+                if(jdbc.queryForObject("SELECT COUNT(*) FROM pdf_file_details WHERE tenant_id=?",Long.class,tenant)>0 || jdbc.queryForObject("SELECT COUNT(*) FROM pdf_file_status WHERE tenant_id=?",Long.class,tenant)>0 || inventory.entries().stream().anyMatch(e->!e.relative().isEmpty()))
                     throw conflict("This company stores files/content without individual uploader ownership. Super-user employee cleanup is ambiguous and is blocked; shared tenant data will not be guessed or deleted.");
             }
         }catch(java.io.IOException failure){throw conflict("Storage could not be validated for deletion. No deletion job was started.");}
@@ -88,10 +88,10 @@ public class UserDeletionService {
                     var target=users.row(id(row,"target_user_id"));users.scope(actor,target);users.protect(actor,target);
                     if(!all && users.admin(target))throw conflict("Target became a protected admin; deletion requires a new review.");
                     if(all){users.assertNoHighestInTenant(tenant);if(!new TreeSet<>(users.tenantUsers(tenant)).equals(new TreeSet<>(plan.userIds())))throw conflict("Tenant membership changed; deletion needs review.");}
-                    if(jdbc.queryForObject("SELECT COUNT(*) FROM book_upload_status WHERE tenant_id=? AND status='inprogress'",Long.class,tenant)>0)throw conflict("Tenant upload is still active.");
-                    if(all && !new TreeSet<>(jdbc.queryForList("SELECT book_id FROM book_details WHERE tenant_id=?",Long.class,tenant)).equals(new TreeSet<>(plan.bookIds())))throw conflict("Tenant content changed; deletion requires review.");
+                    if(jdbc.queryForObject("SELECT COUNT(*) FROM pdf_file_status WHERE tenant_id=? AND status='inprogress'",Long.class,tenant)>0)throw conflict("Tenant upload is still active.");
+                    if(all && !new TreeSet<>(jdbc.queryForList("SELECT book_id FROM pdf_file_details WHERE tenant_id=?",Long.class,tenant)).equals(new TreeSet<>(plan.bookIds())))throw conflict("Tenant content changed; deletion requires review.");
                     if(str(row,"deletion_scope").equals("ACCOUNT_PURGE"))try{
-                        if(jdbc.queryForObject("SELECT COUNT(*) FROM book_details WHERE tenant_id=?",Long.class,tenant)>0 || jdbc.queryForObject("SELECT COUNT(*) FROM book_upload_status WHERE tenant_id=?",Long.class,tenant)>0 || files.snapshot(tenant).entries().stream().anyMatch(e->!e.relative().isEmpty()))throw conflict("Employee content ownership became ambiguous.");
+                        if(jdbc.queryForObject("SELECT COUNT(*) FROM pdf_file_details WHERE tenant_id=?",Long.class,tenant)>0 || jdbc.queryForObject("SELECT COUNT(*) FROM pdf_file_status WHERE tenant_id=?",Long.class,tenant)>0 || files.snapshot(tenant).entries().stream().anyMatch(e->!e.relative().isEmpty()))throw conflict("Employee content ownership became ambiguous.");
                     }catch(java.io.IOException failure){throw conflict("Storage ownership could not be revalidated.");}
                     purge(row,plan,actor);
                     jdbc.update("UPDATE user_deletion_jobs SET db_purged=TRUE,status='CLEANUP_PENDING',updated_at=? WHERE job_id=?",now(),jobId);
@@ -123,9 +123,15 @@ public class UserDeletionService {
                 for(long foreign:jdbc.queryForList("SELECT user_id FROM external_identities WHERE identity_provider_id=?",Long.class,provider))if(!plan.userIds().contains(foreign))throw conflict("Provider has foreign account references.");
                 for(String table:List.of("credential_tokens","auth_sessions"))for(long foreign:jdbc.queryForList("SELECT user_id FROM "+table+" WHERE identity_provider_id=?",Long.class,provider))if(!plan.userIds().contains(foreign))throw conflict("Provider has foreign authentication references.");
             }
-            jdbc.update("DELETE FROM topic_details WHERE book_id IN(SELECT book_id FROM book_details WHERE tenant_id=?)",tenant);
-            jdbc.update("DELETE FROM book_details WHERE tenant_id=?",tenant);jdbc.update("DELETE FROM book_upload_status WHERE tenant_id=?",tenant);
-            for(long author:plan.authorIds())jdbc.update("DELETE FROM author_details WHERE aouthor_id=? AND NOT EXISTS(SELECT 1 FROM book_details WHERE author_id=?)",author,author);
+            jdbc.update("DELETE FROM pdf_file_topic_details WHERE book_id IN(SELECT book_id FROM pdf_file_details WHERE tenant_id=?)",tenant);
+            jdbc.update("DELETE FROM pdf_file_details WHERE tenant_id=?",tenant);
+            // The additive spreadsheet migration may not exist on older installations yet.
+            Boolean spreadsheets=jdbc.execute((java.sql.Connection connection)->{
+                try(var tables=connection.getMetaData().getTables(null,null,"spreadsheet_file_details",new String[]{"TABLE"})){return tables.next();}
+            });
+            if(Boolean.TRUE.equals(spreadsheets))jdbc.update("DELETE FROM spreadsheet_file_details WHERE tenant_id=?",tenant);
+            jdbc.update("DELETE FROM pdf_file_status WHERE tenant_id=?",tenant);
+            for(long author:plan.authorIds())jdbc.update("DELETE FROM pdf_file_author_details WHERE aouthor_id=? AND NOT EXISTS(SELECT 1 FROM pdf_file_details WHERE author_id=?)",author,author);
         }
         for(long user:plan.userIds())purgeAccount(user);
         if(all){

@@ -34,6 +34,23 @@ class UploadFileControllerTests extends com.book.user.TenantAwareTest {
     private final WebApplicationContextRunner contextRunner = new WebApplicationContextRunner()
             .withUserConfiguration(UploadWebConfiguration.class);
 
+    @ParameterizedTest
+    @ValueSource(strings={"csv","xlsx","xls"})
+    void routesSpreadsheetFormatsThroughTheExistingMultipartEntryPoint(String extension){
+        contextRunner.run(context->{
+            var service=context.getBean(com.book.spreadsheet.upload.SpreadsheetUploadService.class);
+            var receipt=uploadStatus(52L,"inprogress","Background processing");
+            when(service.submit(any(),any())).thenReturn(new com.book.spreadsheet.upload.SpreadsheetUploadService.UploadReceipt(receipt,71L,3,java.util.List.of()));
+            var mvc=MockMvcBuilders.webAppContextSetup(context).build();
+            mvc.perform(multipart("/api/upload-file").file(new MockMultipartFile("file","Report."+extension,"application/octet-stream","test content".getBytes(StandardCharsets.UTF_8)))
+                    .param("tenantId","999").param("createdBy","999"))
+                    .andExpect(status().isAccepted()).andExpect(header().string("Location","/api/upload-status/52"))
+                    .andExpect(jsonPath("$.book_upload_id").value(52)).andExpect(jsonPath("$.fileId").value(71)).andExpect(jsonPath("$.sheetCount").value(3));
+            verify(service).submit(any(),eq(com.book.spreadsheet.parse.SpreadsheetFormat.valueOf(extension.toUpperCase(java.util.Locale.ROOT))));
+            verifyNoInteractions(context.getBean(BookUploadSubmissionService.class));
+        });
+    }
+
     @Test
     void acceptsUploadAndReturnsOnlyItsSavedInprogressStatusAndPollingLocation() {
         contextRunner.run(context -> {
@@ -195,5 +212,6 @@ class UploadFileControllerTests extends com.book.user.TenantAwareTest {
     static class UploadWebConfiguration {
         @Bean BookUploadSubmissionService bookUploadSubmissionService() { return mock(BookUploadSubmissionService.class); }
         @Bean BookUploadStatusService bookUploadStatusService() { return mock(BookUploadStatusService.class); }
+        @Bean com.book.spreadsheet.upload.SpreadsheetUploadService spreadsheetUploadService(){return mock(com.book.spreadsheet.upload.SpreadsheetUploadService.class);}
     }
 }

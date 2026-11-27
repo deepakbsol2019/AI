@@ -54,11 +54,11 @@ class BookUploadStatusPersistenceTests extends com.book.user.TenantAwareTest {
         assertThat(read).isNotSameAs(receipt);
         assertThat(read.getMessage()).isEqualTo(receipt.getMessage());
         assertThat(read.getTenantId()).isEqualTo(1L);
-        assertThat(jdbc.queryForObject("select tenant_id from book_upload_status where book_upload_id = ?",
+        assertThat(jdbc.queryForObject("select tenant_id from pdf_file_status where book_upload_id = ?",
                 Long.class, receipt.getBookUploadId())).isEqualTo(1L);
         assertThat(jdbc.queryForObject("""
                 select count(*) from information_schema.columns
-                 where table_schema = 'PUBLIC' and table_name = 'BOOK_UPLOAD_STATUS'
+                 where table_schema = 'PUBLIC' and table_name = 'PDF_FILE_STATUS'
                 """, Integer.class)).isEqualTo(10);
 
         JsonMapper mapper = JsonMapper.builder().build();
@@ -143,7 +143,7 @@ class BookUploadStatusPersistenceTests extends com.book.user.TenantAwareTest {
         BookUploadStatus receipt = service.create("book.pdf");
         new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
             service.succeed(receipt.getBookUploadId(), "Book Name");
-            assertThat(jdbc.queryForObject("select status from book_upload_status where book_upload_id = ?",
+            assertThat(jdbc.queryForObject("select status from pdf_file_status where book_upload_id = ?",
                     String.class, receipt.getBookUploadId())).isEqualTo("Success");
             status.setRollbackOnly();
         });

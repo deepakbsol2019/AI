@@ -91,7 +91,7 @@ class BookPageOffsetFlowTests {
         BookExtractionResult saved = savedBook("FlowRejectedMetadata", 23, topic("Real Numbers", 1, 3));
         Long topicId = saved.topicDetails().getFirst().getTopicId();
         byte[] pdf = syntheticPdf();
-        jdbc.execute("alter table topic_details add constraint reject_flow_metadata check (topic_name <> 'FlowRejectedMetadata_offset')");
+        jdbc.execute("alter table pdf_file_topic_details add constraint reject_flow_metadata check (topic_name <> 'FlowRejectedMetadata_offset')");
         try {
             BookExtractionResult result = service.populatePdfPages(saved, pdf);
             assertThat(result.pageOffset().detection().status()).isEqualTo(ChapterDetection.Status.found);
@@ -110,7 +110,7 @@ class BookPageOffsetFlowTests {
             assertThat(database.getEndPage()).isNull();
             assertThat(topics.findAllByBookDetailsBookIdOrderByTopicIdAsc(saved.bookDetails().getBookId())).hasSize(1);
         } finally {
-            jdbc.execute("alter table topic_details drop constraint reject_flow_metadata");
+            jdbc.execute("alter table pdf_file_topic_details drop constraint reject_flow_metadata");
         }
     }
 

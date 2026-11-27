@@ -4,7 +4,7 @@ import jakarta.persistence.*;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 @Entity
-@Table(name = "topic_details")
+@Table(name = "pdf_file_topic_details")
 public class TopicDetails extends AuditedEntity {
     public static final int MAX_TOPIC_NAME_LENGTH = 255;
     @Id

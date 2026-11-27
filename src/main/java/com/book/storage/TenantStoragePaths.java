@@ -32,6 +32,15 @@ public class TenantStoragePaths {
         }
     }
     public Path currentRoot() { return provision(TenantContext.requireTenantId()); }
+    /** Common path for new writes; persisted legacy locators remain readable without reconstruction. */
+    public Path documentDirectory(long tenantId,long userId,String validatedType,String bookName) throws IOException {
+        if(userId<=0)throw new IllegalArgumentException("A positive trusted uploader ID is required.");
+        String type=validatedType==null?"":validatedType.toUpperCase(java.util.Locale.ROOT);
+        if(!java.util.Set.of("PDF","CSV","XLSX","XLS").contains(type))throw new IllegalArgumentException("A validated supported document format is required.");
+        Path folder=provision(tenantId).resolve(type).resolve(Long.toString(userId)).resolve(folderName(bookName));
+        createSafeDirectories(folder);
+        return requirePath(tenantId,folder);
+    }
     public void requireWritable(long tenantId) {
         if(Files.exists(marker(tenantId),LinkOption.NOFOLLOW_LINKS))
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"Tenant storage is locked for deletion cleanup.");
@@ -74,6 +83,13 @@ public class TenantStoragePaths {
                 || value.matches("(?i)^(CON|PRN|AUX|NUL|COM[1-9¹²³]|LPT[1-9¹²³])(?:\\..*)?$"))
             throw new IllegalArgumentException("Unsafe storage filename.");
         return value;
+    }
+    /** Existing book-name convention: keep normal text, sanitize unsafe filesystem characters only. */
+    public static String folderName(String value) {
+        if(value==null || value.isBlank())throw new IllegalArgumentException("A nonempty file/book name is required.");
+        String safe=value.strip().replaceAll("[<>:\"/\\\\|?*\\x00-\\x1f\\x7f]","_").replaceFirst("[. ]+$","");
+        if(safe.matches("(?i)^(CON|PRN|AUX|NUL|COM[1-9¹²³]|LPT[1-9¹²³])(?:\\..*)?$"))safe="_"+safe;
+        return filename(safe);
     }
     private static void createSafeDirectories(Path path) throws IOException {
         if(!Files.exists(path,LinkOption.NOFOLLOW_LINKS)) {

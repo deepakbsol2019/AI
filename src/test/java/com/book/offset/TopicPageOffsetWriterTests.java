@@ -44,8 +44,8 @@ class TopicPageOffsetWriterTests {
         BookDetails book = book("Mapped", 35, topic("Opening", 1, 10), topic("Second", 11, 15));
         BookDetails other = book("Other", 50, topic("Other chapter", 1, 10));
         List<TopicDetails> before = real(book);
-        jdbc.update("update topic_details set start_page = ? where topic_id = ?", 21, before.get(0).getTopicId());
-        jdbc.update("update topic_details set end_page = ?, pdf_path = ? where topic_id = ?", 35,
+        jdbc.update("update pdf_file_topic_details set start_page = ? where topic_id = ?", 21, before.get(0).getTopicId());
+        jdbc.update("update pdf_file_topic_details set end_page = ?, pdf_path = ? where topic_id = ?", 35,
                 "existing.pdf", before.get(1).getTopicId());
         before = real(book);
         List<LocalDateTime> created = before.stream().map(TopicDetails::getCreatedAt).toList();
@@ -96,7 +96,7 @@ class TopicPageOffsetWriterTests {
         assertThat(metadata.getCreatedAt()).isNotNull();
         assertThat(metadata.getUpdatedAt()).isNotNull();
         assertThat(metadata.getBookDetails().getBookId()).isEqualTo(book.getBookId());
-        Map<String, Object> raw = jdbc.queryForMap("select printed_start_page, printed_end_page, pdf_path from topic_details where topic_id = ?",
+        Map<String, Object> raw = jdbc.queryForMap("select printed_start_page, printed_end_page, pdf_path from pdf_file_topic_details where topic_id = ?",
                 metadata.getTopicId());
         assertThat(raw.values()).containsOnlyNulls();
     }
@@ -134,7 +134,7 @@ class TopicPageOffsetWriterTests {
         Set<Long> expected = ids(real(book));
         var first = writer.apply(book.getBookId(), book.getBookName(), expected, 2, 10);
         String path = "C:/books/UploadedPrefix/UploadedPrefix_offset.pdf";
-        jdbc.update("update topic_details set pdf_path = ? where topic_id = ?", path, first.offsetEntryId());
+        jdbc.update("update pdf_file_topic_details set pdf_path = ? where topic_id = ?", path, first.offsetEntryId());
         var retry = writer.apply(book.getBookId(), book.getBookName(), expected, 2, 10);
         assertThat(retry.offsetEntryStatus()).isEqualTo(OffsetEntryStatus.reused);
         assertThat(topics.findById(first.offsetEntryId()).orElseThrow().getPdfPath()).isEqualTo(path);
@@ -197,7 +197,7 @@ class TopicPageOffsetWriterTests {
     void conflictInAnyDestinationPreventsEveryPageWrite() {
         BookDetails book = book("Conflict", 50, topic("Opening", 1, 10), topic("Second", 11, 20));
         List<TopicDetails> before = real(book);
-        jdbc.update("update topic_details set end_page = ? where topic_id = ?", 49, before.getLast().getTopicId());
+        jdbc.update("update pdf_file_topic_details set end_page = ? where topic_id = ?", 49, before.getLast().getTopicId());
         assertThatThrownBy(() -> writer.apply(book.getBookId(), book.getBookName(), ids(before), 20, 50))
                 .isInstanceOfSatisfying(OffsetWriteException.class, ex ->
                         assertThat(ex.issues()).anySatisfy(issue -> {
@@ -234,7 +234,7 @@ class TopicPageOffsetWriterTests {
         assertThatThrownBy(() -> writer.apply(book.getBookId(), book.getBookName(), mixed, 20, 50))
                 .isInstanceOf(OffsetWriteException.class);
         Map<Long, SourceSnapshot> snapshots = snapshots(initial);
-        jdbc.update("update topic_details set topic_name = ? where topic_id = ?", "Renamed", initial.getFirst().getTopicId());
+        jdbc.update("update pdf_file_topic_details set topic_name = ? where topic_id = ?", "Renamed", initial.getFirst().getTopicId());
         assertThatThrownBy(() -> writer.apply(book.getBookId(), book.getBookName(), ids(initial), 20, 50, snapshots))
                 .isInstanceOfSatisfying(OffsetWriteException.class, ex ->
                         assertThat(ex.issues()).extracting(TopicPageOffsetWriter.ValidationIssue::code).contains("stale_topic_response"));
@@ -268,13 +268,13 @@ class TopicPageOffsetWriterTests {
     void metadataInsertFailureRollsBackAllEarlierPageUpdates() {
         BookDetails book = book("RejectedMetadata", 50, topic("Opening", 1, 10), topic("Second", 11, 20));
         Set<Long> expected = ids(real(book));
-        jdbc.execute("alter table topic_details add constraint reject_writer_metadata check (topic_name <> 'RejectedMetadata_offset')");
+        jdbc.execute("alter table pdf_file_topic_details add constraint reject_writer_metadata check (topic_name <> 'RejectedMetadata_offset')");
         try {
             assertThatThrownBy(() -> writer.apply(book.getBookId(), book.getBookName(), expected, 20, 50))
                     .isInstanceOf(RuntimeException.class);
             assertUnchanged(book, 2);
         } finally {
-            jdbc.execute("alter table topic_details drop constraint reject_writer_metadata");
+            jdbc.execute("alter table pdf_file_topic_details drop constraint reject_writer_metadata");
         }
     }
 
@@ -282,14 +282,14 @@ class TopicPageOffsetWriterTests {
     void topicUpdateFailureAlsoRollsBackEarlierTopicUpdates() {
         BookDetails book = book("RejectedPage", 50, topic("Opening", 1, 10), topic("Second", 11, 20));
         Set<Long> expected = ids(real(book));
-        jdbc.execute("alter table topic_details add constraint reject_writer_page check (book_id <> "
+        jdbc.execute("alter table pdf_file_topic_details add constraint reject_writer_page check (book_id <> "
                 + book.getBookId() + " or topic_name <> 'Second' or start_page is null)");
         try {
             assertThatThrownBy(() -> writer.apply(book.getBookId(), book.getBookName(), expected, 20, 50))
                     .isInstanceOf(RuntimeException.class);
             assertUnchanged(book, 2);
         } finally {
-            jdbc.execute("alter table topic_details drop constraint reject_writer_page");
+            jdbc.execute("alter table pdf_file_topic_details drop constraint reject_writer_page");
         }
     }
 

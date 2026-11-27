@@ -66,11 +66,11 @@ class TenantStorageSecurityTests {
     }
     @Test void uploadsHaveSeparateTenantParentsAndSuperUserCannotReadForeignFiles() throws Exception {
         var files=new TopicPdfFileStore(temporary.toString(),1);Path first,second;
-        try(var scope=TenantContext.use(1)){first=files.createOperationDirectory(1L,"Same Book");}
-        try(var scope=TenantContext.use(2)){second=files.createOperationDirectory(2L,"Same Book");}
-        assertThat(first.getParent()).isEqualTo(temporary.resolve("1"));assertThat(second.getParent()).isEqualTo(temporary.resolve("2"));
+        try(var scope=TenantContext.use(1,11L,false)){first=files.createOperationDirectory(1L,"Same Book");}
+        try(var scope=TenantContext.use(2,22L,false)){second=files.createOperationDirectory(2L,"Same Book");}
+        assertThat(first.getParent()).isEqualTo(temporary.resolve("1/PDF/11"));assertThat(second.getParent()).isEqualTo(temporary.resolve("2/PDF/22"));
         Path foreign=Files.writeString(second.resolve("foreign.pdf"),"foreign");
-        try(var scope=TenantContext.use(1,true)) {
+        try(var scope=TenantContext.use(1,11L,true)) {
             var topic=new TopicDetails();topic.setBookDetails(new BookDetails());topic.setPdfPath(foreign.toString());
             assertThatThrownBy(()->new TopicPdfSource(temporary.toString()).resolve(topic)).isInstanceOf(ResponseStatusException.class);
         }

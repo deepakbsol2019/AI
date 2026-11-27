@@ -26,10 +26,10 @@ class UserManagementSecurityTests {
     TenantProvisioningService tenants;TenantStoragePaths storage;SessionService sessions;TransactionTemplate tx;long operator,admin,secondAdmin,employee,secondEmployee,foreign,individual;boolean failCleanup;
     @Configuration(proxyBeanMethods=false) @EnableTransactionManagement static class Config{}
     @BeforeEach void setup(){
-        jdbc=AuthTestDatabase.create();jdbc.execute("CREATE TABLE author_details(aouthor_id BIGINT AUTO_INCREMENT PRIMARY KEY,author_name VARCHAR(200))");
-        jdbc.execute("CREATE TABLE book_upload_status(book_upload_id BIGINT AUTO_INCREMENT PRIMARY KEY,tenant_id BIGINT NOT NULL REFERENCES tenants(tenant_id),status VARCHAR(16),message VARCHAR(200))");
-        jdbc.execute("CREATE TABLE book_details(book_id BIGINT AUTO_INCREMENT PRIMARY KEY,tenant_id BIGINT NOT NULL REFERENCES tenants(tenant_id),author_id BIGINT REFERENCES author_details(aouthor_id),book_upload_id BIGINT REFERENCES book_upload_status(book_upload_id),book_name VARCHAR(255))");
-        jdbc.execute("CREATE TABLE topic_details(topic_id BIGINT AUTO_INCREMENT PRIMARY KEY,book_id BIGINT NOT NULL REFERENCES book_details(book_id),pdf_path VARCHAR(2048))");
+        jdbc=AuthTestDatabase.create();jdbc.execute("CREATE TABLE pdf_file_author_details(aouthor_id BIGINT AUTO_INCREMENT PRIMARY KEY,author_name VARCHAR(200))");
+        jdbc.execute("CREATE TABLE pdf_file_status(book_upload_id BIGINT AUTO_INCREMENT PRIMARY KEY,tenant_id BIGINT NOT NULL REFERENCES tenants(tenant_id),status VARCHAR(16),message VARCHAR(200))");
+        jdbc.execute("CREATE TABLE pdf_file_details(book_id BIGINT AUTO_INCREMENT PRIMARY KEY,tenant_id BIGINT NOT NULL REFERENCES tenants(tenant_id),author_id BIGINT REFERENCES pdf_file_author_details(aouthor_id),book_upload_id BIGINT REFERENCES pdf_file_status(book_upload_id),book_name VARCHAR(255))");
+        jdbc.execute("CREATE TABLE pdf_file_topic_details(topic_id BIGINT AUTO_INCREMENT PRIMARY KEY,book_id BIGINT NOT NULL REFERENCES pdf_file_details(book_id),pdf_path VARCHAR(2048))");
         storage=new TenantStoragePaths(root.toString());context=new AnnotationConfigApplicationContext();
         context.setEnvironment(new MockEnvironment().withProperty("app.user.jwt.secret",Base64.getEncoder().encodeToString(new byte[32])));
         context.register(Config.class,AuthorizationService.class,UserManagementService.class,UserDeletionService.class,TenantProvisioningService.class,AuthSettings.class,SessionService.class,AccessTokenService.class,SecurityAuditService.class,RoleManagementService.class);
@@ -73,7 +73,7 @@ class UserManagementSecurityTests {
     @Test void superSoftDeletingAdminMarksAllTenantUsersDeletedPreservesEverythingAndCannotActivateDeleted()throws Exception{
         Path file=content(tenant(admin),"shared.pdf");var oldAdmin=session(admin);var oldEmployee=session(employee);soft(operator,admin);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM users WHERE status='INACTIVE'",Long.class)).isEqualTo(4);
-        assertThat(Files.readString(file)).isEqualTo("fixture content");assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM book_details",Long.class)).isEqualTo(1);
+        assertThat(Files.readString(file)).isEqualTo("fixture content");assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM pdf_file_details",Long.class)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT status FROM tenants WHERE tenant_id=?",String.class,tenant(admin))).isEqualTo("ACTIVE");
         assertThatThrownBy(()->sessions.validate(oldAdmin.response().accessToken()==null?null:context.getBean(AccessTokenService.class).verify(oldAdmin.response().accessToken()))).isInstanceOf(RuntimeException.class);
         assertThatThrownBy(()->sessions.refresh(oldEmployee.refreshToken())).isInstanceOf(RuntimeException.class);
@@ -94,11 +94,11 @@ class UserManagementSecurityTests {
         assertThatThrownBy(()->users.activate(actor(admin),employee,new Activate(users.details(actor(admin),employee).user().version(),false))).hasMessageContaining("403");
     }
     @Test void adminHardDeletionPhysicallyRemovesOnlyEmployeeAndKeepsAllContentPaths()throws Exception{
-        Path file=content(tenant(admin),"retained.pdf");long tenant=tenant(admin);long book=jdbc.queryForObject("SELECT book_id FROM book_details",Long.class);
+        Path file=content(tenant(admin),"retained.pdf");long tenant=tenant(admin);long book=jdbc.queryForObject("SELECT book_id FROM pdf_file_details",Long.class);
         var job=hard(admin,employee);deletion.process(job.jobId());assertThat(deletion.get(actor(admin),job.jobId()).status()).isEqualTo("COMPLETE");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM users WHERE user_id=?",Long.class,employee)).isZero();
-        assertThat(jdbc.queryForObject("SELECT tenant_id FROM book_details WHERE book_id=?",Long.class,book)).isEqualTo(tenant);
-        assertThat(jdbc.queryForObject("SELECT pdf_path FROM topic_details WHERE book_id=?",String.class,book)).isEqualTo(file.toString());
+        assertThat(jdbc.queryForObject("SELECT tenant_id FROM pdf_file_details WHERE book_id=?",Long.class,book)).isEqualTo(tenant);
+        assertThat(jdbc.queryForObject("SELECT pdf_path FROM pdf_file_topic_details WHERE book_id=?",String.class,book)).isEqualTo(file.toString());
         assertThat(Files.readString(file)).isEqualTo("fixture content");assertThat(storage.tenantPath(tenant)).isDirectory();
     }
     @Test void superEmployeeDeletionKeepsSharedRootAndBlocksAmbiguousContent()throws Exception{
@@ -180,5 +180,5 @@ class UserManagementSecurityTests {
     Confirm confirm(Preview p){return new Confirm(p.version(),p.scope(),p.affectedUsers(),p.confirmation());}
     void soft(long actor,long target){users.softDelete(actor(actor),target,confirm(users.preview(actor(actor),target,false)));}
     UserDeletionService.Job hard(long actor,long target){return deletion.request(actor(actor),target,confirm(users.preview(actor(actor),target,true)));}
-    Path content(long tenant,String filename)throws Exception{Path folder=Files.createDirectories(storage.tenantPath(tenant).resolve("fixture"));Path file=Files.writeString(folder.resolve(filename),"fixture content");jdbc.update("INSERT INTO author_details(author_name) VALUES('Author')");long author=jdbc.queryForObject("SELECT MAX(aouthor_id) FROM author_details",Long.class);jdbc.update("INSERT INTO book_upload_status(tenant_id,status,message) VALUES(?,'Success','Fixture')",tenant);long receipt=jdbc.queryForObject("SELECT MAX(book_upload_id) FROM book_upload_status",Long.class);jdbc.update("INSERT INTO book_details(tenant_id,author_id,book_upload_id,book_name) VALUES(?,?,?,'Fixture')",tenant,author,receipt);long book=jdbc.queryForObject("SELECT MAX(book_id) FROM book_details",Long.class);jdbc.update("INSERT INTO topic_details(book_id,pdf_path) VALUES(?,?)",book,file.toString());return file;}
+    Path content(long tenant,String filename)throws Exception{Path folder=Files.createDirectories(storage.tenantPath(tenant).resolve("fixture"));Path file=Files.writeString(folder.resolve(filename),"fixture content");jdbc.update("INSERT INTO pdf_file_author_details(author_name) VALUES('Author')");long author=jdbc.queryForObject("SELECT MAX(aouthor_id) FROM pdf_file_author_details",Long.class);jdbc.update("INSERT INTO pdf_file_status(tenant_id,status,message) VALUES(?,'Success','Fixture')",tenant);long receipt=jdbc.queryForObject("SELECT MAX(book_upload_id) FROM pdf_file_status",Long.class);jdbc.update("INSERT INTO pdf_file_details(tenant_id,author_id,book_upload_id,book_name) VALUES(?,?,?,'Fixture')",tenant,author,receipt);long book=jdbc.queryForObject("SELECT MAX(book_id) FROM pdf_file_details",Long.class);jdbc.update("INSERT INTO pdf_file_topic_details(book_id,pdf_path) VALUES(?,?)",book,file.toString());return file;}
 }

@@ -135,7 +135,7 @@ class BackgroundBookUploadTests extends com.book.user.TenantAwareTest {
         assertThat(completed.getMessage()).isEqualTo("uploaded " + bookName + " successfully.");
         assertThat(acknowledgement.getStatus()).isEqualTo("inprogress");
         assertThat(counts()).isEqualTo(before.plus(1, 1, 2));
-        Long bookId = jdbc.queryForObject("select book_id from book_details where book_upload_id = ?",
+        Long bookId = jdbc.queryForObject("select book_id from pdf_file_details where book_upload_id = ?",
                 Long.class, acknowledgement.getBookUploadId());
         BookDetails savedBook = books.findById(bookId).orElseThrow();
         assertThat(savedBook.getBookName()).isEqualTo(bookName);
@@ -143,7 +143,7 @@ class BackgroundBookUploadTests extends com.book.user.TenantAwareTest {
         List<TopicDetails> savedTopics = topics.findAllByBookDetailsBookIdOrderByTopicIdAsc(bookId);
         assertThat(savedTopics).hasSize(2).allSatisfy(topic -> {
             assertThat(topic.getPdfPath()).isNotBlank();
-            assertThat(Path.of(topic.getPdfPath())).isRegularFile().hasParent(STORAGE_ROOT.resolve("1").resolve(bookName));
+            assertThat(Path.of(topic.getPdfPath())).isRegularFile().hasParent(STORAGE_ROOT.resolve("1/PDF/1").resolve(bookName));
         });
         assertThat(savedTopics).extracting(TopicDetails::getTopicName)
                 .containsExactly("Real Numbers", bookName + "_offset");
@@ -171,7 +171,7 @@ class BackgroundBookUploadTests extends com.book.user.TenantAwareTest {
         assertThat(acknowledgement.getStatus()).isEqualTo("inprogress");
         assertThat(counts()).isEqualTo(before);
         assertThat(regularFiles()).containsExactlyElementsOf(existingFiles);
-        assertThat(jdbc.queryForObject("select count(*) from book_details where book_upload_id = ?",
+        assertThat(jdbc.queryForObject("select count(*) from pdf_file_details where book_upload_id = ?",
                 Long.class, acknowledgement.getBookUploadId())).isZero();
         verify(analyzer, times(1)).analyze(any(), any());
     }
@@ -185,8 +185,8 @@ class BackgroundBookUploadTests extends com.book.user.TenantAwareTest {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void beforeCommit(boolean readOnly) {
-                    assertThat(jdbc.queryForObject("select status from book_upload_status where book_upload_id = "
-                                    + "(select book_upload_id from book_details where book_name = ?)",
+                    assertThat(jdbc.queryForObject("select status from pdf_file_status where book_upload_id = "
+                                    + "(select book_upload_id from pdf_file_details where book_name = ?)",
                             String.class, bookName)).isEqualTo("Success");
                     beforeCommitReached.countDown();
                     throw new IllegalStateException("Commit rejected");
@@ -205,14 +205,14 @@ class BackgroundBookUploadTests extends com.book.user.TenantAwareTest {
         assertThat(acknowledgement.getStatus()).isEqualTo("inprogress");
         assertThat(counts()).isEqualTo(before);
         assertThat(regularFiles()).containsExactlyElementsOf(existingFiles);
-        assertThat(STORAGE_ROOT.resolve("1").resolve(bookName)).doesNotExist();
+        assertThat(STORAGE_ROOT.resolve("1/PDF/1").resolve(bookName)).doesNotExist();
         verify(analyzer, times(1)).analyze(any(), any());
     }
 
     private Counts counts() {
-        return new Counts(jdbc.queryForObject("select count(*) from book_details", Long.class),
-                jdbc.queryForObject("select count(*) from author_details", Long.class),
-                jdbc.queryForObject("select count(*) from topic_details", Long.class));
+        return new Counts(jdbc.queryForObject("select count(*) from pdf_file_details", Long.class),
+                jdbc.queryForObject("select count(*) from pdf_file_author_details", Long.class),
+                jdbc.queryForObject("select count(*) from pdf_file_topic_details", Long.class));
     }
 
     private List<Path> regularFiles() throws IOException {

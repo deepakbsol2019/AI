@@ -53,7 +53,7 @@ class TenantCatalogIsolationTests {
         BookDetails historical;
         try (var ignored=TenantContext.use(3)) { historical=book("Unassigned historical"); }
         entityManager.flush();
-        jdbc.update("UPDATE book_details SET tenant_id=NULL WHERE book_id=?", historical.getBookId());
+        jdbc.update("UPDATE pdf_file_details SET tenant_id=NULL WHERE book_id=?", historical.getBookId());
         entityManager.clear();
         try (var ignored=TenantContext.use(1)) {
             var result=search.search(new BookSearchCriteria(null,null,null,null,null,null,0,5));
@@ -78,7 +78,7 @@ class TenantCatalogIsolationTests {
             assertThatThrownBy(() -> download.downloadTopics(foreign.getBookId(),List.of(1L))).isInstanceOf(ResponseStatusException.class).hasMessageContaining("404");
             assertThat(foreign.getBookType()).isEqualTo("Unknown");
         }
-        jdbc.update("UPDATE book_details SET tenant_id=NULL WHERE book_id=?",foreign.getBookId()); entityManager.clear();
+        jdbc.update("UPDATE pdf_file_details SET tenant_id=NULL WHERE book_id=?",foreign.getBookId()); entityManager.clear();
         try (var ignored=TenantContext.use(1)) {
             assertThatThrownBy(() -> download.downloadBook(foreign.getBookId())).isInstanceOf(ResponseStatusException.class).hasMessageContaining("404");
         }
