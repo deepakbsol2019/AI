@@ -1,0 +1,105 @@
+:host {
+  display: contents;
+}
+.spreadsheet-dialog {
+  padding: 0;
+  width: min(1200px, calc(100vw - 1rem));
+  height: min(92dvh, 960px);
+  max-height: calc(100dvh - 1rem);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+  color: var(--ink);
+}
+.spreadsheet-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+.spreadsheet-dialog.file-preview {
+  inset: 0;
+  margin: 0;
+  width: 100vw;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+}
+.sheet-header {
+  flex: 0 0 auto;
+  padding: 1rem 1.3rem;
+  border-bottom: 1px solid var(--line);
+}
+.heading-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.heading-row > div {
+  min-width: 0;
+}
+h2 {
+  font-size: 1.3rem;
+  overflow-wrap: anywhere;
+}
+h3 {
+  font-size: 1rem;
+  margin: 0;
+}
+.close-button {
+  flex: 0 0 auto;
+  font-size: 1.25rem;
+}
+.sheet-actions,
+.sheet-selection {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+  margin-block: 0.6rem;
+}
+.sheet-selection select {
+  width: min(100%, 28rem);
+}
+.sheet-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 1rem 1.3rem;
+}
+.sheet-table {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: auto;
+  max-width: 100%;
+  border: 1px solid var(--line);
+}
+.sheet-table table {
+  margin: 0;
+  min-width: 100%;
+  width: max-content;
+}
+.sheet-table th,
+.sheet-table td {
+  max-width: 28rem;
+  min-width: 7rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+.sheet-table th {
+  background: #f3f6fa;
+}
+@media (max-width: 600px) {
+  .sheet-content,
+  .sheet-header {
+    padding: 0.75rem;
+  }
+  .sheet-actions .btn {
+    font-size: 0.75rem;
+  }
+}

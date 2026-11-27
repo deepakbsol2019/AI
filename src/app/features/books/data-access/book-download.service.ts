@@ -42,6 +42,15 @@ export class BookDownloadService {
     return this.active().has(`book:${id}`);
   }
 
+  isDocumentDownloading(key: string): boolean {
+    return this.active().has(`document:${key}`);
+  }
+
+  /** CSV/Excel use the same binary response, filename, notification and account boundary as PDF. */
+  downloadDocument(key: string, request: Observable<HttpResponse<Blob>>, filename: string): void {
+    this.download(`document:${key}`, request, filename);
+  }
+
   isTopicDownloading(bookId: number, topicId: number): boolean {
     return this.active().has(`topic:${bookId}:${topicId}`);
   }

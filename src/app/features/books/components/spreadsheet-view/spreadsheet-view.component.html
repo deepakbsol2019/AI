@@ -1,0 +1,227 @@
+<dialog
+  #sheetDialog
+  class="spreadsheet-dialog"
+  [class.file-preview]="activeSheet() !== null"
+  aria-labelledby="spreadsheet-title"
+  (close)="close()"
+  (cancel)="close()"
+>
+  <app-notifications />
+  <header class="sheet-header">
+    <div class="heading-row">
+      <div>
+        <p class="eyebrow">
+          {{ mode() === 'sheets' && !activeSheet() ? 'WORKSHEETS' : 'SPREADSHEET VIEW' }}
+        </p>
+        <h2 id="spreadsheet-title">{{ file().fileName }}</h2>
+        <p class="small muted">
+          {{ file().createdByName || 'User ' + file().createdBy }} ·
+          {{ file().uploadedAt | viewerDate }} · {{ file().sheetCount }}
+          {{ file().sheetCount === 1 ? 'sheet' : 'sheets' }}
+        </p>
+      </div>
+      <button
+        type="button"
+        class="btn btn-primary close-button"
+        aria-label="Close spreadsheet"
+        (click)="close()"
+      >
+        ×
+      </button>
+    </div>
+    <div class="sheet-actions">
+      <button type="button" class="btn btn-outline-primary" (click)="back()">Back</button>
+      <button
+        type="button"
+        class="btn btn-primary"
+        [disabled]="downloads.isDocumentDownloading('file:' + file().fileId)"
+        (click)="downloadFile()"
+      >
+        Download File
+      </button>
+      @if (activeSheet(); as sheet) {
+        <button
+          type="button"
+          class="btn btn-outline-primary"
+          [disabled]="
+            downloads.isDocumentDownloading('sheet:' + file().fileId + ':' + sheet.sheetId)
+          "
+          (click)="downloadSheet(sheet)"
+        >
+          Download Sheet
+        </button>
+      }
+    </div>
+  </header>
+  <section
+    class="sheet-content"
+    aria-label="Spreadsheet content"
+    [attr.aria-busy]="loading() || rowsLoading()"
+  >
+    @if (loading()) {
+      <p role="status">Opening spreadsheet…</p>
+    }
+    @if (error()) {
+      <div role="alert">
+        <p>{{ error() }}</p>
+        <button type="button" class="btn btn-primary" (click)="load()">Try again</button>
+      </div>
+    }
+    @if (details(); as info) {
+      @if (activeSheet(); as sheet) {
+        <div class="sheet-selection">
+          @if (mode() === 'file' && info.sheets.length > 1) {
+            <label for="preview-sheet">Worksheet</label>
+            <select
+              id="preview-sheet"
+              class="form-select"
+              [value]="sheet.sheetId"
+              (change)="selectSheet($event)"
+            >
+              @for (item of info.sheets; track item.sheetId) {
+                <option [value]="item.sheetId">{{ item.sheetIndex }}. {{ item.sheetName }}</option>
+              }
+            </select>
+          } @else {
+            <h3>{{ sheet.sheetName }}</h3>
+          }
+          <span class="small muted"
+            >{{ sheet.columnCount }} columns · {{ sheet.dataRowCount }} data rows</span
+          >
+        </div>
+        <p class="small muted">
+          Table preview. Download the workbook to view its original formatting.
+        </p>
+        @if (rowsLoading()) {
+          <p role="status">Loading rows…</p>
+        }
+        @if (rowsError()) {
+          <p role="alert">{{ rowsError() }}</p>
+          <button class="btn btn-primary" type="button" (click)="loadRows()">Retry rows</button>
+        }
+        <div
+          class="sheet-table"
+          tabindex="0"
+          role="region"
+          [attr.aria-label]="sheet.sheetName + ' preview'"
+        >
+          <table class="table table-bordered table-sm">
+            <thead>
+              <tr>
+                <th scope="col">Source row</th>
+                @for (column of columns(); track column; let index = $index) {
+                  <th
+                    scope="col"
+                    [attr.aria-label]="
+                      sheet.header[column] || 'Column ' + (index + 1) + ', blank header'
+                    "
+                  >
+                    {{ sheet.header[column] }}
+                  </th>
+                }
+              </tr>
+            </thead>
+            <tbody>
+              @for (row of rows()?.rows || []; track $index; let index = $index) {
+                <tr>
+                  <th scope="row">{{ rows()!.rowNumbers[index] }}</th>
+                  @for (column of columns(); track column) {
+                    <td>{{ row[column] }}</td>
+                  }
+                </tr>
+              } @empty {
+                <tr>
+                  <td [attr.colspan]="columns().length + 1">
+                    {{
+                      rowsLoading()
+                        ? 'Loading rows…'
+                        : rowsError()
+                          ? 'Rows could not be loaded.'
+                          : 'This sheet has no data rows.'
+                    }}
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        @if (rows(); as page) {
+          <nav class="sheet-actions" aria-label="Sheet row pages">
+            <button
+              type="button"
+              class="btn btn-outline-primary"
+              [disabled]="rowsLoading() || page.number === 0"
+              (click)="loadRows(page.number - 1)"
+            >
+              Previous rows
+            </button>
+            <span
+              >Page {{ page.number + 1 }} / {{ page.totalPages || 1 }} ·
+              {{ page.totalElements }} rows</span
+            >
+            <button
+              type="button"
+              class="btn btn-outline-primary"
+              [disabled]="rowsLoading() || page.number + 1 >= page.totalPages"
+              (click)="loadRows(page.number + 1)"
+            >
+              Next rows
+            </button>
+          </nav>
+        }
+      } @else if (!loading()) {
+        <div class="sheet-table" tabindex="0" role="region" aria-label="File worksheets">
+          <table class="table align-middle">
+            <thead>
+              <tr>
+                <th>Sheet ID</th>
+                <th>Sheet</th>
+                <th>Columns / Data Rows</th>
+                <th>View</th>
+                <th>Download</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (sheet of info.sheets; track sheet.sheetId) {
+                <tr>
+                  <td>{{ sheet.sheetId }}</td>
+                  <td>{{ sheet.sheetIndex }}. {{ sheet.sheetName }}</td>
+                  <td>{{ sheet.columnCount }} / {{ sheet.dataRowCount }}</td>
+                  <td>
+                    <button
+                      type="button"
+                      class="btn btn-primary btn-sm"
+                      [attr.aria-label]="'View sheet: ' + sheet.sheetName"
+                      (click)="viewSheet(sheet)"
+                    >
+                      View
+                    </button>
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      class="btn btn-outline-primary btn-sm"
+                      [attr.aria-label]="'Download sheet: ' + sheet.sheetName"
+                      [disabled]="
+                        downloads.isDocumentDownloading(
+                          'sheet:' + file().fileId + ':' + sheet.sheetId
+                        )
+                      "
+                      (click)="downloadSheet(sheet)"
+                    >
+                      Download
+                    </button>
+                  </td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td colspan="5">No worksheets are available.</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    }
+  </section>
+</dialog>

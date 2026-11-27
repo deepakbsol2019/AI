@@ -65,10 +65,10 @@
         <input
           #pdfPicker
           type="file"
-          accept=".pdf,application/pdf"
+          accept=".pdf,.csv,.xlsx,.xls,application/pdf,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
           class="visually-hidden"
           tabindex="-1"
-          aria-label="Choose a document (PDF supported)"
+          aria-label="Choose a document (PDF, CSV, XLSX or XLS)"
           [disabled]="uploadBusy()"
           (change)="chooseFile($event)"
         />

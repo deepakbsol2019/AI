@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { IconComponent } from '../../../../shared/ui/icon.component';
 import type { BookSearchCriteria } from '../../models/book.models';
@@ -12,7 +13,9 @@ import type { BookSearchCriteria } from '../../models/book.models';
 })
 export class BookSearchComponent {
   readonly busy = input(false);
+  readonly documentType = input<'pdf' | 'spreadsheet'>('pdf');
   readonly searchSubmitted = output<BookSearchCriteria>();
+  readonly searchTextChanged = output<string>();
   readonly resetRequested = output<void>();
   readonly minimizeRequested = output<void>();
   readonly form = new FormGroup({
@@ -23,6 +26,12 @@ export class BookSearchComponent {
     bookDetailsContains: new FormControl('', { nonNullable: true }),
     topicDetailsContains: new FormControl('', { nonNullable: true }),
   });
+
+  constructor() {
+    this.form.controls.query.valueChanges
+      .pipe(takeUntilDestroyed())
+      .subscribe((value) => this.searchTextChanged.emit(value));
+  }
 
   submit(): void {
     const values = this.form.getRawValue();

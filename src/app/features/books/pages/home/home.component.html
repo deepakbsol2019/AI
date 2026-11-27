@@ -20,7 +20,9 @@
         @defer (on immediate) {
           <app-book-search
             [busy]="loading()"
+            [documentType]="documentType()"
             (searchSubmitted)="search($event)"
+            (searchTextChanged)="setSearchText($event)"
             (resetRequested)="reset()"
             (minimizeRequested)="searchMinimized.set(true)"
           />
@@ -46,10 +48,43 @@
           <div>
             <p class="eyebrow">THE COLLECTION</p>
             <h2 id="collection-title" class="section-title">Find something worth reading</h2>
+            <div class="document-type-tabs" role="tablist" aria-label="Document type">
+              <button
+                id="pdf-document-tab"
+                type="button"
+                role="tab"
+                data-document-type="pdf"
+                aria-controls="document-collection-panel"
+                [attr.aria-selected]="documentType() === 'pdf'"
+                [attr.tabindex]="documentType() === 'pdf' ? 0 : -1"
+                (click)="setDocumentType('pdf')"
+                (keydown)="tabKey($event)"
+              >
+                PDF
+              </button>
+              <button
+                id="spreadsheet-document-tab"
+                type="button"
+                role="tab"
+                data-document-type="spreadsheet"
+                aria-controls="document-collection-panel"
+                [attr.aria-selected]="documentType() === 'spreadsheet'"
+                [attr.tabindex]="documentType() === 'spreadsheet' ? 0 : -1"
+                (click)="setDocumentType('spreadsheet')"
+                (keydown)="tabKey($event)"
+              >
+                CSV / XLSX
+              </button>
+            </div>
           </div>
-          @if (results(); as response) {
+          @if (documentType() === 'pdf' && results(); as response) {
             <span class="count-pill"
               >{{ response.totalElements }} {{ response.totalElements === 1 ? 'book' : 'books'
+              }}{{ activeFilterCount() ? ' matched' : ' in your library' }}</span
+            >
+          } @else if (documentType() === 'spreadsheet' && spreadsheetResults(); as response) {
+            <span class="count-pill"
+              >{{ response.totalElements }} {{ response.totalElements === 1 ? 'file' : 'files'
               }}{{ activeFilterCount() ? ' matched' : ' in your library' }}</span
             >
           }
@@ -65,9 +100,12 @@
         <div
           class="collection-table-viewport"
           data-collection-scroll
+          id="document-collection-panel"
           tabindex="0"
-          role="region"
-          aria-label="Book collection content"
+          role="tabpanel"
+          [attr.aria-labelledby]="
+            documentType() === 'pdf' ? 'pdf-document-tab' : 'spreadsheet-document-tab'
+          "
         >
           @if (dialogLoading()) {
             <p class="px-4 muted" role="status">Opening book topics…</p>
@@ -78,11 +116,17 @@
           @if (error(); as message) {
             <div class="empty-state" role="alert">
               <app-icon name="info" />
-              <h3>We couldn’t load your books</h3>
+              <h3>
+                {{
+                  documentType() === 'pdf'
+                    ? 'We couldn’t load your books'
+                    : 'We couldn’t load your spreadsheets'
+                }}
+              </h3>
               <p>{{ message }}</p>
               <button class="btn btn-primary" (click)="reload()">Try again</button>
             </div>
-          } @else {
+          } @else if (documentType() === 'pdf') {
             @defer (on immediate) {
               <app-book-table
                 [books]="results()?.books ?? []"
@@ -98,13 +142,20 @@
                 The collection view could not load. Reload this page to try again.
               </div>
             }
+          } @else {
+            <app-spreadsheet-table
+              [files]="spreadsheetResults()?.content ?? []"
+              [busy]="loading()"
+              (viewFile)="openSpreadsheet($event, 'file')"
+              (viewSheets)="openSpreadsheet($event, 'sheets')"
+            />
           }
         </div>
         <div class="collection-footer">
           <p class="mb-0 small muted" aria-live="polite">
             @if (loading()) {
               Searching your library…
-            } @else if (results(); as response) {
+            } @else if (documentType() === 'pdf' && results(); as response) {
               @if (response.totalElements) {
                 Showing {{ response.page * response.size + 1 }}–{{
                   response.page * response.size + response.books.length
@@ -112,6 +163,15 @@
                 of {{ response.totalElements }} books
               } @else {
                 Your next discovery is a search away.
+              }
+            } @else if (spreadsheetResults(); as response) {
+              @if (response.totalElements) {
+                Showing {{ response.number * response.size + 1 }}–{{
+                  response.number * response.size + response.content.length
+                }}
+                of {{ response.totalElements }} files
+              } @else {
+                No matching CSV or Excel files.
               }
             }
           </p>
@@ -130,21 +190,24 @@
               <option value="50">50</option>
               <option value="100">100</option>
             </select>
-            <nav aria-label="Book results pages">
+            <nav
+              [attr.aria-label]="
+                documentType() === 'pdf' ? 'Book results pages' : 'Spreadsheet results pages'
+              "
+            >
               <button
                 class="btn btn-light btn-sm"
                 aria-label="Previous page"
-                [disabled]="loading() || !results()?.page"
-                (click)="changePage((results()?.page ?? 0) - 1)"
+                [disabled]="loading() || !resultPage()"
+                (click)="changePage(resultPage() - 1)"
               >
                 <app-icon name="chevron-left" /></button
-              ><span class="page-label"
-                >{{ (results()?.page ?? 0) + 1 }} / {{ results()?.totalPages || 1 }}</span
+              ><span class="page-label">{{ resultPage() + 1 }} / {{ resultTotalPages() || 1 }}</span
               ><button
                 class="btn btn-light btn-sm"
                 aria-label="Next page"
-                [disabled]="loading() || (results()?.page ?? 0) + 1 >= (results()?.totalPages ?? 0)"
-                (click)="changePage((results()?.page ?? 0) + 1)"
+                [disabled]="loading() || resultPage() + 1 >= resultTotalPages()"
+                (click)="changePage(resultPage() + 1)"
               >
                 <app-icon name="chevron-right" />
               </button>
@@ -155,4 +218,11 @@
     </div>
   </main>
   <ng-container #dialogHost />
+  @if (selectedSpreadsheet(); as selection) {
+    <app-spreadsheet-view
+      [file]="selection.file"
+      [mode]="selection.mode"
+      (closed)="closeSpreadsheet()"
+    />
+  }
 </app-application-layout>

@@ -2,6 +2,8 @@
 
 Standalone Angular UI connected to the sibling `Book-Search-Download` Spring backend. Unauthenticated visitors go to Login; authenticated visitors reach the existing Home. Production has no mock mode or silent mock fallback.
 
+The latest [CSV / Excel upload, preview and download guide](../Book-Search-Download/SPREADSHEETS.md) covers the confirmed initial PDF tab, gray/blue document-type tabs, filename search, spreadsheet file/sheet previews and binary downloads, backend migration and service-only JSON API.
+
 The current [viewer, profile and role update](../Book-Search-Download/VIEWER_PROFILE_ROLE_UPDATES.md) covers custom reading colors, stable fullscreen facing pages, 50–125% zoom, notification-only Home uploads, tenant-specific role selection and the header profile icon, including final verification and browser limits.
 
 Latest upload/reading/Home behavior is in the [upload history and Full Page reader guide](../Book-Search-Download/UPLOAD_HISTORY_READER.md): Upload Document, persistent private My Uploads, viewer-local dates, full-page covers/spreads/sound and bottom-aligned overflow/pagination. It supersedes conflicting older reader and layout descriptions below.

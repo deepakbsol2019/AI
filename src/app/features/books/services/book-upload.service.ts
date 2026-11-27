@@ -24,7 +24,7 @@ import { BackgroundAuthenticationPausedError } from '../../user/security/backgro
 
 type UploadPhase = 'idle' | 'uploading' | 'processing' | 'unknown' | 'success' | 'error';
 
-/** The server accepts a PDF first, then processes it asynchronously. */
+/** The server accepts a document first, then processes it asynchronously. */
 @Injectable({ providedIn: 'root' })
 export class BookUploadService {
   private readonly api = inject(BooksApiService);
@@ -73,8 +73,8 @@ export class BookUploadService {
     this.progress.set(null);
     // File type is decided from content by the backend; a browser MIME/extension is only a hint.
     if (file.size === 0 || file.size > this.config.maxUploadBytes) {
-      this.validationError.set('Choose a non-empty PDF of 100 MiB or less.');
-      this.fail('Choose a non-empty PDF of 100 MiB or less.');
+      this.validationError.set('Choose a non-empty document of 100 MiB or less.');
+      this.fail('Choose a non-empty document of 100 MiB or less.');
       this.notifications.show(this.message(), 'error');
       return;
     }
@@ -87,7 +87,7 @@ export class BookUploadService {
           if (event.type === HttpEventType.UploadProgress && event.total) {
             this.progress.set(Math.round((event.loaded / event.total) * 100));
             if (event.loaded === event.total)
-              this.message.set('PDF transferred. Waiting for the upload receipt…');
+              this.message.set('Document transferred. Waiting for the upload receipt…');
           }
         }),
         filter((event) => event.type === HttpEventType.Response),
@@ -147,7 +147,7 @@ export class BookUploadService {
   ): Observable<UploadStatus> {
     if (['COMPLETED', 'FAILED'].includes(uploadState(receipt))) return of(receipt);
     this.phase.set('processing');
-    this.message.set(receipt.message || 'Processing your book and preparing topic PDFs…');
+    this.message.set(receipt.message || 'Processing your document…');
     // Exhaust avoids overlapping requests when one status check takes longer than the interval.
     return timer(this.config.uploadPollIntervalMs, this.config.uploadPollIntervalMs).pipe(
       exhaustMap((tick) =>
@@ -163,17 +163,17 @@ export class BookUploadService {
     if (uploadState(receipt) === 'COMPLETED') {
       this.dismissAcceptedNotification();
       this.phase.set('success');
-      this.message.set(receipt.message || 'Your book is ready in the library.');
+      this.message.set(receipt.message || 'Your document is ready in the library.');
       this.notifications.show(this.message(), 'success');
       this.completedSubject.next();
     } else if (uploadState(receipt) === 'FAILED') {
       this.dismissAcceptedNotification();
       this.fail(
-        receipt.failureReason || receipt.message || 'The server could not process this PDF.',
+        receipt.failureReason || receipt.message || 'The server could not process this document.',
       );
       this.notifications.show(this.message(), 'error');
     } else {
-      this.message.set(receipt.message || 'Processing your book…');
+      this.message.set(receipt.message || 'Processing your document…');
     }
   }
 
@@ -184,8 +184,8 @@ export class BookUploadService {
       this.phase.set('unknown');
       this.message.set(
         error instanceof BackgroundAuthenticationPausedError
-          ? 'Automatic status checks are paused. Open My Uploads and use Refresh Status to verify your sign-in and check this upload. The server may still be processing your PDF.'
-          : `Status check interrupted. The server may still be processing your PDF. Open My Uploads to refresh its status. ${message}`,
+          ? 'Automatic status checks are paused. Open My Uploads and use Refresh Status to verify your sign-in and check this upload. The server may still be processing your document.'
+          : `Status check interrupted. The server may still be processing your document. Open My Uploads to refresh its status. ${message}`,
       );
       // The independent server job and its durable receipt remain available even if polling stops.
       // An interrupted status check must not permanently disable the only upload control.

@@ -1,6 +1,31 @@
 :host {
   display: block;
 }
+.document-type-tabs {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-top: 0.6rem;
+}
+.document-type-tabs button {
+  border: 1px solid #225eb4;
+  background: #225eb4;
+  color: #fff;
+  border-radius: 5px;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.document-type-tabs button[aria-selected='true'] {
+  background: #64748b;
+  border-color: #64748b;
+  color: #fff;
+}
+.document-type-tabs button:focus-visible {
+  outline: 3px solid #172b46;
+  outline-offset: 3px;
+}
 .library-main {
   display: flex;
   flex-direction: column;
