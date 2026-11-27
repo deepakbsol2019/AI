@@ -1,0 +1,44 @@
+﻿AiHelpDeskApp - Short Demo Notes
+Suggested duration: 8-10 minutes
+
+1. Overview
+Liza is a conversational helpdesk backend. Spring AI and Ollama interpret messages and invoke Java tools. MySQL stores tickets.
+
+2. Request flow
+POST text/plain to http://localhost:8085/api/connect-helpdesk. Reuse the HTTP session cookie so the last 10 messages remain available to the conversation.
+
+3. Ticket decision flow
+Collect an exact username and issue. Search saved summaries for that user. Show active matches. For a closed match, ask: reopen the existing ticket or create a new ticket?
+
+4. New ticket
+Review the inferred issue type, priority and summary. After confirmation, Java validates the input, selects a SUPPORT user, saves an OPEN ticket and sends notification emails.
+
+5. Reopening
+After the user chooses reopen, reopenTicket validates that the record is CLOSED and changes it to OPEN. updatedOn becomes the current server time. The ID, createdOn and other ticket details remain unchanged.
+
+6. Assignment and reminders
+Assignment ranks SUPPORT users by fewest OPEN, then fewest INPROGRESS, then most total tickets, then lowest user ID. Reminders run daily at 10:00 AM India time. Age thresholds are HIGH 24h, MEDIUM 48h and LOW 72h.
+
+7. Demo sequence
+Describe a VPN problem using a seeded username. Confirm creation and display the real ID. Repeat the issue to demonstrate the duplicate check. Use separate seeded CLOSED tickets to demonstrate reopening and creating a new ticket. Verify timestamps in MySQL.
+
+8. Setup and boundaries
+Requires Java 25, Maven, MySQL, Ollama with the configured model, SMTP and existing creator/SUPPORT users. The focused unit suite passed 20 tests. Live model, database and SMTP behavior still need rehearsal. Current limitations include fixed email recipients, unsafe null handling in general partial updates, and prompt-based confirmation without authenticated ownership enforcement.
+
+@Tool reference
+createTicket: Creates an OPEN ticket and assigns support.
+reopenTicket: Reopens a CLOSED ticket and refreshes updatedOn.
+updateTicket: Updates ticket summary and priority.
+findTicketById: Retrieves a saved ticket by ID.
+findTicketsBySummary: Searches literal summary text for a creator.
+findTicketCreatedByUserName: Lists tickets created by a user.
+findTicketAssignedToUserName: Lists tickets assigned to a user.
+findTicketByStatus: Lists tickets by status.
+findTicketByTicketPriority: Lists tickets by priority.
+findTicketByCreatedOn: Lists tickets created on a date.
+findHelpdeskUserByUserName: Retrieves an existing user.
+findTicketAssignedTo: Selects the best SUPPORT user by workload ranking.
+getCurrentDateTime: Gets the current server date/time.
+getTodayDate: Gets the current server date.
+
+Detailed presenter notes and source references are embedded in the PowerPoint.

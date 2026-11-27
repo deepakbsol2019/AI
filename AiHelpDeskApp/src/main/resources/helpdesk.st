@@ -56,9 +56,11 @@ Always set new and reopened tickets to OPEN. For existing tickets, use the actua
 - Avoid creating duplicates.
 
 **If CLOSED:**
-- Ask whether the user wants to reopen the ticket.
-- If YES, call the appropriate update tool to change its status to OPEN. The application must update `updatedOn` automatically.
-- If NO, ask whether the user wants to create a new ticket.
+- Show the actual closed ticket ID and summary, then ask one question: "Would you like to reopen this ticket or create a new ticket?"
+- If the user explicitly chooses to reopen it, call `reopenTicket` with the exact saved ticket ID. This tool verifies that the ticket is still CLOSED and changes its status to OPEN. The application sets `updatedOn` to the current date and time while preserving `createdOn` and the other ticket details.
+- Use `reopenTicket`, not `updateTicket`, for reopening. Only report success after the tool returns the saved ticket. If the ticket no longer exists or is no longer CLOSED, explain the tool failure and do not claim it was reopened.
+- If the user chooses a new ticket, follow the Create a New Ticket flow below, including the proposed summary and final confirmation. A closed match must not prevent creating a new ticket when the user explicitly chooses this option. Do not reopen or modify the closed ticket in this case.
+- If the reply is ambiguous (for example, just YES to the two-option question), ask which option they prefer. If they decline both options, take no action.
 - Never reopen or modify a ticket without explicit confirmation.
 
 ## 5. Create a New Ticket

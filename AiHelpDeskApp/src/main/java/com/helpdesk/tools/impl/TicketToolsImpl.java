@@ -46,6 +46,16 @@ public class TicketToolsImpl implements TicketTools {
 	
 	
 	@Override
+	@jakarta.transaction.Transactional(rollbackOn = Exception.class)
+	public Ticket reopenTicket(Long ticketId) {
+		Assert.isTrue(ticketId != null && ticketId > 0, "A positive ticket ID is required");
+		Ticket ticket = ticketService.findTicketById(ticketId);
+		Assert.state(ticket.getStatus() == TicketStatus.CLOSED, "Only CLOSED tickets can be reopened");
+		ticket.setStatus(TicketStatus.OPEN);
+		return ticketService.updateTicket(ticket);
+	}
+
+	@Override
 	public Ticket findTicketById(Long ticketId) {
 		return ticketService.findTicketById(ticketId);
 	}

@@ -1,0 +1,68 @@
+AiHelpDeskApp
+Introduce Liza as a conversational helpdesk backend. This demo explains the source implementation. Live model responses and integrations require a separate rehearsal. Suggested duration: 7–10 minutes.
+Source: pom.xml; src/main/resources/helpdesk.st
+
+
+Application overview
+Explain that the repository exposes a REST API and contains no frontend. Java code controls persistence and assignment. The model interprets the conversation and selects tools. No RAG or vector search is implemented in the active flow. Versions shown are declared in pom.xml, not independently verified release information.
+Source: pom.xml; TicketController.java; AiModelPipeLineImpl.java; helpdesk.st
+
+
+Request and tool execution flow
+Send text to POST /api/connect-helpdesk. The controller passes HttpSession.getId() as conversation ID. Spring AI combines helpdesk.st, the user message, registered tools and memory. Ollama can request Java tool execution. Tool results return through Spring AI to the client. Some lookup tools use returnDirect=true, so output can be raw ticket data.
+Source: TicketController.java; AiModelPipeLineImpl.java; ChatMemoryConfig.java; TicketTools.java
+
+
+Conversation and ticket decision flow
+This diagram describes the prompt-directed workflow, not a deterministic Java state machine. A fresh username-scoped literal summary search supplies candidates. The model must compare their actual issue details. Failed searches must not count as no match. Active matches should be displayed. For a closed match, Liza asks whether to reopen the existing ticket or create a new one. Explicit reopening calls reopenTicket. A new ticket follows the normal summary and confirmation flow.
+Source: helpdesk.st; TicketToolsImpl.java; TicketRepository.java
+
+
+Ticket creation and assignment
+After explicit confirmation, createTicket validates summary length 1–4000, issue type, priority and username. It loads an existing creator and selects a SUPPORT user. Ranking is fewest OPEN tickets, then fewest INPROGRESS, then most total tickets, then lowest user ID. JPA supplies ID and timestamps. Two asynchronous mail tasks are joined before return, so the request waits for both. Mail is sent before the transaction finishes committing.
+Source: TicketToolsImpl.java; HelpdeskUserRepo.java; TicketServiceImpl.java; Ticket.java
+
+
+Closed ticket: reopen or create new
+Demo question: Would you like to reopen this ticket or create a new ticket? A clear reopen choice calls reopenTicket with the actual saved ID. The Java tool validates a positive ID, reloads the ticket and permits only CLOSED status. It sets OPEN and saves inside a transaction. The existing JPA PreUpdate hook refreshes updatedOn to the current server time. createdOn, ownership, summary, issue type and priority remain unchanged. Choosing a new ticket follows proposal and final confirmation, and leaves the closed ticket unchanged. An ambiguous YES requires clarification. There is no reopen notification call in the current implementation.
+Source: helpdesk.st; TicketTools.java; TicketToolsImpl.java; Ticket.java
+
+
+Data and conversation context
+Ticket has two many-to-one links to HelpdeskUsers: creator is required and assignee is optional at the entity level. Tool-based creation always resolves an assignee. JPA lifecycle hooks set createdOn and updatedOn. Chat memory stores at most 10 messages per conversation in process memory. HTTP session continuity requires the client to reuse its session cookie. Memory is lost on restart and does not authenticate a user.
+Source: Ticket.java; HelpdeskUsers.java; ChatMemoryConfig.java; TicketController.java
+
+
+Notification and reminder flow
+Creation sends separate creator and assignee messages, but both recipient arguments currently use the same hard-coded demo address. The scheduler runs daily at 10:00 Asia/Kolkata, despite an hourly comment. It selects OPEN and INPROGRESS tickets, skips incomplete rows, and checks age since creation. HIGH: 24 hours, MEDIUM: 48, LOW: 72. Qualifying tickets receive mail on each later run because no last-reminded marker exists. Age uses server-local LocalDateTime.
+Source: TicketServiceImpl.java; TicketReminderScheduler.java; HelpdeskSendEmailServiceImpl.java
+
+
+Live demo sequence
+Preparation: Java 25 and Maven, MySQL schema ai_help_desk_app on localhost:3306, Ollama on localhost:11434 with the configured model, working SMTP environment settings and an existing creator plus SUPPORT user. Run .\mvnw.cmd spring-boot:run. Use Postman or curl.exe with a cookie jar and Content-Type: text/plain. Endpoint: http://localhost:8085/api/connect-helpdesk. Example issue: VPN disconnects repeatedly and prevents work. Supply a real seeded username. The assistant may ask clarifying questions. Confirm only after reviewing the proposed summary. Read back the actual returned ID rather than a fabricated example. For the closed-ticket branch, prepare a separate CLOSED ticket. Choose reopen, then compare updatedOn and createdOn in the database. Repeat with another CLOSED ticket and choose create new. Verify the old record remains closed. Do not use GET /api/test casually because it sends real emails.
+Source: application.properties; TicketController.java; helpdesk.st
+
+
+Implementation gaps and demo boundaries
+The dedicated reopenTicket tool now supports CLOSED to OPEN. The general updateTicket tool still has optional summary and priority parameters which are assigned unconditionally, so omitted values may overwrite stored data with null. Confirmation and duplicate prevention depend on prompt compliance, with no server-side confirmation state or duplicate constraint shown. No Spring Security dependency or authenticated ownership checks appear in the reviewed code. Fixed email recipients and email-before-commit can cause misleading delivery if persistence later rolls back. Configuration includes sensitive values that should move to external secrets. Do not expose them during the demo. The unused named executor does not control CompletableFuture.runAsync calls.
+Source: TicketTools.java; TicketToolsImpl.java; TicketServiceImpl.java; pom.xml; application.properties; ThreadPoolConfig.java
+
+
+@Tool table: ticket actions
+Registered through .tools(ticketTools, generalTool). createTicket: Creates an OPEN ticket and assigns support. reopenTicket: Changes CLOSED to OPEN and refreshes updatedOn. updateTicket: Updates summary and priority on an existing ticket. findTicketById: Loads one saved ticket by its exact ID. findTicketsBySummary: Finds literal summary matches for one creator. createTicket, reopenTicket and updateTicket require explicit user confirmation in their tool instructions. updateTicket currently assigns optional fields unconditionally. Summary search is literal and case-insensitive, not semantic search. Time tools use the server timezone. findTicketAssignedTo ranks fewest OPEN, then fewest INPROGRESS, then most total tickets, then lowest user ID. Lookup tools marked returnDirect=true may return ticket data directly.
+Source: TicketTools.java; GeneralTool.java; TicketToolsImpl.java; GeneralToolImpl.java
+
+
+@Tool table: ticket searches
+Registered through .tools(ticketTools, generalTool). findTicketCreatedByUserName: Lists tickets created by the exact username. findTicketAssignedToUserName: Lists tickets assigned to the exact username. findTicketByStatus: Lists OPEN, INPROGRESS or CLOSED tickets. findTicketByTicketPriority: Lists tickets with LOW, MEDIUM or HIGH priority. findTicketByCreatedOn: Lists tickets created on a calendar date. createTicket, reopenTicket and updateTicket require explicit user confirmation in their tool instructions. updateTicket currently assigns optional fields unconditionally. Summary search is literal and case-insensitive, not semantic search. Time tools use the server timezone. findTicketAssignedTo ranks fewest OPEN, then fewest INPROGRESS, then most total tickets, then lowest user ID. Lookup tools marked returnDirect=true may return ticket data directly.
+Source: TicketTools.java; GeneralTool.java; TicketToolsImpl.java; GeneralToolImpl.java
+
+
+@Tool table: users and server time
+Registered through .tools(ticketTools, generalTool). findHelpdeskUserByUserName: Loads a helpdesk user by exact username. findTicketAssignedTo: Selects SUPPORT user by workload ranking. getCurrentDateTime: Returns the current server date and time. getTodayDate: Returns the current server calendar date. createTicket, reopenTicket and updateTicket require explicit user confirmation in their tool instructions. updateTicket currently assigns optional fields unconditionally. Summary search is literal and case-insensitive, not semantic search. Time tools use the server timezone. findTicketAssignedTo ranks fewest OPEN, then fewest INPROGRESS, then most total tickets, then lowest user ID. Lookup tools marked returnDirect=true may return ticket data directly.
+Source: TicketTools.java; GeneralTool.java; TicketToolsImpl.java; GeneralToolImpl.java
+
+
+Demo readiness and next steps
+This presentation reflects static source analysis. The application was not started and no live model, database or SMTP integration was exercised for this deck. The focused suite passed 20 tests covering session forwarding, memory separation, lookup semantics, creation validation, reopen validation and the timestamp lifecycle callback. This does not establish live model compliance or database integration behavior. Rehearse with seeded users, controlled email recipients and isolated demo tickets. Prioritize null-safe patch semantics, authorization, deterministic confirmation checks and notification delivery after commit. Repeated reminders need a delivery history or cooldown if required by the product.
+Source: src/test/java/com/helpdesk; source files reviewed throughout this deck

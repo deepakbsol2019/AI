@@ -14,6 +14,17 @@ import com.helpdesk.enitity.TicketStatus;
 
 public interface TicketTools {
 
+	@Tool(description = """
+	        Reopen an existing CLOSED ticket after explicit user confirmation.
+	        Retrieves the current saved ticket and changes only its status to OPEN.
+	        Preserves summary, classification, priority, creator and assignee.
+	        Fails if the ticket does not exist or is not CLOSED.
+	        Use this tool rather than updateTicket to reopen a ticket.
+	        """, returnDirect = false)
+	public Ticket reopenTicket(
+			@ToolParam(description = "Exact ID of the closed ticket the user confirmed reopening. Must be positive.", required = true)
+			Long ticketId);
+
 
 	@Tool(description = "Create a ticket after explicit confirmation. Sets status OPEN and assigns a support user automatically.",returnDirect = false)
 	public Ticket createTicket(@ToolParam(description ="Description of the problem. Must contain 1 to 4000 characters.",required = true) String ticketSummary,
