@@ -1,13 +1,13 @@
 package com.helpdesk.tools;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.List;
 
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 
 import com.helpdesk.enitity.HelpdeskUsers;
+import com.helpdesk.enitity.IssueTypes;
 import com.helpdesk.enitity.Ticket;
 import com.helpdesk.enitity.TicketPriority;
 import com.helpdesk.enitity.TicketStatus;
@@ -15,18 +15,17 @@ import com.helpdesk.enitity.TicketStatus;
 public interface TicketTools {
 
 
-	@Tool(description = "Save given Ticket into Ticket_Dtls table and return the created object in response.",returnDirect = true)
+	@Tool(description = "Create a ticket after explicit confirmation. Sets status OPEN and assigns a support user automatically.",returnDirect = false)
 	public Ticket createTicket(@ToolParam(description ="Description of the problem. Must contain 1 to 4000 characters.",required = true) String ticketSummary,
+    @ToolParam(description ="Issue classification inferred from the problem.",required = true) IssueTypes issueType,
     @ToolParam(description ="Ticket priority. Use a value from the allowed enum.",required = true) TicketPriority ticketPriority,
-    @ToolParam(description ="Replacement status. use status OPEN.", required = false) TicketStatus status,
     @ToolParam(description = "userName: this ticked tis created by given user name",required = true) String userName);
 	
 	
 	@Tool(description = """
-	        Find tickets by id.
-	        Valid id is long type.
-	        Returns a JSON array of tickets.
-	        If no tickets exist, returns an empty array.
+	        Find one saved ticket by its exact ID.
+	        Returns a single ticket object if found.
+	        Raises a not-found error if no ticket has this ID; this is not an existing ticket.
 	        """,returnDirect = true)
 	public Ticket findTicketById(@ToolParam(description = "This is input parameter of type Long, this is primary key in table") Long ticketId);
 	
@@ -38,6 +37,19 @@ public interface TicketTools {
 	        """,returnDirect = true
 			)
 	public List<Ticket> findTicketCreatedByUserName(@ToolParam(description = "userName is input data for this function of type String.") String userName);
+
+	@Tool(description = """
+	        Search current saved tickets created by the exact userName whose summary
+	        contains the supplied literal issue phrase, ignoring case.
+	        Use a short, distinctive phrase from the user's actual issue, not an invented summary.
+	        Returns candidate tickets as a JSON array; [] means no matches for this search.
+	        A candidate is a duplicate only if its saved details describe the same issue.
+	        Unrelated tickets or tickets found only by status or priority are not duplicates.
+	        Both userName and summary must be nonblank. Never guess the username.
+	        """, returnDirect = false)
+	public List<Ticket> findTicketsBySummary(
+			@ToolParam(description = "Exact username of the ticket creator", required = true) String userName,
+			@ToolParam(description = "Nonblank literal phrase from the current issue", required = true) String summary);
 	
 	@Tool(description = """
 	        Find all tickets assigned to userName.
@@ -110,24 +122,24 @@ public interface TicketTools {
 	        Returns a JSON array of tickets.
 	        If no tickets exist, returns an empty array.
 	        """,returnDirect = true)
-	public List<Ticket> findTicketByTicketPriority(@ToolParam(description = "ticket priority is used as a input parameter. this is enum type. keep default value HIGH") TicketPriority ticketPriority);
+	public List<Ticket> findTicketByTicketPriority(@ToolParam(description = "Explicitly requested ticket priority: LOW, MEDIUM or HIGH. Never invent a default.") TicketPriority ticketPriority);
 	
 	@Tool(description = """
-	        Find tickets by CreatedOn.
-	        Valid createdOn is of type LocalDateTime type.
+	        Find tickets created on the exact calendar date.
+	        createdOn is a LocalDate in yyyy-MM-dd format.
 	        Returns a JSON array of tickets.
 	        If no tickets exist, returns an empty array.
 	        """,returnDirect = true
 			
 			)
-	public List<Ticket> findTicketByCreatedOn(@ToolParam(description = "createdOn is the input parameter of type local date time. use this paramert to filter the ticket data from table.",required = true) LocalDate createdOn);
+	public List<Ticket> findTicketByCreatedOn(@ToolParam(description = "Creation date in yyyy-MM-dd format",required = true) LocalDate createdOn);
 		
 	@Tool(
 		    name = "findHelpdeskUserByUserName",
 		    description = """
 		        Find an existing helpdesk user by exact username.
 		        Returns user information if found.
-		        Returns null if the user does not exist.
+		        Raises a not-found error if the user does not exist.
 		        """,
 		    returnDirect = false
 		)

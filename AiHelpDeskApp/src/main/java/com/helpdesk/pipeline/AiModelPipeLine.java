@@ -9,4 +9,5 @@ public interface AiModelPipeLine {
 	public Ticket createUpdatePipeLine(String question);
 	public List<Ticket> getTicketPipeLine(String question);
 	public String connectWithHelpDesk(String question);
+	public String connectWithHelpDesk(String question, String conversationId);
 }

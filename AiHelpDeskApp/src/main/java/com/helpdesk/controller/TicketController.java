@@ -20,6 +20,8 @@ import com.helpdesk.enitity.TicketPriority;
 import com.helpdesk.enitity.TicketStatus;
 import com.helpdesk.pipeline.AiModelPipeLine;
 
+import jakarta.servlet.http.HttpSession;
+
 @RestController
 @RequestMapping("/api")
 public class TicketController {
@@ -45,8 +47,8 @@ public class TicketController {
 	
 	@PostMapping(value = "/connect-helpdesk",consumes = MediaType.TEXT_PLAIN_VALUE,
 	        produces = MediaType.APPLICATION_JSON_VALUE)
-	public ResponseEntity<String> connectWithHelpdesk(@RequestBody String question){
-		return new ResponseEntity<>(aiModelPipeLine.connectWithHelpDesk(question),HttpStatus.OK);
+	public ResponseEntity<String> connectWithHelpdesk(@RequestBody String question, HttpSession session){
+		return new ResponseEntity<>(aiModelPipeLine.connectWithHelpDesk(question, session.getId()),HttpStatus.OK);
 	}
 	
 	@GetMapping("/test")

@@ -1,16 +1,15 @@
 package com.helpdesk.tools.impl;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
-import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Component;
+import org.springframework.util.Assert;
 
 import com.helpdesk.custException.CustomException;
-import com.helpdesk.enitity.DepartmentNames;
 import com.helpdesk.enitity.HelpdeskUsers;
+import com.helpdesk.enitity.IssueTypes;
 import com.helpdesk.enitity.Ticket;
 import com.helpdesk.enitity.TicketPriority;
 import com.helpdesk.enitity.TicketStatus;
@@ -27,12 +26,18 @@ public class TicketToolsImpl implements TicketTools {
 		this.helpdeskUserRepo=helpdeskUserRepo;
 	}
 	@Override
-	public Ticket createTicket(String ticketSummary, TicketPriority ticketPriority, TicketStatus status,String userName) {
+	public Ticket createTicket(String ticketSummary, IssueTypes issueType, TicketPriority ticketPriority,String userName) {
+		Assert.hasText(ticketSummary, "Ticket summary is required");
+		Assert.isTrue(ticketSummary.length() <= 4000, "Ticket summary must not exceed 4000 characters");
+		Assert.notNull(issueType, "Issue type is required");
+		Assert.notNull(ticketPriority, "Ticket priority is required");
+		Assert.hasText(userName, "Username is required");
 
 		Ticket ticket=new Ticket();
 		ticket.setTicketSummary(ticketSummary);
+		ticket.setIssueType(issueType);
 		ticket.setTicketPriority(ticketPriority);
-		ticket.setStatus(status);
+		ticket.setStatus(TicketStatus.OPEN);
 		ticket.setCreatedBy(findHelpdeskUserByUserName(userName));
 		ticket.setAssignedTo(findTicketAssignedTo());
 		return ticketService.createTicket(ticket);
@@ -48,6 +53,10 @@ public class TicketToolsImpl implements TicketTools {
 	@Override
 	public List<Ticket> findTicketCreatedByUserName(String userName) {
 		return ticketService.findTicketCreatedByUserName(userName);
+	}
+	@Override
+	public List<Ticket> findTicketsBySummary(String userName, String summary) {
+		return ticketService.findTicketsBySummary(userName, summary);
 	}
 	@Override
 	public List<Ticket> findTicketAssignedToUserName(String userName) {

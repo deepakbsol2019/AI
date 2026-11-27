@@ -1,7 +1,6 @@
 package com.helpdesk.service;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.List;
 
 import com.helpdesk.enitity.Ticket;
@@ -17,5 +16,6 @@ public interface TicketService {
 	public List<Ticket> findTicketByTicketPriority(TicketPriority ticketPriority);
 	public List<Ticket> findTicketByCreatedOn(LocalDate createdOn);
 	public List<Ticket> findTicketCreatedByUserName(String userName);
+	public List<Ticket> findTicketsBySummary(String userName, String summary);
 	public List<Ticket> findTicketAssignedToUserName(String userName);
 }

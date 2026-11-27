@@ -7,6 +7,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 import org.springframework.stereotype.Service;
+import org.springframework.util.Assert;
 
 import com.helpdesk.custException.CustomException;
 import com.helpdesk.email.HelpdeskSendEmailService;
@@ -50,7 +51,7 @@ public class TicketServiceImpl implements TicketService {
 	
 	public List<Ticket> findTicketByStatus(TicketStatus ticketStatus){
 		Optional<List<Ticket>> tickets=ticketRepository.findTicketByStatus(ticketStatus);
-		return tickets.orElseThrow(()->new CustomException("Ticket not found with ticket status ::"+ticketStatus));
+		return tickets.orElseGet(List::of);
 	}
 	
 	@Transactional(rollbackOn = Exception.class)
@@ -74,6 +75,14 @@ public class TicketServiceImpl implements TicketService {
 	@Override
 	public List<Ticket> findTicketCreatedByUserName(String userName) {
 		return ticketRepository.findByCreatedBy_Username(userName);
+	}
+
+	@Override
+	public List<Ticket> findTicketsBySummary(String userName, String summary) {
+		Assert.hasText(userName, "A username is required to search for matching tickets");
+		Assert.hasText(summary, "An issue summary is required to search for matching tickets");
+		return ticketRepository.findByCreatedBy_UsernameAndTicketSummaryContainingIgnoreCase(
+				userName.trim(), summary.trim());
 	}
 
 	@Override

@@ -17,6 +17,10 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
 	List<Ticket> findByCreatedBy_Username(String username);
 	List<Ticket> findByAssignedTo_Username(String username);
 
+	@EntityGraph(attributePaths = {"createdBy", "assignedTo"})
+	List<Ticket> findByCreatedBy_UsernameAndTicketSummaryContainingIgnoreCase(
+			String username, String summary);
+
 	Optional<List<Ticket>> findTicketByStatus(TicketStatus ticketStatus);
 
 	List<Ticket> findTicketByTicketPriority(TicketPriority ticketPriority);

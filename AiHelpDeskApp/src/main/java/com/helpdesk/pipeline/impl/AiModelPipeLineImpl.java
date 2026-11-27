@@ -4,12 +4,10 @@ import java.util.List;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
-import org.springframework.ai.chat.memory.ChatMemoryRepository;
-import org.springframework.ai.chat.memory.InMemoryChatMemoryRepository;
-import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
+import org.springframework.util.Assert;
 
 import com.helpdesk.enitity.Ticket;
 import com.helpdesk.pipeline.AiModelPipeLine;
@@ -104,15 +102,24 @@ public class AiModelPipeLineImpl implements AiModelPipeLine {
 	}
 	@Override
 	public String connectWithHelpDesk(String question) {
-		
+		return helpdeskPrompt(question).call().content();
+	}
+
+	@Override
+	public String connectWithHelpDesk(String question, String conversationId) {
+		Assert.hasText(conversationId, "Conversation ID must not be blank");
+		return helpdeskPrompt(question)
+				.advisors(m->m.advisors(messageChatMemoryAdvisor).param(ChatMemory.CONVERSATION_ID, conversationId))
+				.call()
+				.content();
+	}
+
+	private ChatClient.ChatClientRequestSpec helpdeskPrompt(String question) {
+		Assert.hasText(question, "Question must not be blank");
 		return chatClient.prompt()
 				.system(resource)
 				.user(question)
-				.advisors(m->m.advisors(messageChatMemoryAdvisor).param(ChatMemory.CONVERSATION_ID, "deepak"))
-				.tools(ticketTools,generalTool)
-				.call()
-				.content();
-		
+				.tools(ticketTools,generalTool);
 	}
 	
 
