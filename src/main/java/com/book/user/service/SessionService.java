@@ -24,6 +24,20 @@ import org.springframework.transaction.annotation.Transactional;
 /** Database-authoritative sessions; no normal request extends the refresh deadline. */
 @Service
 public class SessionService {
+    public record CurrentSessionStatus(String status, String authenticationMethod, boolean mfaCompleted,
+            Instant refreshExpiresAt, Instant absoluteExpiresAt) { }
+
+    @org.springframework.ai.tool.annotation.Tool(name = "currentSessionStatus", description = "Validate the signed-in user's current session and report login method, MFA completion and expiry times for access troubleshooting. Never accepts or returns credentials or session secrets.")
+    @Transactional(readOnly = true)
+    public CurrentSessionStatus currentSessionStatus() {
+        var actor = validate(com.book.tools.ToolCaller.require());
+        authorization.authorize(actor, "GET", "/api/user/profile/details");
+        var session = one("SELECT auth_method,mfa_completed_at,refresh_expires_at,absolute_expires_at FROM auth_sessions WHERE session_id=?", actor.sessionId());
+        return new CurrentSessionStatus("AUTHENTICATED", (String) session.get("auth_method"),
+                AuthRows.instant(session, "mfa_completed_at") != null,
+                AuthRows.instant(session, "refresh_expires_at"), AuthRows.instant(session, "absolute_expires_at"));
+    }
+
     private static final String ACCOUNT = """
             SELECT u.user_id,u.primary_email,u.display_name,u.status user_status,u.email_verified_at,u.deleted_at,
               u.security_version current_security_version,t.tenant_id,t.display_name tenant_name,

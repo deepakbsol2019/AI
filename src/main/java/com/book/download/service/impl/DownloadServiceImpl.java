@@ -32,6 +32,26 @@ import com.book.user.security.TenantContext;
 /** Local download assembly from the current book's committed metadata and stored PDFs. */
 @Service
 public class DownloadServiceImpl implements DownloadService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.book.tools.ServiceToolAccess> toolAccess;
+
+    @Tool(name = "downloadBook", returnDirect = true, description = "Download the complete PDF of an existing authorized book by its persisted book ID. Preserves current download permissions, tenant ownership, saved topic order and original front matter. Returns PDF bytes. Do not guess book IDs.")
+    @Transactional(readOnly = true)
+    public byte[] downloadBookTool(
+            @ToolParam(description = "Required positive book ID from an existing authorized book listing.") Long bookId) {
+        toolAccess.getObject().require("GET", "/api/download/book-download");
+        return downloadBook(bookId);
+    }
+
+    @Tool(name = "downloadTopics", returnDirect = true, description = "Download selected topics from an authorized existing book as one PDF with generated cover and contents. Preserves supplied topic ID order and current endpoint permission and tenant boundaries. Returns PDF bytes.")
+    @Transactional(readOnly = true)
+    public byte[] downloadTopicsTool(
+            @ToolParam(description = "Positive book ID owning every selected topic.") Long bookId,
+            @ToolParam(description = "Nonempty ordered list of unique positive topic IDs belonging to bookId.") List<Long> topicIds) {
+        toolAccess.getObject().require("GET", "/api/download/book-topic-download");
+        return downloadTopics(bookId, topicIds);
+    }
+
     private final BookDetailsRepository books;
     private final TopicDetailsRepository topics;
     private final TopicPdfSource sources;
@@ -49,11 +69,6 @@ public class DownloadServiceImpl implements DownloadService {
 
     @Override
     @Transactional(readOnly = true)
-    @Tool(name = "downloadBook", returnDirect = true, description = """
-            Download the complete PDF of an existing book using its persisted book ID.
-            Includes the original front matter and all saved topics in book order, without adding a new cover.
-            Returns PDF bytes for the application to deliver to the user. Do not guess book IDs.
-            """)
     public byte[] downloadBook(
             @ToolParam(description = "Required positive book ID from an existing book record or book search result.")
             Long bookId) {
@@ -83,11 +98,6 @@ public class DownloadServiceImpl implements DownloadService {
 
     @Override
     @Transactional(readOnly = true)
-    @Tool(name = "downloadTopics", returnDirect = true, description = """
-            Download selected topics from one existing book as a single PDF, with a generated cover and contents.
-            Preserves the supplied topic ID order. For one topic, supply a list containing that single ID.
-            Returns PDF bytes for the application to deliver to the user. Do not guess book or topic IDs.
-            """)
     public byte[] downloadTopics(
             @ToolParam(description = "Required positive book ID owning every selected topic, from an existing book record or book search result.")
             Long bookId,

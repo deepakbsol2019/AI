@@ -8,6 +8,8 @@ import java.util.Locale;
 
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,9 +26,21 @@ import com.book.entity.TopicDetails;
 import com.book.search.repository.BookSearchQueryRepository;
 import com.book.search.service.SearchService;
 import com.book.search.tool.BookSearchToolMetadata;
+import com.book.tools.ServiceToolAccess;
 
 @Service
 public class SearchServiceImpl implements SearchService {
+    @Autowired
+    private ObjectProvider<ServiceToolAccess> toolAccess;
+
+    @Tool(name = "searchBooks", description = BookSearchToolMetadata.DESCRIPTION)
+    @Transactional(readOnly = true)
+    public BookSearchResponse searchBooksTool(
+            @ToolParam(description = BookSearchToolMetadata.CRITERIA_DESCRIPTION, required = true) BookSearchCriteria criteria) {
+        toolAccess.getObject().require("GET", "/api/search/books");
+        return searchBooks(criteria);
+    }
+
     private final BookSearchQueryRepository books;
 
     public SearchServiceImpl(BookSearchQueryRepository books) {
@@ -35,7 +49,6 @@ public class SearchServiceImpl implements SearchService {
 
     @Override
     @Transactional(readOnly = true)
-    @Tool(name = "searchBooks", description = BookSearchToolMetadata.DESCRIPTION)
     public BookSearchResponse searchBooks(
             @ToolParam(description = BookSearchToolMetadata.CRITERIA_DESCRIPTION, required = true) BookSearchCriteria criteria) {
         BookSearchCriteria normalized = normalize(criteria);

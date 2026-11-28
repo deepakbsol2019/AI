@@ -44,7 +44,7 @@ public class UserSecurityConfiguration {
         var cors = new CorsConfiguration();
         cors.setAllowedOrigins(settings.trustedOrigins());
         cors.setAllowedMethods(List.of("GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"));
-        cors.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-XSRF-TOKEN"));
+        cors.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-XSRF-TOKEN", "X-Message-Id"));
         cors.setExposedHeaders(List.of("Content-Disposition"));
         cors.setAllowCredentials(true);
         var origins = new UrlBasedCorsConfigurationSource();

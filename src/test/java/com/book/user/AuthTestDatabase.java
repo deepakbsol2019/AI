@@ -76,6 +76,17 @@ public final class AuthTestDatabase {
             String spreadsheets=new ClassPathResource("db/manual/20261126_spreadsheet_endpoints.sql").getContentAsString(StandardCharsets.UTF_8)
                     .replaceAll("(?m)^SET time_zone[^;]*;", "").replace("UTC_TIMESTAMP(6)","CURRENT_TIMESTAMP");
             new ResourceDatabasePopulator(new ByteArrayResource(documentTableNames(spreadsheets).getBytes(StandardCharsets.UTF_8))).execute(jdbc.getDataSource());
+            String deletes=new ClassPathResource("db/manual/20261128_file_delete_endpoints.sql").getContentAsString(StandardCharsets.UTF_8)
+                    .replaceAll("(?m)^SET time_zone[^;]*;", "").replace("UTC_TIMESTAMP(6)","CURRENT_TIMESTAMP");
+            new ResourceDatabasePopulator(new ByteArrayResource(deletes.getBytes(StandardCharsets.UTF_8))).execute(jdbc.getDataSource());
+            for(String migration:java.util.List.of("20261128_file_delete_capabilities.sql","20261128_persistent_chats.sql","20261128_super_user_file_ai_permissions.sql")) {
+                String extension=new ClassPathResource("db/manual/"+migration).getContentAsString(StandardCharsets.UTF_8)
+                        .replaceAll("(?m)^SET time_zone[^;]*;", "")
+                        .replace(" ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci", "")
+                        .replace(" ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci", "")
+                        .replace("UTC_TIMESTAMP(6)","CURRENT_TIMESTAMP");
+                new ResourceDatabasePopulator(new ByteArrayResource(extension.getBytes(StandardCharsets.UTF_8))).execute(jdbc.getDataSource());
+            }
         } catch (IOException error) { throw new IllegalStateException("The authentication schema could not be loaded.", error); }
     }
 }

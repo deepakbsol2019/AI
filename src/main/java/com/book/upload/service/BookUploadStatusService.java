@@ -23,6 +23,20 @@ import org.springframework.web.server.ResponseStatusException;
 /** Receipts/failures survive book rollback; success commits together with the completed book. */
 @Service
 public class BookUploadStatusService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.book.tools.ServiceToolAccess> toolAccess;
+
+    public record UploadDiagnostic(Long uploadId, String status, String state) { }
+
+    @org.springframework.ai.tool.annotation.Tool(name = "inspectUploadStatus", description = "Read an authorized upload's current status and processing state by its unique upload ID. Diagnostic output omits internal exception details and stored paths.")
+    @Transactional(propagation=Propagation.REQUIRES_NEW,readOnly=true)
+    public UploadDiagnostic inspectUploadStatus(
+            @org.springframework.ai.tool.annotation.ToolParam(description = "Positive upload receipt ID returned by document upload.") Long uploadId) {
+        toolAccess.getObject().require("GET", "/api/upload-status/" + uploadId);
+        var status = get(uploadId);
+        return new UploadDiagnostic(status.getBookUploadId(), status.getStatus(), status.getState());
+    }
+
     private final BookUploadStatusRepository statuses;
 
     public BookUploadStatusService(BookUploadStatusRepository statuses) {

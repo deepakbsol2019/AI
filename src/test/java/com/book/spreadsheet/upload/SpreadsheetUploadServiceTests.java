@@ -79,11 +79,12 @@ class SpreadsheetUploadServiceTests {
         assertThat(sheet.dataRowCount()).isEqualTo(1200);assertThat(file.createdBy()).isEqualTo(11);
         assertThat(storage.read(1,file.originalUploadPath())).isEqualTo(original.getBytes(StandardCharsets.UTF_8));
         assertThat(sheet.uploadPath()).isEqualTo(file.originalUploadPath());
-        verify(storage,times(1)).write(eq(1L),eq(11L),eq("CSV"),eq("Batch"),eq("Batch.csv"),any(Path.class));
-        assertThat(Path.of(file.originalUploadPath())).isEqualTo(root.resolve("1/CSV/11/Batch/Batch.csv"));
+        verify(storage,times(1)).writeTracked(eq(1L),eq(11L),eq("CSV"),eq("Batch"),eq("Batch.csv"),any(Path.class),any());
+        assertThat(Path.of(file.originalUploadPath()).getParent()).isEqualTo(root.resolve("1/CSV/11/Batch"));
+        assertThat(Path.of(file.originalUploadPath()).getFileName().toString()).startsWith("Batch_").endsWith(".csv");
         var last=repository.rows(1,file.fileId(),sheet.sheetId(),1200,500);
         assertThat(last).hasSize(1);assertThat(last.getFirst().rowNumber()).isEqualTo(1201);
-        assertThat(last.getFirst().payload()).containsEntry("column_1","01199").containsEntry("column_3","");
+        assertThat(last.getFirst().payload()).containsEntry("column_1","01199").containsEntry("column_3",null);
         assertThat(receipt.upload().getState()).isEqualTo("PENDING"); // detached acceptance is not a completion claim.
         assertThat(TenantContext.currentTenantId()).isNull();
     }
@@ -136,11 +137,42 @@ class SpreadsheetUploadServiceTests {
         assertThat(retry.fileId()).isNotEqualTo(receipt.fileId());
     }
     @Test void objectUploadFailureCannotPublishAnIncompleteSpreadsheet() throws Exception {
-        doThrow(new IOException("Controlled storage failure")).when(storage).write(anyLong(),anyLong(),anyString(),anyString(),anyString(),any(Path.class));
+        doThrow(new IOException("Controlled storage failure")).when(storage).writeTracked(anyLong(),anyLong(),anyString(),anyString(),anyString(),any(Path.class),any());
         var receipt=submit(service(worker,jobs::add),"Storage.csv",csv(1));jobs.getFirst().run();
         assertThat(repository.listCompleted(1,0,20).content()).isEmpty();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM spreadsheet_file_details",Long.class)).isZero();
         verify(statuses).fail(eq(receipt.upload().getBookUploadId()),any());
+    }
+    @Test void failedLocatorCommitHappensBeforeAnyUploadedBytesAreCopied() throws Exception {
+        var failing=spy(new SpreadsheetRepository(jdbc));
+        doAnswer(call->{
+            Path planned=Path.of(call.<String>getArgument(3));assertThat(planned).exists();assertThat(Files.size(planned)).isZero();
+            throw new org.springframework.dao.DataAccessResourceFailureException("Controlled locator commit failure");
+        }).when(failing).original(anyLong(),anyLong(),anyLong(),anyString(),anyInt());
+        var trackedRepository=SpreadsheetTestDatabase.transactional(failing,jdbc);
+        var service=new SpreadsheetUploadService(new SpreadsheetParser(),trackedRepository,worker,storage,statuses,jobs::add,batches);
+        var receipt=submit(service,"Unregistered.csv",csv(1));jobs.getFirst().run();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM spreadsheet_file_details",Long.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM spreadsheet_sheet_rows",Long.class)).isZero();
+        try(var files=Files.walk(root)){assertThat(files.filter(Files::isRegularFile).toList()).isEmpty();}
+        verify(statuses).fail(eq(receipt.upload().getBookUploadId()),any());
+    }
+    @Test void storageCleanupFailureRetainsRecordedLocatorForRetryButDiscardsImportedRows() throws Exception {
+        var broken=mock(SpreadsheetBatchWorker.class);
+        when(broken.persist(anyLong(),anyLong(),anyLong(),anyLong(),any())).thenAnswer(call->{
+            var batch=call.<SpreadsheetRowBatch>getArgument(4);
+            if(batch.rowNumbers().getFirst()!=2)throw new IllegalStateException("Controlled later-batch failure");
+            return worker.persist(call.getArgument(0),call.getArgument(1),call.getArgument(2),call.getArgument(3),batch);
+        });
+        doThrow(new IOException("Controlled cleanup outage")).when(storage).delete(anyLong(),anyString());
+        var receipt=submit(service(broken,jobs::add),"Retained.csv",csv(501));jobs.getFirst().run();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM spreadsheet_sheet_rows",Long.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM spreadsheet_file_details WHERE file_id=?",Long.class,receipt.fileId())).isEqualTo(1);
+        String locator=jdbc.queryForObject("SELECT original_upload_path FROM spreadsheet_file_details WHERE file_id=?",String.class,receipt.fileId());
+        assertThat(locator).isNotBlank();assertThat(Path.of(locator)).isRegularFile();
+        assertThat(storage.read(1,locator)).isEqualTo(csv(501).getBytes(StandardCharsets.UTF_8));
+        assertThat(repository.listCompleted(1,0,20).content()).isEmpty();
+        assertThat(jdbc.queryForObject("SELECT status FROM pdf_file_status WHERE book_upload_id=?",String.class,receipt.upload().getBookUploadId())).isEqualTo("failed");
     }
     @Test void invalidOrUnreadableInputIsRejectedBeforeAnyReceiptOrDispatch() throws Exception {
         assertThatThrownBy(()->submit(service(worker,jobs::add),"Empty.csv","")).isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
@@ -148,31 +180,63 @@ class SpreadsheetUploadServiceTests {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM pdf_file_status",Long.class)).isZero();assertThat(jobs).isEmpty();
     }
     @ParameterizedTest @EnumSource(value=SpreadsheetFormat.class,names={"XLS","XLSX"})
-    void allSheetsIncludingHeaderOnlyAndEmptyHaveIndependentXlsxArtifacts(SpreadsheetFormat format) throws Exception {
+    void allSheetsIncludingHeaderOnlyHaveIndependentXlsxArtifacts(SpreadsheetFormat format) throws Exception {
         byte[] original=excel(format);
         SpreadsheetUploadService.UploadReceipt receipt;
         try(var ignored=TenantContext.use(1,11L,false)) {
             receipt=service(worker,jobs::add).submit(new MockMultipartFile("file","Multiple."+format.extension(),format.contentType(),original),format);
         }
         jobs.getFirst().run();var file=repository.requireCompleted(1,receipt.fileId());
-        assertThat(file.sheetCount()).isEqualTo(3);assertThat(file.format()).isEqualTo(format.name());
+        assertThat(file.sheetCount()).isEqualTo(2);assertThat(file.format()).isEqualTo(format.name());
         assertThat(storage.read(1,file.originalUploadPath())).isEqualTo(original);
-        var sheets=repository.sheets(1,file.fileId());assertThat(sheets).extracting(SpreadsheetRepository.SheetRecord::sheetName).containsExactly("Data","HeaderOnly","Empty");
-        assertThat(sheets).extracting(SpreadsheetRepository.SheetRecord::dataRowCount).containsExactly(1L,0L,0L);
+        var sheets=repository.sheets(1,file.fileId());assertThat(sheets).extracting(SpreadsheetRepository.SheetRecord::sheetName).containsExactly("Data","HeaderOnly");
+        assertThat(sheets).extracting(SpreadsheetRepository.SheetRecord::dataRowCount).containsExactly(1L,0L);
         for(var sheet:sheets) {
             assertThat(sheet.uploadPath()).endsWith(".xlsx");assertThat(sheet.uploadPath()).isNotEqualTo(file.originalUploadPath());
             try(var workbook=WorkbookFactory.create(new ByteArrayInputStream(storage.read(1,sheet.uploadPath())))) {
                 assertThat(workbook.getNumberOfSheets()).isEqualTo(1);assertThat(workbook.getSheetName(0)).isEqualTo(sheet.sheetName());
             }
         }
-        assertThat(sheets.getLast().header()).isEmpty();assertThat(sheets.getLast().columnCount()).isZero();
+        assertThat(sheets.getLast().header()).containsEntry("column_1","Title");assertThat(sheets.getLast().columnCount()).isEqualTo(1);
+    }
+    @Test void lateValidationFailureLeavesNoDatabaseAttemptOrPermanentOrTemporaryFiles() throws Exception {
+        Path temporary=Path.of(System.getProperty("java.io.tmpdir"));
+        Set<Path> before;
+        try(var paths=Files.list(temporary)){before=new HashSet<>(paths.filter(path->path.getFileName().toString().startsWith("spreadsheet-")).toList());}
+        assertThatThrownBy(()->submit(service(worker,jobs::add),"Invalid.csv",csv(1200)+"too,many,fields,\n"))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class).hasMessageContaining("row 1202").hasMessageContaining("4 parsed fields");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM spreadsheet_file_details",Long.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM spreadsheet_sheet_rows",Long.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM pdf_file_status",Long.class)).isZero();
+        assertThat(jobs).isEmpty();verifyNoInteractions(statuses);
+        try(var paths=Files.walk(root)){assertThat(paths.filter(Files::isRegularFile).toList()).isEmpty();}
+        try(var paths=Files.list(temporary)){assertThat(paths.filter(path->path.getFileName().toString().startsWith("spreadsheet-")).filter(path->!before.contains(path)).toList()).isEmpty();}
+    }
+    @Test void successfulUploadParsesOnlyOnceBeforeTheBackgroundJobUsesDetachedSpools() throws Exception {
+        SpreadsheetParser parser=spy(new SpreadsheetParser());
+        var service=new SpreadsheetUploadService(parser,repository,worker,storage,statuses,jobs::add,batches);
+        var receipt=submit(service,"Once.csv","First,Middle,Last\na,,c\nx\n");jobs.getFirst().run();
+        verify(parser,times(1)).open(any(Path.class),eq(SpreadsheetFormat.CSV));
+        var sheet=repository.sheets(1,receipt.fileId()).getFirst();
+        var rows=repository.rows(1,receipt.fileId(),sheet.sheetId(),0,500);
+        assertThat(rows.getFirst().payload()).containsEntry("column_1","a").containsEntry("column_2",null).containsEntry("column_3","c");
+        assertThat(rows.getLast().payload()).containsEntry("column_1","x").containsEntry("column_2",null).containsEntry("column_3",null);
+    }
+    @Test void rejectedDispatchReclaimsHandedOffReaderAndCleansEveryTemporaryFile() throws Exception {
+        Path temporary=Path.of(System.getProperty("java.io.tmpdir"));Set<Path> before;
+        try(var paths=Files.list(temporary)){before=new HashSet<>(paths.filter(path->path.getFileName().toString().startsWith("spreadsheet-")).toList());}
+        var rejected=service(worker,task->{throw new RejectedExecutionException("Controlled full queue");});
+        submit(rejected,"Rejected.csv",csv(2));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM spreadsheet_file_details",Long.class)).isZero();
+        assertThat(jobs).isEmpty();verify(statuses).fail(anyLong(),any(RejectedExecutionException.class));
+        try(var paths=Files.list(temporary)){assertThat(paths.filter(path->path.getFileName().toString().startsWith("spreadsheet-")).filter(path->!before.contains(path)).toList()).isEmpty();}
     }
     @Test void failureAfterFirstExtractedSheetWaitsForRowsAndCleansOriginalAndStoredSheets() throws Exception {
         doAnswer(call->{
             String leaf=call.getArgument(4);
             if(leaf.contains("HeaderOnly"))throw new IOException("Controlled second-sheet failure");
             return call.callRealMethod();
-        }).when(storage).write(anyLong(),anyLong(),anyString(),anyString(),anyString(),any(Path.class));
+        }).when(storage).writeTracked(anyLong(),anyLong(),anyString(),anyString(),anyString(),any(Path.class),any());
         SpreadsheetUploadService.UploadReceipt receipt;
         try(var ignored=TenantContext.use(1,11L,false)) {
             receipt=service(worker,jobs::add).submit(new MockMultipartFile("file","Multiple.xlsx",SpreadsheetFormat.XLSX.contentType(),excel(SpreadsheetFormat.XLSX)),SpreadsheetFormat.XLSX);
@@ -186,7 +250,7 @@ class SpreadsheetUploadServiceTests {
     private byte[] excel(SpreadsheetFormat format) throws Exception {
         try(Workbook workbook=format==SpreadsheetFormat.XLS?new HSSFWorkbook():new XSSFWorkbook();var output=new ByteArrayOutputStream()) {
             var data=workbook.createSheet("Data");data.createRow(0).createCell(0).setCellValue("ID");data.createRow(1).createCell(0).setCellValue("0012");
-            workbook.createSheet("HeaderOnly").createRow(0).createCell(0).setCellValue("Title");workbook.createSheet("Empty");
+            workbook.createSheet("HeaderOnly").createRow(0).createCell(0).setCellValue("Title");
             workbook.setSheetHidden(1,true);workbook.write(output);return output.toByteArray();
         }
     }

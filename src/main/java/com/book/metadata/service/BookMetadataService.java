@@ -29,6 +29,34 @@ import org.springframework.web.server.ResponseStatusException;
 /** One submitted field is applied to freshly locked persisted metadata; PDFs and page boundaries are untouched. */
 @Service
 public class BookMetadataService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.book.tools.ServiceToolAccess> toolAccess;
+
+    @org.springframework.ai.tool.annotation.Tool(name = "updateBookMetadata", description = "Update exactly one editable text field of an existing authorized book, using the same validation and transaction as the application. Requires current metadata-edit permission. Storage fields and PDF boundaries are not editable.")
+    @Transactional
+    public BookResult updateBookMetadata(
+            @org.springframework.ai.tool.annotation.ToolParam(description = "Positive book ID from an authorized listing.") Long bookId,
+            @org.springframework.ai.tool.annotation.ToolParam(description = "Exactly one of bookName, bookType, authorName or bookDetails.") String field,
+            @org.springframework.ai.tool.annotation.ToolParam(description = "New text value, or null to clear an optional field. Book name remains required.", required=false) String value) {
+        toolAccess.getObject().require("PATCH", "/api/books/" + bookId + "/metadata");
+        var request = new MetadataPatchRequest();
+        request.capture(field, value == null ? null : tools.jackson.databind.node.StringNode.valueOf(value));
+        return patchBook(bookId, request);
+    }
+
+    @org.springframework.ai.tool.annotation.Tool(name = "updateTopicMetadata", description = "Update one topic name or description in an authorized existing book. Retains metadata-edit authorization, matching book/topic validation and technical-row protections.")
+    @Transactional
+    public BookResult updateTopicMetadata(
+            @org.springframework.ai.tool.annotation.ToolParam(description = "Positive owning book ID.") Long bookId,
+            @org.springframework.ai.tool.annotation.ToolParam(description = "Positive topic ID belonging to bookId.") Long topicId,
+            @org.springframework.ai.tool.annotation.ToolParam(description = "Exactly one of topicName or topicDetails.") String field,
+            @org.springframework.ai.tool.annotation.ToolParam(description = "New text, or null to clear an optional description. Topic name remains required.", required=false) String value) {
+        toolAccess.getObject().require("PATCH", "/api/books/" + bookId + "/topics/" + topicId + "/metadata");
+        var request = new MetadataPatchRequest();
+        request.capture(field, value == null ? null : tools.jackson.databind.node.StringNode.valueOf(value));
+        return patchTopic(bookId, topicId, request);
+    }
+
     private final BookDetailsRepository books;
     private final TopicDetailsRepository topics;
     private final EntityManager entityManager;

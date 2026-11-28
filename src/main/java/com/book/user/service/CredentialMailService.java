@@ -18,6 +18,20 @@ import org.thymeleaf.templateresolver.ClassLoaderTemplateResolver;
 /** Link delivery never logs messages, addresses, credentials or token-bearing URLs. */
 @Service
 public class CredentialMailService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.book.tools.ServiceToolAccess> toolAccess;
+
+    @org.springframework.ai.tool.annotation.Tool(name = "credentialDeliveryReadiness", description = "Check whether local credential email delivery is configured for the signed-in user's support query. This checks configuration only; it does not send a message, test SMTP connectivity, or reveal mail settings.")
+    public String credentialDeliveryReadiness() {
+        toolAccess.getObject().require("GET", "/api/user/profile/details");
+        try {
+            requireAvailable();
+            return "Credential email delivery is configured. Actual delivery and SMTP connectivity have not been tested.";
+        } catch (ResponseStatusException unavailable) {
+            return "Credential email delivery is unavailable. Ask an administrator to review its configuration.";
+        }
+    }
+
     private final ObjectProvider<JavaMailSender> senders;
     private final Environment environment;
     private final TemplateEngine templates;

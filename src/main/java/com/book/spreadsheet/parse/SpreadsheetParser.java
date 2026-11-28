@@ -1,6 +1,10 @@
 package com.book.spreadsheet.parse;
 
 import java.io.BufferedReader;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PushbackReader;
@@ -47,7 +51,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * A file-backed, single-owner reader; only detached 500-row buffers cross to workers.
+ * A file-backed, single-owner reader; only detached buffers of at most 500 rows cross to workers.
+ * Validation reads every source record once and spills sparse positional values to temporary row files.
+ * Reading those validated buffers for persistence does not reparse the source document.
  * Original uploads stay on disk. Excel standalone outputs use an SXSSF 100-row window,
  * while POI's input workbook model is bounded by upload/expanded ZIP limits.
  */
@@ -93,54 +99,74 @@ public class SpreadsheetParser {
     }
 
     private abstract static class OwnedReader implements ParsedSpreadsheet {
-        private final Thread owner=Thread.currentThread();
+        private Thread owner=Thread.currentThread();
         private boolean closed;
+        private final Map<Integer,Path> rowSpools=new LinkedHashMap<>();
         List<SheetDescriptor> descriptors=List.of();
-        protected void check() { if(closed || Thread.currentThread()!=owner) throw new IllegalStateException("A spreadsheet reader is used only by its owning coordinator thread."); }
+        protected synchronized void check() {
+            if(owner==null) owner=Thread.currentThread();
+            if(closed || Thread.currentThread()!=owner) throw new IllegalStateException("A spreadsheet reader is used only by its owning coordinator thread.");
+        }
+        @Override public synchronized void handoff() { check(); owner=null; }
         @Override public List<SheetDescriptor> sheets() { check(); return descriptors; }
         protected SheetDescriptor descriptor(int index) {
             check(); return descriptors.stream().filter(sheet->sheet.sheetIndex()==index).findFirst()
                     .orElseThrow(()->invalid("Choose a worksheet belonging to this workbook."));
         }
-        protected void closing() { check(); closed=true; }
+        protected DataOutputStream rows(int index) throws IOException {
+            Path spool=Files.createTempFile("spreadsheet-rows-",".bin");rowSpools.put(index,spool);
+            return new DataOutputStream(new BufferedOutputStream(Files.newOutputStream(spool)));
+        }
+        @Override public void forEachBatch(int index,Consumer<SpreadsheetRowBatch> consumer) throws IOException {
+            var sheet=descriptor(index);var batch=new BatchSink(consumer);
+            try(var input=new DataInputStream(new BufferedInputStream(Files.newInputStream(rowSpools.get(index))))) {
+                for(long row=0;row<sheet.dataRowCount();row++) {
+                    long number=input.readLong();var values=new LinkedHashMap<String,String>();
+                    for(int column=0;column<sheet.columnCount();column++)values.put("column_"+(column+1),null);
+                    int populated=input.readInt();
+                    for(int cell=0;cell<populated;cell++) {
+                        int column=input.readInt(),length=input.readInt();
+                        byte[] bytes=input.readNBytes(length);
+                        if(bytes.length!=length)throw new java.io.EOFException("The temporary row buffer is incomplete.");
+                        values.put("column_"+(column+1),new String(bytes,StandardCharsets.UTF_8));
+                    }
+                    batch.add(values,number);
+                }
+            }
+            batch.finish();
+        }
+        protected void closing() throws IOException { check(); closed=true; cleanupSpools(); }
+        protected void cleanupSpools() throws IOException {
+            IOException failure=null;
+            for(Path spool:rowSpools.values())try {Files.deleteIfExists(spool);}
+            catch(IOException cleanup){if(failure==null)failure=cleanup;else failure.addSuppressed(cleanup);}
+            if(failure!=null)throw failure;
+        }
     }
 
     private static final class CsvReader extends OwnedReader {
         private final Path source;
         CsvReader(Path source) throws IOException {
             this.source=source;
-            List<String> header=List.of(); int width=0; long retained=0; boolean nonblank=false;
-            try(var csv=csv(source)) {
+            List<String> header=List.of(); int width=0; long retained=0;
+            try(var csv=csv(source);var output=rows(1)) {
                 for(CSVRecord record:csv) {
-                    width=Math.max(width,record.size()); checkWidth(width);
                     var values=record.toList();
                     validateCsvText(values);
-                    boolean hasValue=values.stream().anyMatch(value->!value.isBlank());
-                    nonblank|=hasValue;
-                    if(record.getRecordNumber()==1) header=new ArrayList<>(values);
-                    else if(hasValue) retained++;
+                    if(record.getRecordNumber()==1) {header=new ArrayList<>(values);width=header.size();validateHeader(header,"CSV");}
+                    else {
+                        if(record.size()>width)throw invalid("CSV row "+record.getRecordNumber()+": expected at most "+width+" columns but found "+record.size()+" parsed fields.");
+                        writeRow(output,values,width,record.getRecordNumber());retained++;
+                    }
                 }
-            } catch(java.io.UncheckedIOException failure) { throw failure.getCause(); }
-            if(!nonblank) throw invalid("The CSV document is empty.");
+                if(header.isEmpty())throw invalid("The CSV document is empty or its first row has no valid headers.");
+            } catch(Throwable failure) {try {cleanupSpools();}catch(IOException cleanup){failure.addSuppressed(cleanup);}throw failure;}
             descriptors=List.of(new SheetDescriptor(1,"Sheet1",width,positions(header,width),retained));
-        }
-        @Override public void forEachBatch(int index,Consumer<SpreadsheetRowBatch> consumer) throws IOException {
-            var descriptor=descriptor(index); var batch=new BatchSink(consumer);
-            try(var csv=csv(source)) {
-                for(CSVRecord record:csv) {
-                    if(record.getRecordNumber()==1) continue;
-                    var values=record.toList();
-                    validateCsvText(values);
-                    if(values.stream().allMatch(String::isBlank)) continue;
-                    batch.add(positions(values,descriptor.columnCount()),record.getRecordNumber());
-                }
-                batch.finish();
-            } catch(java.io.UncheckedIOException failure) { throw failure.getCause(); }
         }
         @Override public SpreadsheetFormat extractSheet(int index,Path output) throws IOException {
             descriptor(index); Files.copy(source,output,StandardCopyOption.REPLACE_EXISTING); return SpreadsheetFormat.CSV;
         }
-        @Override public void close() { closing(); }
+        @Override public void close() throws IOException { closing(); }
     }
 
     private static CSVParser csv(Path source) throws IOException {
@@ -162,25 +188,32 @@ public class SpreadsheetParser {
     private static final class ExcelReader extends OwnedReader {
         private final Workbook workbook;
         private final DataFormatter formatter=new DataFormatter(Locale.US,true);
-        ExcelReader(Workbook workbook) {
+        ExcelReader(Workbook workbook) throws IOException {
             this.workbook=workbook; formatter.setUseCachedValuesForFormulaCells(true);
             int count=workbook.getNumberOfSheets();
             if(count<1 || count>MAX_SHEETS) throw invalid("The workbook must contain 1 to 1024 worksheets.");
             var result=new ArrayList<SheetDescriptor>(count);
-            for(int index=0;index<count;index++) {
-                Sheet sheet=workbook.getSheetAt(index); int width=0; long retained=0; boolean any=false;
-                for(Row row:sheet) {
-                    boolean nonblank=false;
-                    width=Math.max(width,Math.max(0,row.getLastCellNum())); checkWidth(width);
-                    for(Cell cell:row) if(!text(cell).isBlank()) nonblank=true;
-                    any|=nonblank;
-                    if(row.getRowNum()>0 && nonblank) retained++;
+            try {
+                for(int index=0;index<count;index++) {
+                    Sheet sheet=workbook.getSheetAt(index);int width=0;long retained=0;Row first=sheet.getRow(0);
+                    if(first!=null)for(Cell cell:first)if(hasValue(cell))width=Math.max(width,cell.getColumnIndex()+1);
+                    var header=new ArrayList<String>(width);
+                    for(int column=0;column<width;column++)header.add(text(first.getCell(column)));
+                    validateHeader(header,"Worksheet '"+sheet.getSheetName()+"'");
+                    try(var output=rows(index+1)) {
+                        for(int rowIndex=1;rowIndex<=sheet.getLastRowNum();rowIndex++) {
+                            Row row=sheet.getRow(rowIndex);
+                            // Test actual column indexes before formatting or inspecting formula caches.
+                            if(row!=null)for(Cell cell:row)if(cell.getColumnIndex()>=width && hasValue(cell))
+                                throw invalid("Worksheet '"+sheet.getSheetName()+"' row "+(row.getRowNum()+1)+": expected at most "+width+" columns but actual data reaches column "+(cell.getColumnIndex()+1)+".");
+                            var values=new ArrayList<String>(width);
+                            for(int column=0;column<width;column++)values.add(text(row==null?null:row.getCell(column)));
+                            writeRow(output,values,width,(long)rowIndex+1);retained++;
+                        }
+                    }
+                    result.add(new SheetDescriptor(index+1,sheet.getSheetName(),width,positions(header,width),retained));
                 }
-                if(!any) width=0;
-                var header=new ArrayList<String>(width); Row first=sheet.getRow(0);
-                for(int column=0;column<width;column++) header.add(text(first==null?null:first.getCell(column)));
-                result.add(new SheetDescriptor(index+1,sheet.getSheetName(),width,positions(header,width),retained));
-            }
+            }catch(Throwable failure){try{cleanupSpools();}catch(IOException cleanup){failure.addSuppressed(cleanup);}throw failure;}
             descriptors=List.copyOf(result);
         }
         private String text(Cell cell) {
@@ -188,17 +221,6 @@ public class SpreadsheetParser {
             requireCachedFormula(cell);
             try { return formatter.formatCellValue(cell); }
             catch(RuntimeException failure) { throw invalid("A cell in worksheet '"+cell.getSheet().getSheetName()+"' at "+cell.getAddress()+" cannot be converted using its saved result/format."); }
-        }
-        @Override public void forEachBatch(int index,Consumer<SpreadsheetRowBatch> consumer) {
-            var descriptor=descriptor(index); var batch=new BatchSink(consumer);
-            for(Row row:workbook.getSheetAt(index-1)) {
-                if(row.getRowNum()==0) continue;
-                var values=new ArrayList<String>(descriptor.columnCount());
-                for(int column=0;column<descriptor.columnCount();column++) values.add(text(row.getCell(column)));
-                if(values.stream().allMatch(String::isBlank)) continue;
-                batch.add(positions(values,descriptor.columnCount()),(long)row.getRowNum()+1);
-            }
-            batch.finish();
         }
         @Override public SpreadsheetFormat extractSheet(int index,Path output) throws IOException {
             descriptor(index);
@@ -215,7 +237,7 @@ public class SpreadsheetParser {
             }
             return SpreadsheetFormat.XLSX;
         }
-        @Override public void close() throws IOException { closing(); workbook.close(); }
+        @Override public void close() throws IOException { try {closing();} finally {workbook.close();} }
     }
 
     private static void requireCachedFormula(Cell cell) {
@@ -305,8 +327,33 @@ public class SpreadsheetParser {
 
     private static LinkedHashMap<String,String> positions(List<String> values,int width) {
         var result=new LinkedHashMap<String,String>();
-        for(int column=0;column<width;column++) result.put("column_"+(column+1),column<values.size()?values.get(column):"");
+        for(int column=0;column<width;column++) result.put("column_"+(column+1),column<values.size()&&!values.get(column).isEmpty()?values.get(column):null);
         return result;
+    }
+    private static boolean hasValue(Cell cell) {
+        return switch(cell.getCellType()) {
+            case BLANK,_NONE -> false;
+            case STRING -> !cell.getStringCellValue().isEmpty();
+            default -> true; // Formulas are data, even with an empty saved result.
+        };
+    }
+    private static void validateHeader(List<String> header,String source) {
+        checkWidth(header.size());
+        if(header.isEmpty())throw invalid(source+" row 1: missing header. Supply a non-empty label for each column.");
+        for(int column=0;column<header.size();column++)if(header.get(column).isBlank())
+            throw invalid(source+" row 1: invalid blank header at column "+(column+1)+". Supply a non-empty label for each column.");
+    }
+    private static void writeRow(DataOutputStream output,List<String> values,int width,long row) throws IOException {
+        output.writeLong(row);
+        int populated=0;
+        for(int column=0;column<Math.min(width,values.size());column++)if(values.get(column)!=null&&!values.get(column).isEmpty())populated++;
+        output.writeInt(populated);
+        for(int column=0;column<Math.min(width,values.size());column++) {
+            String value=values.get(column);
+            if(value!=null && !value.isEmpty()) {
+                byte[] bytes=value.getBytes(StandardCharsets.UTF_8);output.writeInt(column);output.writeInt(bytes.length);output.write(bytes);
+            }
+        }
     }
     private static void checkWidth(int width) { if(width>MAX_COLUMNS) throw invalid("A worksheet supports at most 16384 positional columns."); }
     private static void validateCsvText(List<String> values) {
@@ -320,7 +367,11 @@ public class SpreadsheetParser {
         private final ArrayList<Map<String,String>> rows=new ArrayList<>(DATA_BATCH_SIZE);
         private final ArrayList<Long> numbers=new ArrayList<>(DATA_BATCH_SIZE);
         BatchSink(Consumer<SpreadsheetRowBatch> consumer) { this.consumer=java.util.Objects.requireNonNull(consumer); }
-        void add(Map<String,String> row,long number) { rows.add(row); numbers.add(number); if(rows.size()==DATA_BATCH_SIZE) finish(); }
+        void add(Map<String,String> row,long number) {
+            rows.add(row);numbers.add(number);
+            // Wide sheets need smaller batches so the pending-worker queue stays bounded in cells too.
+            if(rows.size()==DATA_BATCH_SIZE || (long)rows.size()*row.size()>=65_536)finish();
+        }
         void finish() { if(rows.isEmpty()) return; consumer.accept(new SpreadsheetRowBatch(rows,numbers)); rows.clear(); numbers.clear(); }
     }
 }

@@ -23,7 +23,7 @@ class AuthSchemaConstraintTests {
         List<String> tables=List.of("tenants","users","tenant_memberships","roles","user_roles","permissions",
                 "role_permissions","api_endpoints","endpoint_permissions","auth_sessions","refresh_tokens","audit_events",
                 "identity_providers","external_identities","local_credentials","credential_tokens","local_mfa_factors","recovery_codes");
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'",Integer.class)).isEqualTo(19);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'",Integer.class)).isEqualTo(22); // Adds three private-chat tables.
         int fields=tables.stream().mapToInt(table -> jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema='public' AND table_name=?",Integer.class,table)).sum();
         assertThat(fields).isEqualTo(157); // Includes the distinct nullable user deleted_at marker.
     }
@@ -78,7 +78,7 @@ class AuthSchemaConstraintTests {
         jdbc.update("UPDATE permissions SET is_active=FALSE WHERE permission_code='BOOKS.DELETE'");
         migration.execute(jdbc.getDataSource());
         assertThat(jdbc.queryForObject("SELECT is_active FROM permissions WHERE permission_code='BOOKS.DELETE'",Boolean.class)).isFalse();
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'",Integer.class)).isEqualTo(19);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'",Integer.class)).isEqualTo(22);
     }
     @Test void roleCatalogMigrationRerunsPreserveExplicitDisabledAndNonDelegablePolicy() throws Exception {
         String source=new org.springframework.core.io.ClassPathResource("db/manual/20261125_role_management.sql")

@@ -19,6 +19,15 @@ import org.springframework.web.server.ResponseStatusException;
 /** Tenant membership invitation is an explicit capability, never public registration or tenant selection. */
 @Service
 public class TenantUserCreationService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.book.tools.ServiceToolAccess> toolAccess;
+
+    @org.springframework.ai.tool.annotation.Tool(name = "currentManagementCapabilities", description = "Explain whether the signed-in user may view users, create users or manage roles in the current tenant, without changing any account.")
+    @Transactional(readOnly=true)
+    public Capabilities currentManagementCapabilities() {
+        return capabilities(toolAccess.getObject().require("GET", "/api/user/users/capabilities"));
+    }
+
     private final JdbcTemplate jdbc;private final AuthorizationService authorization;private final PasswordService passwords;
     private final TrustedOidcProviders providers;private final TenantStoragePaths storage;private final Clock clock;
     private final RoleManagementService roles;

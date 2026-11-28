@@ -32,6 +32,15 @@ import com.book.user.repository.AccountRepository.Account;
 
 @Service
 public class PasswordService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.book.tools.ServiceToolAccess> toolAccess;
+
+    @org.springframework.ai.tool.annotation.Tool(name = "loginGuidance", description = "Read login and password-validation guidance for support queries. Does not test supplied passwords, identify accounts, send email, or issue credentials.")
+    public String loginGuidance() {
+        toolAccess.getObject().require("GET", "/api/user/profile/details");
+        return "Use the account's configured Password or SSO login method. Password setup requires 12 to 128 characters and non-blank text. Password reset requires 5 to 25 UTF-16 code units and an exact confirmation match. Reset and setup links can expire or be consumed. Repeated failed login attempts may temporarily lock access. Never include passwords, link secrets or authentication codes in a support query.";
+    }
+
     private static final Logger LOGGER=LoggerFactory.getLogger(PasswordService.class);
     public static final String SETUP="SET_PASSWORD", RESET="PASSWORD_RESET", ENROLLMENT="SSO_ENROLLMENT";
     private final AccountRepository accounts;

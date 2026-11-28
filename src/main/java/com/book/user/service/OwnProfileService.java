@@ -10,6 +10,21 @@ import org.springframework.transaction.annotation.Transactional;
 /** Authenticated self-only information. No request field can select another account. */
 @Service
 public class OwnProfileService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.book.tools.ServiceToolAccess> toolAccess;
+
+    @org.springframework.ai.tool.annotation.Tool(name = "currentProfile", description = "Read the authenticated user's own account and tenant profile for support context. The caller cannot select another user.")
+    @Transactional(readOnly=true)
+    public Details currentProfile() {
+        return details(toolAccess.getObject().require("GET", "/api/user/profile/details"));
+    }
+
+    @org.springframework.ai.tool.annotation.Tool(name = "currentPermissions", description = "Explain the authenticated user's effective permissions, source roles and permitted routes using current database policy. Useful for diagnosing missing application access.")
+    @Transactional(readOnly=true)
+    public Permissions currentPermissions() {
+        return permissions(toolAccess.getObject().require("GET", "/api/user/profile/permissions"));
+    }
+
     private final SessionService sessions;
     private final UserManagementService users;
     private final AuthorizationService authorization;

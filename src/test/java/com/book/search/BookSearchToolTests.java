@@ -35,6 +35,10 @@ class BookSearchToolTests {
 
     @BeforeEach
     void discoverActualImplementationTool() {
+        @SuppressWarnings("unchecked")
+        var accessProvider = (org.springframework.beans.factory.ObjectProvider<com.book.tools.ServiceToolAccess>) mock(org.springframework.beans.factory.ObjectProvider.class);
+        when(accessProvider.getObject()).thenReturn(mock(com.book.tools.ServiceToolAccess.class));
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "toolAccess", accessProvider);
         when(repository.search(any(BookSearchCriteria.class))).thenReturn(new SearchPage(List.of(), 0L));
         ToolCallback[] callbacks = MethodToolCallbackProvider.builder().toolObjects(service).build().getToolCallbacks();
         assertThat(callbacks).hasSize(1);
@@ -68,10 +72,23 @@ class BookSearchToolTests {
     @Test
     void executableToolAnnotationLivesOnTheConcreteSharedServiceMethod() throws Exception {
         assertThat(SearchService.class.isAssignableFrom(SearchServiceImpl.class)).isTrue();
-        var implementation = SearchServiceImpl.class.getMethod("searchBooks", BookSearchCriteria.class);
+        var implementation = SearchServiceImpl.class.getMethod("searchBooksTool", BookSearchCriteria.class);
         assertThat(implementation.getDeclaredAnnotation(Tool.class)).isNotNull();
         assertThat(SearchService.class.getMethod("searchBooks", BookSearchCriteria.class)
                 .getDeclaredAnnotation(Tool.class)).isNull();
+    }
+
+    @Test
+    void toolCannotSearchWhenEndpointAuthorizationFails() {
+        var access = mock(com.book.tools.ServiceToolAccess.class);
+        @SuppressWarnings("unchecked")
+        var provider = (org.springframework.beans.factory.ObjectProvider<com.book.tools.ServiceToolAccess>) mock(org.springframework.beans.factory.ObjectProvider.class);
+        when(provider.getObject()).thenReturn(access);
+        doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN)).when(access).require("GET", "/api/search/books");
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "toolAccess", provider);
+        assertThatThrownBy(() -> tool.call("{\"criteria\":{}}"))
+                .isInstanceOfAny(ToolExecutionException.class, ResponseStatusException.class);
+        verify(repository, never()).search(any());
     }
 
     @Test

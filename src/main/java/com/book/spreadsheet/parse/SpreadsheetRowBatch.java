@@ -13,8 +13,8 @@ public record SpreadsheetRowBatch(List<Map<String,String>> rows, List<Long> rowN
             throw new IllegalArgumentException("A spreadsheet batch contains 1 to 500 aligned data rows.");
         var copy=new ArrayList<Map<String,String>>(rows.size());
         for(var row:rows) {
-            if(row==null || row.entrySet().stream().anyMatch(e->e.getKey()==null || e.getValue()==null))
-                throw new IllegalArgumentException("Spreadsheet cell maps contain only non-null String keys and values.");
+            if(row==null || row.entrySet().stream().anyMatch(e->e.getKey()==null))
+                throw new IllegalArgumentException("Spreadsheet cell maps require String keys; blank values are null.");
             copy.add(Collections.unmodifiableMap(new LinkedHashMap<>(row)));
         }
         rows=List.copyOf(copy); rowNumbers=List.copyOf(rowNumbers);

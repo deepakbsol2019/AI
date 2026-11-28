@@ -19,6 +19,18 @@ import org.springframework.web.server.ResponseStatusException;
 /** Reading follows verified physical source order; selected downloads retain their existing request order. */
 @Service
 public class BookReaderService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.book.tools.ServiceToolAccess> toolAccess;
+
+    @org.springframework.ai.tool.annotation.Tool(name = "readBookTopics", returnDirect=true, description = "Open selected saved topics from an authorized book as inline PDF bytes, retaining current reader permission, topic ordering and book/topic ownership checks.")
+    @Transactional(readOnly=true)
+    public byte[] readBookTopics(
+            @org.springframework.ai.tool.annotation.ToolParam(description = "Positive owning book ID.") Long bookId,
+            @org.springframework.ai.tool.annotation.ToolParam(description = "Nonempty ordered list of unique positive topic IDs belonging to bookId.") List<Long> topicIds) {
+        toolAccess.getObject().require("GET", "/api/read/topics");
+        return readTopics(bookId, topicIds);
+    }
+
     private final TopicDetailsRepository topics;
     private final DownloadService downloads;
 

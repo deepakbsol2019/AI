@@ -14,6 +14,26 @@ import com.fasterxml.jackson.annotation.JsonAnySetter;
 /** Explicit non-credential DTOs; all target classification and ceilings come from current database state. */
 @Service
 public class UserManagementService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.book.tools.ServiceToolAccess> toolAccess;
+
+    @org.springframework.ai.tool.annotation.Tool(name = "inspectUserAccess", description = "Read an existing user's account, membership and role details for an authorized user manager. Retains current user-view permission and tenant scope checks; returns no login credentials.")
+    @Transactional(readOnly=true)
+    public Details inspectUserAccess(
+            @org.springframework.ai.tool.annotation.ToolParam(description = "Positive application user ID from an existing authorized user listing.") long userId) {
+        return details(toolAccess.getObject().require("GET", "/api/user/users/" + userId), userId);
+    }
+
+    @org.springframework.ai.tool.annotation.Tool(name = "findUsers", description = "Find users within the authenticated manager's permitted tenant scope for account troubleshooting. Applies existing user-view permissions, filtering and pagination.")
+    @Transactional(readOnly=true)
+    public Page findUsers(
+            @org.springframework.ai.tool.annotation.ToolParam(description = "Optional username or display-name search text.", required = false) String search,
+            @org.springframework.ai.tool.annotation.ToolParam(description = "Account-status filter accepted by user management, for example ACTIVE.") String status,
+            @org.springframework.ai.tool.annotation.ToolParam(description = "Zero-based result page.") int page,
+            @org.springframework.ai.tool.annotation.ToolParam(description = "Number of results per page, 1 to 100.") int size) {
+        return list(toolAccess.getObject().require("GET", "/api/user/users"), search, status, null, page, size);
+    }
+
     final JdbcTemplate jdbc; final AuthorizationService auth; final Clock clock;
     public UserManagementService(JdbcTemplate jdbc,AuthorizationService auth,Clock clock){this.jdbc=jdbc;this.auth=auth;this.clock=clock;}
     static final String BASE="""

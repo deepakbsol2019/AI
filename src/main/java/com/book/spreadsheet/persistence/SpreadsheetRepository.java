@@ -120,6 +120,13 @@ public class SpreadsheetRepository {
             jdbc.update("DELETE FROM spreadsheet_file_details WHERE file_id=? AND tenant_id=? AND created_by=?", file, tenant, user);
     }
 
+    /** Quiesced failures discard imported data independently of recoverable artifact cleanup. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void discardAttemptRows(long tenant,long user,long file) {
+        requireProcessing(tenant,user,file);
+        jdbc.update("DELETE FROM spreadsheet_sheet_rows WHERE file_id=?",file);
+    }
+
     public FilePage listCompleted(long tenant, int page, int size) { return listCompleted(tenant, page, size, ""); }
     public FilePage listCompleted(long tenant, int page, int size, String search) {
         if (tenant <= 0 || page < 0 || size < 1 || size > 100 || (long) page * size > Integer.MAX_VALUE) throw invalid("Choose a valid spreadsheet page and size (1–100).");
@@ -178,7 +185,7 @@ public class SpreadsheetRepository {
         // column_2). Positional keys, not serialized object order, define sheet columns.
         var fields = new ArrayList<>(node.properties());
         fields.sort(Comparator.comparingInt(entry -> columnPosition(entry.getKey())));
-        fields.forEach(entry -> { if (!entry.getValue().isString()) throw new IllegalStateException("Stored spreadsheet cells must be strings."); result.put(entry.getKey(),entry.getValue().asString()); });
+        fields.forEach(entry -> { if (!entry.getValue().isString() && !entry.getValue().isNull()) throw new IllegalStateException("Stored spreadsheet cells must be strings or null."); result.put(entry.getKey(),entry.getValue().isNull()?null:entry.getValue().asString()); });
         return Collections.unmodifiableMap(result);
     }
     private static int columnPosition(String key) {
@@ -186,7 +193,7 @@ public class SpreadsheetRepository {
         return Integer.MAX_VALUE;
     }
     public static Map<String,String> freeze(Map<String,String> value) {
-        if (value == null || ((Map<?,?>)value).entrySet().stream().anyMatch(entry -> !(entry.getKey() instanceof String) || !(entry.getValue() instanceof String))) throw invalid("Spreadsheet cell maps require string keys and values, including empty strings for blanks.");
+        if (value == null || ((Map<?,?>)value).entrySet().stream().anyMatch(entry -> !(entry.getKey() instanceof String) || (entry.getValue()!=null && !(entry.getValue() instanceof String)))) throw invalid("Spreadsheet cell maps require string keys and string or null values.");
         return Collections.unmodifiableMap(new LinkedHashMap<>(value));
     }
     private static LocalDateTime utc(Instant instant) { return LocalDateTime.ofInstant(instant,ZoneOffset.UTC); }

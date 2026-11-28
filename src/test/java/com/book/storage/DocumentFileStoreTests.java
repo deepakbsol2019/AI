@@ -8,6 +8,29 @@ import static org.assertj.core.api.Assertions.*;
 
 class DocumentFileStoreTests {
     @TempDir Path temporary;
+    @Test void trackedWritesPersistTheUniqueLocatorBeforeAnySourceBytesAreCopied()throws Exception {
+        var store=new DocumentFileStore(new TenantStoragePaths(temporary.resolve("root").toString()));
+        Path source=temporary.resolve("source");Files.writeString(source,"source bytes");
+        var recorded=new java.util.ArrayList<Path>();
+        java.util.function.Consumer<Path> register=locator->{
+            try{assertThat(Files.size(locator)).isZero();}catch(java.io.IOException failure){throw new java.io.UncheckedIOException(failure);}
+            recorded.add(locator);
+        };
+        Path first=store.writeTracked(7,11,"CSV","Report","Report.csv",source,register);
+        Path second=store.writeTracked(7,11,"CSV","Report","Report.csv",source,register);
+        assertThat(first).isNotEqualTo(second);assertThat(recorded).containsExactly(first,second);
+        assertThat(Files.readString(first)).isEqualTo("source bytes");assertThat(Files.readString(second)).isEqualTo("source bytes");
+        assertThat(first.getFileName().toString()).matches("Report_[0-9a-f-]{36}\\.csv");
+    }
+    @Test void failedRegistrationDoesNotOpenTheSourceOrLeaveUploadedData()throws Exception {
+        Path storageRoot=temporary.resolve("root");var store=new DocumentFileStore(new TenantStoragePaths(storageRoot.toString()));
+        var registrationFailure=new IllegalStateException("Manifest commit failed");
+        assertThatThrownBy(()->store.writeTracked(7,11,"CSV","Report","Report.csv",temporary.resolve("source-does-not-exist"),locator->{
+            try{assertThat(Files.size(locator)).isZero();}catch(java.io.IOException failure){throw new java.io.UncheckedIOException(failure);}
+            throw registrationFailure;
+        })).isSameAs(registrationFailure);
+        try(var files=Files.walk(storageRoot)){assertThat(files.filter(Files::isRegularFile).toList()).isEmpty();}
+    }
     @Test void identityPathsAreExclusiveTenantConfinedAndLegacyPathsRemainReadable()throws Exception {
         var paths=new TenantStoragePaths(temporary.resolve("root").toString());var store=new DocumentFileStore(paths);
         Path source=temporary.resolve("source");Files.writeString(source,"original bytes");

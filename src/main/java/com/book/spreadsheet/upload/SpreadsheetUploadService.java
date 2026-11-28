@@ -51,6 +51,7 @@ public class SpreadsheetUploadService {
         if(base.isBlank())throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"The document needs a filename before its extension.");
         Path spool=Files.createTempFile("spreadsheet-upload-","."+format.extension());
         boolean dispatched=false;
+        ParsedSpreadsheet validated=null;
         try {
             try(var input=source.getInputStream();var output=Files.newOutputStream(spool)) {
                 byte[] buffer=new byte[8192];long count=0;int length;
@@ -61,13 +62,14 @@ public class SpreadsheetUploadService {
             }
             int sheetCount;
             // Validate parseable content before reserving any database record or persistent object.
-            try(ParsedSpreadsheet validated=parser.open(spool,format)) {
-                sheetCount=validated.sheets().size();
-                if(sheetCount==0)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"The document has no readable worksheet.");
-            }
+            validated=parser.open(spool,format);
+            sheetCount=validated.sheets().size();
+            if(sheetCount==0)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"The document has no readable worksheet.");
             var reservation=repository.reserve(tenant,user,filename,base,format.name());
             try {
-                uploads.execute(()->process(spool,format,base,reservation,tenant,user));
+                ParsedSpreadsheet document=validated;
+                document.handoff();
+                uploads.execute(()->process(spool,format,base,reservation,tenant,user,document));
                 dispatched=true;
                 return new UploadReceipt(reservation.upload(),reservation.file().fileId(),sheetCount,List.of());
             } catch(RejectedExecutionException rejected) {
@@ -75,10 +77,12 @@ public class SpreadsheetUploadService {
                 statuses.fail(reservation.upload().getBookUploadId(),rejected);
                 return new UploadReceipt(statuses.get(reservation.upload().getBookUploadId()),reservation.file().fileId(),sheetCount,List.of());
             }
-        } finally { if(!dispatched)Files.deleteIfExists(spool); }
+        } finally {
+            if(!dispatched)try {if(validated!=null)validated.close();}finally {Files.deleteIfExists(spool);}
+        }
     }
 
-    private void process(Path source,SpreadsheetFormat format,String base,SpreadsheetRepository.Reservation reservation,long tenant,long user) {
+    private void process(Path source,SpreadsheetFormat format,String base,SpreadsheetRepository.Reservation reservation,long tenant,long user,ParsedSpreadsheet validated) {
         long file=reservation.file().fileId(),upload=reservation.upload().getBookUploadId();
         var objects=new LinkedHashSet<String>();
         var pending=new ArrayDeque<BatchTask>();
@@ -87,11 +91,12 @@ public class SpreadsheetUploadService {
         boolean interrupted=false;
         try(var scope=TenantContext.use(tenant,user,false)) {
             try {
-                statuses.processing(upload);
-                try(ParsedSpreadsheet document=parser.open(source,format)) {
-                    Path original=storage.write(tenant,user,format.name(),base,reservation.file().fileName(),source);
-                    objects.add(original.toString());
-                    repository.original(tenant,user,file,original.toString(),document.sheets().size());
+                try(ParsedSpreadsheet document=validated) {
+                    statuses.processing(upload);
+                    Path original=storage.writeTracked(tenant,user,format.name(),base,reservation.file().fileName(),source,locator->{
+                        repository.original(tenant,user,file,locator.toString(),document.sheets().size());
+                        objects.add(locator.toString());
+                    });
                     for(SheetDescriptor descriptor:document.sheets()) {
                         SheetRecord sheet=repository.createSheet(tenant,user,file,descriptor.sheetIndex(),descriptor.sheetName(),descriptor.columnCount(),descriptor.header());
                         counts.put(sheet.sheetId(),0L);expected.put(sheet.sheetId(),descriptor.dataRowCount());
@@ -102,11 +107,14 @@ public class SpreadsheetUploadService {
                             try {
                                 SpreadsheetFormat extracted=document.extractSheet(descriptor.sheetIndex(),temporary);
                                 if(extracted!=SpreadsheetFormat.XLSX)throw new IOException("Excel sheet artifacts must use XLSX format.");
-                                Path stored=storage.write(tenant,user,extracted.name(),base,base+"_"+descriptor.sheetName()+"."+extracted.extension(),temporary);
-                                artifact=stored.toString();objects.add(artifact);
+                                Path stored=storage.writeTracked(tenant,user,extracted.name(),base,base+"_"+descriptor.sheetName()+"."+extracted.extension(),temporary,locator->{
+                                    repository.sheetArtifact(tenant,user,file,sheet.sheetId(),locator.toString());
+                                    objects.add(locator.toString());
+                                });
+                                artifact=stored.toString();
                             } finally {Files.deleteIfExists(temporary);}
                         }
-                        repository.sheetArtifact(tenant,user,file,sheet.sheetId(),artifact);
+                        if(format==SpreadsheetFormat.CSV)repository.sheetArtifact(tenant,user,file,sheet.sheetId(),artifact);
                         document.forEachBatch(descriptor.sheetIndex(),batch->{
                             if(pending.size()>=MAX_PENDING_BATCHES){acknowledge(pending.getFirst(),counts);pending.removeFirst();}
                             BatchTask task=new BatchTask(sheet.sheetId(),()->worker.persist(tenant,user,file,sheet.sheetId(),batch));
@@ -128,6 +136,11 @@ public class SpreadsheetUploadService {
                     while(!done)try {task.result.get();done=true;}
                     catch(InterruptedException ignored){interrupted=true;}
                     catch(ExecutionException|CancellationException ignored){done=true;}
+                }
+                try {repository.discardAttemptRows(tenant,user,file);}
+                catch(RuntimeException cleanup) {
+                    failure.addSuppressed(cleanup);
+                    log.error("Spreadsheet imported-row cleanup failed uploadId={} fileId={}; retained metadata supports retry",upload,file,cleanup);
                 }
                 boolean cleaned=true;
                 for(String object:objects)try {storage.delete(tenant,object);}

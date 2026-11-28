@@ -64,6 +64,18 @@ public class AuthorizationService {
         return principal != null && hasSuperUserRole(principal.tenantId(), principal.membershipId(), principal.userId());
     }
 
+    /** Only the application's reserved, active ADMIN role grants tenant-wide file deletion. */
+    public boolean isTenantAdmin(UserPrincipal principal) {
+        return principal != null && jdbc.queryForObject("""
+                SELECT COUNT(*) FROM user_roles ur JOIN roles r ON r.role_id=ur.role_id AND r.tenant_id=ur.tenant_id
+                  JOIN tenant_memberships m ON m.membership_id=ur.membership_id AND m.tenant_id=ur.tenant_id
+                  JOIN users u ON u.user_id=m.user_id JOIN tenants t ON t.tenant_id=m.tenant_id
+                WHERE ur.tenant_id=? AND ur.membership_id=? AND m.user_id=? AND r.role_code='ADMIN'
+                  AND r.is_system=TRUE AND r.status='ACTIVE' AND m.status='ACTIVE' AND u.status='ACTIVE'
+                  AND u.email_verified_at IS NOT NULL AND t.status='ACTIVE'
+                """,Long.class,principal.tenantId(),principal.membershipId(),principal.userId())>0;
+    }
+
     private boolean hasSuperUserRole(long tenantId, long membershipId, Long userId) {
         String sql = """
                 SELECT COUNT(*) FROM user_roles ur
@@ -96,6 +108,12 @@ public class AuthorizationService {
         // Equally specific overlapping policies are configuration errors, not an arbitrary allow.
         if (matching.size() > 1 && paths.getPatternComparator(path).compare(selected.pattern(), matching.get(1).pattern()) == 0) throw denied();
         if (selected.isPublic()) return;
+        // Active catalog registration is still required. Private services enforce owner + tenant.
+        if (path.startsWith("/api/ai-help/")) return;
+        if ("GET".equals(method) && ("/api/files/delete-capabilities".equals(path)
+                || path.matches("/api/files/manage(?:/[0-9]+)?"))) return;
+        if ("DELETE".equals(method) && path.matches("/api/(books|spreadsheets|uploads)/[0-9]+")
+                && (isSuperUser(principal) || isTenantAdmin(principal))) return;
         // Authenticated self-profile is available to every signed-in user; the controller accepts no target ID.
         if("GET".equals(method) && ("/api/user/profile".equals(path) || "/api/user/profile/details".equals(path)
                 || "/api/user/profile/permissions".equals(path) || "/api/user/users/capabilities".equals(path))) return;

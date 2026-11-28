@@ -16,6 +16,35 @@ import tools.jackson.databind.json.JsonMapper;
 
 @Service
 public class SpreadsheetReadService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.book.tools.ServiceToolAccess> toolAccess;
+
+    @org.springframework.ai.tool.annotation.Tool(name = "listSpreadsheets", description = "List completed CSV and Excel uploads visible in the authenticated tenant. Preserves endpoint authorization and existing pagination.")
+    public Page listSpreadsheets(
+            @org.springframework.ai.tool.annotation.ToolParam(description = "Zero-based page number.") int page,
+            @org.springframework.ai.tool.annotation.ToolParam(description = "Page size from 1 to 100.") int size,
+            @org.springframework.ai.tool.annotation.ToolParam(description = "Optional filename search, at most 255 characters.", required=false) String search) {
+        var actor = toolAccess.getObject().require("GET", "/api/spreadsheets");
+        return list(actor.tenantId(), page, size, search);
+    }
+
+    @org.springframework.ai.tool.annotation.Tool(name = "inspectSpreadsheet", description = "Read one completed spreadsheet's worksheet headers, row counts and upload metadata by unique file ID in the authenticated tenant. Returns no storage locators.")
+    public FileDetails inspectSpreadsheet(
+            @org.springframework.ai.tool.annotation.ToolParam(description = "Positive spreadsheet file ID from an authorized listing.") Long fileId) {
+        var actor = toolAccess.getObject().require("GET", "/api/spreadsheets/" + fileId);
+        return details(actor.tenantId(), fileId);
+    }
+
+    @org.springframework.ai.tool.annotation.Tool(name = "readSpreadsheetRows", description = "Read a bounded page of imported worksheet rows, preserving empty-column positions. Requires the current tenant's spreadsheet-read permission and matching file/sheet IDs.")
+    public RowsPage readSpreadsheetRows(
+            @org.springframework.ai.tool.annotation.ToolParam(description = "Positive spreadsheet file ID.") Long fileId,
+            @org.springframework.ai.tool.annotation.ToolParam(description = "Positive sheet ID belonging to that file.") Long sheetId,
+            @org.springframework.ai.tool.annotation.ToolParam(description = "Zero-based row page.") int page,
+            @org.springframework.ai.tool.annotation.ToolParam(description = "Rows per page from 1 to 500.") int size) {
+        var actor = toolAccess.getObject().require("GET", "/api/spreadsheets/" + fileId + "/sheets/" + sheetId + "/rows");
+        return rows(actor.tenantId(), fileId, sheetId, page, size);
+    }
+
     private final SpreadsheetRepository repository;
     private final DocumentFileStore storage;
     private final JsonMapper json=JsonMapper.builder().build();

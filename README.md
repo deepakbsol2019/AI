@@ -2,6 +2,8 @@
 
 Spring Boot 4.2 / Java 25 backend with the existing Ollama, MySQL, PDFBox, upload-status, and local PDF storage flows.
 
+The current [persistent chats, deletion permissions and viewer integration guide](PERSISTENT_CHATS_AND_VIEWERS.md) documents private chat persistence/PDF export, the SUPER_USER/ADMIN/uploader deletion matrix, full-page viewers, endpoint contracts, migrations and current verification. It supersedes earlier acknowledgment-only chat and uploader-only file deletion descriptions.
+
 The current [document table names, PDF reset and upload-directory guide](DOCUMENT_TABLE_LAYOUT.md) records the requested canonical names, verified row cleanup/backup, safe duplicate handling and `tenant/type/user/book` folder rule. It supersedes older physical names and folder examples below.
 
 The latest [CSV / Excel upload, preview and download guide](SPREADSHEETS.md) documents the three-table migration, fixed 500-row ingestion, exact originals and standalone sheets, PDF / CSV / XLSX tabs, tenant isolation, service-only JSON authentication and actual verification results.
@@ -159,3 +161,46 @@ The Angular UI displays Book Type immediately after Book Name, falls back to Unk
 - Tests: extraction/schema/accumulator/fallback tests, `repository/BookTypePersistenceTests.java`, search controller/service tests, technical-offset/download tests, and upload/rollback regressions.
 
 The sibling frontend changes are its `Book` model, book-table template/styles/tests, shared/Home/modal surface styles, and affected typed test fixtures. Reference-image comparison and actual browser/mobile visual QA were not available; CSS/DOM checks verify shared opaque white backgrounds, no blur, the second-column order, and unchanged icon/image hashes.
+
+## Service tools for a future AI integration
+
+Methods use the existing Spring AI `org.springframework.ai.tool.annotation.Tool` and `ToolParam` annotations from the project's existing Spring AI dependency. No new AI provider, tool registry, callback-provider bean, model call or support-query persistence was added. The AI Help controller remains a plain-text acknowledgment endpoint.
+
+The annotated entry points are on concrete application services. Every annotated operation obtains its actor from the server-established security and tenant contexts, revalidates the database session, and checks its corresponding endpoint policy before calling existing business logic. Principal, tenant scope, credentials and storage locators are not model-supplied arguments. `ServiceToolAccess` enforces this boundary; `SessionService.currentSessionStatus` performs the same validation directly to avoid a dependency cycle. A missing or stale authenticated context fails closed. The original REST service methods retain their contracts. `ObjectProvider<ServiceToolAccess>` defers resolution for tool-only wrappers and keeps existing sliced service configurations usable.
+
+| Reviewed service | Annotated method(s) and purpose |
+| --- | --- |
+| `SearchServiceImpl` (`SearchService`) | `searchBooksTool` (tool name `searchBooks`): authorized catalog search; existing criteria schema retained. |
+| `DownloadServiceImpl` (`DownloadService`) | `downloadBookTool`, `downloadTopicsTool` (tool names `downloadBook`, `downloadTopics`): authorized PDF delivery. |
+| `BookReaderService` | `readBookTopics`: authorized inline topic PDF delivery. |
+| `BookMetadataService` | `updateBookMetadata`, `updateTopicMetadata`: edit one validated allowlisted field, retaining locking, permissions and technical-row protections. |
+| `BookUploadStatusService` | `inspectUploadStatus`: status/state diagnostic, omitting raw exception messages and paths. Receipt creation and worker transitions remain internal. |
+| `SpreadsheetReadService` | `listSpreadsheets`, `inspectSpreadsheet`, `readSpreadsheetRows`: current-tenant metadata and bounded row pages without storage locators. Binary/internal streaming helpers remain unannotated. |
+| `UploadedFileDeletionService` | `deletePdf`, `deleteSpreadsheet`, `deleteUpload`: explicit ID-scoped deletion with endpoint authorization, uploader ownership and retryable cleanup. |
+| `UserManagementService` | `findUsers`, `inspectUserAccess`: permission-checked user/account/role diagnostics. Existing mutations and deletion-confirmation flows remain unannotated. |
+| `OwnProfileService` | `currentProfile`, `currentPermissions`: self-only profile, effective permissions, source roles and allowed routes. |
+| `RoleManagementService` | `inspectRoles`, `inspectPermissionCatalog`: current-tenant roles, grant prerequisites and endpoint catalog. Mutations remain unannotated. |
+| `TenantUserCreationService` | `currentManagementCapabilities`: explain user-management capabilities without issuing invitations. |
+| `SessionService` | `currentSessionStatus`: validate the active session and report login method, MFA completion and expiry times, without session identifiers or secrets. Session issue, refresh and logout methods remain outside tool exposure. |
+| `PasswordService` | `loginGuidance`: safe login/setup/reset validation guidance. Authentication, password submission, registration, reset-mail delivery, link consumption and secret helpers remain outside tool exposure. |
+| `MfaService` | `currentMfaStatus`: self-only confirmed-factor presence, without secrets or recovery codes. MFA completion remains outside tool exposure. |
+| `CredentialMailService` | `credentialDeliveryReadiness`: configuration-only delivery readiness, without mail settings or sending email. It does not claim SMTP connectivity or delivery has been tested. |
+
+The remaining service review deliberately excluded operations that are internal, privileged bootstrap steps or credential-bearing framework flows:
+
+| Reviewed service(s) | Reason for no tool annotation |
+| --- | --- |
+| `AuthorizationService` | Internal policy/fingerprint enforcement accepts trusted server principals; safe user-facing permission explanation is provided by `OwnProfileService`. |
+| `AccessTokenService` | Token issuance/verification and signing-key startup validation must not expose authentication secrets as tool arguments or results. |
+| `SecurityAuditService` | Internal audit writes are not a user action; allowing arbitrary writes would fabricate security events. |
+| `TenantProvisioningService`, `SuperUserProvisioningService` | Internal account/tenant bootstrap and operator-only super-user provisioning must retain their existing trusted entry points. |
+| `OidcIdentityService` | OIDC enrollment and identity resolution require trusted handshake/provider proofs, and must not be driven by model-supplied claims. |
+| `UserDeletionService`, `UserDeletionFiles` | Existing account/tenant deletion jobs, worker processing, filesystem manifests and confirmation flows remain behind their existing management endpoints; no internal deletion worker is exposed. |
+| `BookUploadSubmissionService`, `BackgroundBookUploadService`, `FileUploadServiceImpl` (`FileUploadService`) | Binary upload acceptance, asynchronous dispatch and transaction orchestration require server-owned multipart bytes and trusted upload receipts. |
+| `SpreadsheetParser`, `SpreadsheetUploadService`, `SpreadsheetBatchWorker` | Streaming parsing, temporary artifacts and batch persistence are internal import stages, not independent application operations. Read/status/delete tools provide the relevant user operations. |
+| `BookMetadataExtractionService`, `BookPageAnalyzer` | Internal existing PDF extraction/model pipeline consumes uploaded binary batches; it is independent of AI Help and is not registered as a support tool. |
+| `BookPageOffsetService`, `TopicPageOffsetWriter`, `WholeBookFallbackService`, `TopicPdfUploadService` | Internal verified PDF mapping, fallback, splitting and persistence require complete upload transaction state; exposing them could bypass upload invariants. |
+
+Supporting components were also reviewed: `TenantStoragePaths`, `DocumentFileStore`, `TopicPdfFileStore`, `TopicPdfSource`, `FrontMatterRenderer`, `BookPdfMerger`, `SavedBookTopicSelector`, `ChapterOpeningDetector`, `PageOffsetAssumptionValidator`, `TrustedOidcProviders`, `OidcProviderSetup`, `OidcIntegration`, authentication cookies/rate limiting, setup/backfill components and configuration classes remain internal. Their filesystem locators, provider material and framework lifecycle methods are not tool inputs.
+
+The extension point for a future integration is to select these annotated methods from Spring-managed service beans and register only the desired subset in the user's own integration. Preserve the authenticated `SecurityContext` and `TenantContext` on any server-controlled execution thread and retain the guards. Do not populate either identity context from model arguments. Write/delete methods change real application state and should be selected only when that operation is intended. This change does not select, register or automatically execute any tool. Regular schema/security tests exercise Spring AI's actual method metadata without a model.

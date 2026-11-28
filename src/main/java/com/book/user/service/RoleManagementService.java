@@ -14,6 +14,21 @@ import com.book.user.security.UserPrincipal;
 /** No inheritance: each role has explicit grants. Immutable system identity is (is_system, role_code). */
 @Service
 public class RoleManagementService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.book.tools.ServiceToolAccess> toolAccess;
+
+    @org.springframework.ai.tool.annotation.Tool(name = "inspectRoles", description = "Read roles and their explicit grants in the signed-in user's own tenant. Retains current role-view authorization; does not change access.")
+    @Transactional
+    public List<Role> inspectRoles() {
+        return list(toolAccess.getObject().require("GET", "/api/user/roles"), null);
+    }
+
+    @org.springframework.ai.tool.annotation.Tool(name = "inspectPermissionCatalog", description = "Read available permissions, prerequisites and endpoint routes for authorized role troubleshooting in the current tenant.")
+    @Transactional
+    public Catalog inspectPermissionCatalog() {
+        return catalog(toolAccess.getObject().require("GET", "/api/user/roles/catalog"), null);
+    }
+
     private final JdbcTemplate jdbc;
     private final AuthorizationService authorization;
     private final Clock clock;

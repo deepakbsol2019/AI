@@ -73,6 +73,19 @@ class SpreadsheetReadServiceTests {
         assertThat(output.toString(java.nio.charset.StandardCharsets.UTF_8)).doesNotContain("unused-original","uploadPath","tenantId");
         var page=service.rows(7,file,sheet.sheetId(),1,100);assertThat(page.rows()).hasSize(100);assertThat(page.rowNumbers().getFirst()).isEqualTo(202);
     }
+    @Test void anotherUploaderInTheSameVisibleTenantCanDownloadWithoutGainingCrossTenantAccess()throws Exception {
+        var reserved=repository.reserve(7,11,"Shared.csv","Shared","CSV");long file=reserved.file().fileId();
+        Path source=Files.writeString(temporary.resolve("Shared.csv"),"Header\nValue");
+        Path stored=storage.write(7,11,"CSV","Shared","Shared.csv",source);
+        repository.original(7,11,file,stored.toString(),1);
+        var sheet=repository.createSheet(7,11,file,1,"Sheet1",1,Map.of("column_1","Header"));
+        repository.sheetArtifact(7,11,file,sheet.sheetId(),stored.toString());
+        repository.complete(7,11,file,Map.of(sheet.sheetId(),0L));
+        try(var ignored=com.book.user.security.TenantContext.use(7,22L,false)) {
+            assertThat(service.download(7,file,null).bytes()).isEqualTo(Files.readAllBytes(source));
+            assertThatThrownBy(()->service.download(8,file,null)).isInstanceOf(ResponseStatusException.class);
+        }
+    }
     @Test void incompleteUploadsAndInvalidIdentifiersAreNotReadable()throws Exception {
         var reserved=repository.reserve(7,11,"Pending.csv","Pending","CSV");long file=reserved.file().fileId();
         assertThat(service.list(7,0,20,"").content()).isEmpty();

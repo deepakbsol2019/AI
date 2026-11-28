@@ -3,6 +3,7 @@ package com.book.storage;
 import java.io.IOException;
 import java.nio.file.*;
 import java.util.UUID;
+import java.util.function.Consumer;
 import org.springframework.stereotype.Component;
 
 /** Uses the existing tenant filesystem boundary; callers persist the returned locator verbatim. */
@@ -34,6 +35,37 @@ public class DocumentFileStore {
             }
         }
         throw new IOException("Could not allocate an exclusive document object.");
+    }
+    /**
+     * Allocate an exclusive UUID object, durably register its locator, then copy upload bytes.
+     * The callback must commit its manifest independently; it runs before opening the source.
+     * A registration failure can leave at most an empty placeholder if cleanup is unavailable.
+     */
+    public Path writeTracked(long tenant,long user,String validatedType,String bookName,String leaf,Path source,
+            Consumer<Path> register) throws IOException {
+        java.util.Objects.requireNonNull(register,"A durable storage-locator callback is required.");
+        paths.requireWritable(tenant);
+        Path folder=paths.documentDirectory(tenant,user,validatedType,bookName);
+        String safe=safeFilename(leaf);
+        for(int attempt=0;attempt<5;attempt++) {
+            Path output=folder.resolve(suffix(safe));boolean owned=false;
+            try {
+                var stream=Files.newOutputStream(output,StandardOpenOption.CREATE_NEW,StandardOpenOption.WRITE);owned=true;
+                try(stream) {
+                    Path locator=paths.requirePath(tenant,output);
+                    register.accept(locator);
+                    try(var input=Files.newInputStream(source)){input.transferTo(stream);}
+                    paths.requireWritable(tenant);
+                    return locator;
+                }
+            } catch(FileAlreadyExistsException collision) {
+                if(owned)Files.deleteIfExists(output);
+            } catch(IOException|RuntimeException failure) {
+                if(owned)try{Files.deleteIfExists(output);}catch(IOException cleanup){failure.addSuppressed(cleanup);}
+                throw failure;
+            }
+        }
+        throw new IOException("Could not allocate an exclusive tracked document object.");
     }
     public Path readable(long tenant,String locator) throws IOException {return paths.readableFile(tenant,locator);}
     public byte[] read(long tenant,String locator) throws IOException {

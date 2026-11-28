@@ -21,6 +21,16 @@ import org.springframework.transaction.annotation.Transactional;
 /** Existing confirmed local factors are honored; this change does not mandate or auto-enroll MFA. */
 @Service
 public class MfaService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.book.tools.ServiceToolAccess> toolAccess;
+
+    @org.springframework.ai.tool.annotation.Tool(name = "currentMfaStatus", description = "Report whether the signed-in user has a confirmed active local MFA factor. Does not return factor secrets, recovery codes or verification values.")
+    @Transactional(readOnly=true)
+    public boolean currentMfaStatus() {
+        var actor = toolAccess.getObject().require("GET", "/api/user/profile/details");
+        return jdbc.queryForObject("SELECT COUNT(*) FROM local_mfa_factors WHERE user_id=? AND status='ACTIVE' AND confirmed_at IS NOT NULL", Long.class, actor.userId()) > 0;
+    }
+
     private final JdbcTemplate jdbc;
     private final Clock clock;
     private final Environment environment;

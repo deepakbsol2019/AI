@@ -43,45 +43,45 @@ class SpreadsheetParserTests {
         }
     }
 
-    @Test void csvBomQuotesBlankDuplicateHeadersMultilineAndWiderDataRetainLogicalSourceRows() throws Exception {
+    @Test void csvBomQuotesDuplicateHeadersMultilineAndMissingValuesKeepPositions() throws Exception {
         Path source=temporary.resolve("quoted.csv");
-        Files.writeString(source,"\uFEFFName,Name,\r\n0012,\"Deepak, Kumar\",\"first\nsecond\",extra\r\n,,,\r\n0013,Ravi\r\n",StandardCharsets.UTF_8);
+        Files.writeString(source,"\uFEFFName,Name,Note,Extra\r\n0012,\"Deepak, Kumar\",\"first\nsecond\",extra\r\n,,,\r\n0013,,last\r\n0014\r\n",StandardCharsets.UTF_8);
         try(var input=parser.open(source,SpreadsheetFormat.CSV)) {
             var sheet=input.sheets().getFirst(); assertThat(sheet.sheetName()).isEqualTo("Sheet1");
-            assertThat(sheet.columnCount()).isEqualTo(4); assertThat(sheet.dataRowCount()).isEqualTo(2);
-            assertThat(sheet.header().entrySet()).containsExactly(Map.entry("column_1","Name"),Map.entry("column_2","Name"),Map.entry("column_3",""),Map.entry("column_4",""));
+            assertThat(sheet.columnCount()).isEqualTo(4); assertThat(sheet.dataRowCount()).isEqualTo(4);
+            assertThat(sheet.header().entrySet()).containsExactly(Map.entry("column_1","Name"),Map.entry("column_2","Name"),Map.entry("column_3","Note"),Map.entry("column_4","Extra"));
             var batches=new ArrayList<SpreadsheetRowBatch>(); input.forEachBatch(1,batches::add);
-            assertThat(batches.getFirst().rowNumbers()).containsExactly(2L,4L);
+            assertThat(batches.getFirst().rowNumbers()).containsExactly(2L,3L,4L,5L);
             assertThat(batches.getFirst().rows().getFirst()).containsEntry("column_1","0012").containsEntry("column_2","Deepak, Kumar").containsEntry("column_3","first\nsecond").containsEntry("column_4","extra");
-            assertThat(batches.getFirst().rows().getLast()).containsEntry("column_3","").containsEntry("column_4","");
+            assertThat(batches.getFirst().rows().get(1)).containsEntry("column_1",null).containsEntry("column_4",null);
+            assertThat(batches.getFirst().rows().get(2)).containsEntry("column_1","0013").containsEntry("column_2",null).containsEntry("column_3","last").containsEntry("column_4",null);
+            assertThat(batches.getFirst().rows().getLast()).containsEntry("column_2",null).containsEntry("column_3",null).containsEntry("column_4",null);
         }
     }
 
-    @Test void hiddenHeaderOnlyAndEmptyExcelSheetsRemainInOrderAndEmptySheetHasAValidArtifact() throws Exception {
+    @Test void hiddenHeaderOnlySheetsRemainInOrderAndMissingMiddleCellsRemainNull() throws Exception {
         Path source=temporary.resolve("sheets.xlsx");
         try(var workbook=new XSSFWorkbook()) {
             var first=workbook.createSheet("Employees"); var header=first.createRow(0);
-            header.createCell(0).setCellValue("Employee ID"); header.createCell(1).setCellValue("Employee ID");
-            var data=first.createRow(1); data.createCell(0).setCellValue("0012"); data.createCell(3).setCellValue("extra");
+            header.createCell(0).setCellValue("Employee ID"); header.createCell(1).setCellValue("Employee ID");header.createCell(2).setCellValue("Third");header.createCell(3).setCellValue("Fourth");
+            var data=first.createRow(1); data.createCell(0).setCellValue("0012"); data.createCell(3).setCellValue("last");
             first.createRow(2); first.createRow(4).createCell(0).setCellValue("0013");
-            workbook.createSheet("Header only").createRow(0).createCell(0).setCellValue("Header"); workbook.createSheet("Empty"); workbook.setSheetHidden(1,true); save(workbook,source);
+            workbook.createSheet("Header only").createRow(0).createCell(0).setCellValue("Header");workbook.setSheetHidden(1,true); save(workbook,source);
         }
         try(var input=parser.open(source,SpreadsheetFormat.XLSX)) {
-            assertThat(input.sheets()).extracting(SheetDescriptor::sheetName).containsExactly("Employees","Header only","Empty");
-            assertThat(input.sheets()).extracting(SheetDescriptor::dataRowCount).containsExactly(2L,0L,0L);
-            assertThat(input.sheets().getFirst().header()).containsEntry("column_4",""); assertThat(input.sheets().getLast().header()).isEmpty();
-            assertThat(input.sheets().getLast().columnCount()).isZero();
-            var rows=new ArrayList<SpreadsheetRowBatch>(); input.forEachBatch(1,rows::add); assertThat(rows.getFirst().rowNumbers()).containsExactly(2L,5L);
-            input.forEachBatch(2,ignored->fail("Header-only sheet must not submit a task.")); input.forEachBatch(3,ignored->fail("Empty sheet must not submit a task."));
-            Path empty=temporary.resolve("Empty.xlsx"); assertThat(input.extractSheet(3,empty)).isEqualTo(SpreadsheetFormat.XLSX);
-            try(var artifact=WorkbookFactory.create(empty.toFile())) { assertThat(artifact.getNumberOfSheets()).isEqualTo(1); assertThat(artifact.getSheetAt(0).getPhysicalNumberOfRows()).isZero(); }
+            assertThat(input.sheets()).extracting(SheetDescriptor::sheetName).containsExactly("Employees","Header only");
+            assertThat(input.sheets()).extracting(SheetDescriptor::dataRowCount).containsExactly(4L,0L);
+            assertThat(input.sheets().getFirst().columnCount()).isEqualTo(4);
+            var rows=new ArrayList<SpreadsheetRowBatch>(); input.forEachBatch(1,rows::add); assertThat(rows.getFirst().rowNumbers()).containsExactly(2L,3L,4L,5L);
+            assertThat(rows.getFirst().rows().getFirst()).containsEntry("column_2",null).containsEntry("column_3",null).containsEntry("column_4","last");
+            input.forEachBatch(2,ignored->fail("Header-only sheet must not submit a task."));
         }
     }
 
     @Test void cachedExcelTextAndStandaloneFormulaPolicyDoNotEvaluateExternalReferences() throws Exception {
         Path source=temporary.resolve("formulas.xlsx");
         try(var workbook=new XSSFWorkbook()) {
-            var first=workbook.createSheet("Data"); var other=workbook.createSheet("Other"); first.createRow(0).createCell(0).setCellValue("Values"); other.createRow(0).createCell(0).setCellValue(12);
+            var first=workbook.createSheet("Data"); var other=workbook.createSheet("Other"); var header=first.createRow(0);for(int i=0;i<6;i++)header.createCell(i).setCellValue("Values"+i); other.createRow(0).createCell(0).setCellValue(12);
             var row=first.createRow(1); var id=row.createCell(0); id.setCellValue(12); var idStyle=workbook.createCellStyle(); idStyle.setDataFormat(workbook.createDataFormat().getFormat("00000")); id.setCellStyle(idStyle);
             row.createCell(1).setCellValue(true); var date=row.createCell(2); date.setCellValue(LocalDate.of(2026,11,26)); var dateStyle=workbook.createCellStyle(); dateStyle.setDataFormat(workbook.createDataFormat().getFormat("yyyy-mm-dd")); date.setCellStyle(dateStyle);
             row.createCell(3).setCellFormula("A2*2"); row.getCell(3).setCellValue(24); row.createCell(4).setCellFormula("Other!A1"); row.getCell(4).setCellValue(12);
@@ -130,6 +130,58 @@ class SpreadsheetParserTests {
         Path source=temporary.resolve("uncalculated.xlsx");
         try(var workbook=new XSSFWorkbook()) { var cell=workbook.createSheet("Data").createRow(0).createCell(0); cell.setCellFormula("1+1"); if(cell.getCTCell().isSetV()) cell.getCTCell().unsetV(); save(workbook,source); }
         assertThatThrownBy(()->parser.open(source,SpreadsheetFormat.XLSX)).isInstanceOf(ResponseStatusException.class).hasMessageContaining("no saved formula result");
+    }
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"a,b,c", "a,b,", ",,"})
+    void csvExtraFieldsIncludingTrailingEmptyFieldsAreRejected(String data) throws Exception {
+        Path source=temporary.resolve("extra.csv");Files.writeString(source,"First,Second\n"+data+"\n");
+        assertThatThrownBy(()->parser.open(source,SpreadsheetFormat.CSV)).isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("row 2").hasMessageContaining("at most 2").hasMessageContaining("3 parsed fields");
+    }
+    @Test void validationReadsPastAnyUiPageAndStopsAtFirstInvalidRecord() throws Exception {
+        Path source=temporary.resolve("late.csv");Files.writeString(source,"One,Two\n"+"a,b\n".repeat(10001)+"a,b,\ninvalid,next,row,also\n");
+        assertThatThrownBy(()->parser.open(source,SpreadsheetFormat.CSV)).isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("row 10003").hasMessageContaining("3 parsed fields");
+    }
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"\n",",\n", "First,\n", "First,  ,Last\n"})
+    void csvHeadersMustHaveNonblankLabels(String csv) throws Exception {
+        Path source=temporary.resolve("header.csv");Files.writeString(source,csv);
+        assertThatThrownBy(()->parser.open(source,SpreadsheetFormat.CSV)).isInstanceOf(ResponseStatusException.class).hasMessageContaining("header");
+    }
+    @Test void xlsxFormattedEmptyCellsDoNotChangeHeaderWidthOrCreateExtraValues() throws Exception {
+        Path source=temporary.resolve("formatted.xlsx");
+        try(var workbook=new XSSFWorkbook()) {
+            var sheet=workbook.createSheet("Data");var header=sheet.createRow(0);header.createCell(0).setCellValue("One");header.createCell(1).setCellValue("Two");header.createCell(2).setCellValue("Three");
+            var style=workbook.createCellStyle();style.setFillForegroundColor(IndexedColors.YELLOW.getIndex());style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            header.createCell(100).setCellStyle(style);
+            var equal=sheet.createRow(1);equal.createCell(0).setCellValue("a");equal.createCell(1).setCellValue("b");equal.createCell(2).setCellValue("c");
+            var fewer=sheet.createRow(2);fewer.createCell(0).setCellValue("a");fewer.createCell(2).setCellValue("c");fewer.createCell(150).setCellStyle(style);save(workbook,source);
+        }
+        try(var input=parser.open(source,SpreadsheetFormat.XLSX)) {
+            assertThat(input.sheets().getFirst().columnCount()).isEqualTo(3);
+            var rows=new ArrayList<SpreadsheetRowBatch>();input.forEachBatch(1,rows::add);
+            assertThat(rows.getFirst().rows().getLast()).containsEntry("column_1","a").containsEntry("column_2",null).containsEntry("column_3","c");
+        }
+    }
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
+    void xlsxRejectsFarColumnValuesAndFormulasEvenWithEmptyResults(boolean formula) throws Exception {
+        Path source=temporary.resolve("extra.xlsx");
+        try(var workbook=new XSSFWorkbook()) {
+            var sheet=workbook.createSheet("Data");sheet.createRow(0).createCell(0).setCellValue("One");
+            var extra=sheet.createRow(1).createCell(10);
+            if(formula){extra.setCellFormula("\"\"");extra.setCellValue("");}else extra.setCellValue("extra");save(workbook,source);
+        }
+        assertThatThrownBy(()->parser.open(source,SpreadsheetFormat.XLSX)).isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("row 2").hasMessageContaining("at most 1").hasMessageContaining("column 11");
+    }
+    @Test void xlsxMissingHeaderAndEmptyWorkbookAreRejected() throws Exception {
+        for(boolean missing:List.of(false,true)) {
+            Path source=temporary.resolve("empty"+missing+".xlsx");
+            try(var workbook=new XSSFWorkbook()) {var sheet=workbook.createSheet("Data");if(missing)sheet.createRow(1).createCell(0).setCellValue("data");save(workbook,source);}
+            assertThatThrownBy(()->parser.open(source,SpreadsheetFormat.XLSX)).isInstanceOf(ResponseStatusException.class).hasMessageContaining("row 1: missing header");
+        }
     }
     @Test void standaloneExtractionPreservesThe1904DateSystemInsteadOfShiftingDatesFourYears() throws Exception {
         Path source=temporary.resolve("date1904.xlsx");

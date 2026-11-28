@@ -76,6 +76,8 @@ class DownloadServiceTests extends com.book.user.TenantAwareTest {
 
     @Test
     void fullBookOffsetDownloadsEveryOriginalPageWithoutGeneratingACover() throws Exception {
+        var uploadReceipt=new com.book.entity.BookUploadStatus();
+        uploadReceipt.setUploadedBy(999L);book.setBookUploadStatus(uploadReceipt);
         TopicDetails offset = stored(70L, book.getBookName() + "_offset", "STANDALONE", "SECOND");
         offset.setDetails(book.getBookName() + "_offset detail");
         offset.setStartPage(1);
@@ -85,7 +87,9 @@ class DownloadServiceTests extends com.book.user.TenantAwareTest {
         book.setTotalPages(2);
         when(topics.findAllByBookDetailsBookIdOrderByTopicIdAsc(1L)).thenReturn(List.of(offset));
 
-        assertThat(pageTexts(service.downloadBook(1L))).containsExactly("STANDALONE", "SECOND");
+        try(var scope=com.book.user.security.TenantContext.use(com.book.user.security.TenantContext.requireTenantId(),42L,false)) {
+            assertThat(pageTexts(service.downloadBook(1L))).containsExactly("STANDALONE", "SECOND");
+        }
         verifyNoInteractions(frontMatter);
     }
 
