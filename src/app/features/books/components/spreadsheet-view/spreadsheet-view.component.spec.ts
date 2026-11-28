@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { provideRouter, Router } from '@angular/router';
 import { of, Subject } from 'rxjs';
 import { AuthBoundaryService } from '../../../user/services/auth-boundary.service';
 import { BookDownloadService } from '../../data-access/book-download.service';
@@ -65,6 +66,7 @@ describe('Spreadsheet file and sheet views', () => {
     TestBed.configureTestingModule({
       imports: [SpreadsheetViewComponent],
       providers: [
+        provideRouter([]),
         { provide: SpreadsheetApiService, useValue: api },
         { provide: BookDownloadService, useValue: downloads },
       ],
@@ -218,6 +220,43 @@ describe('Spreadsheet file and sheet views', () => {
     expect(closed).toHaveBeenCalledOnce();
     expect(fixture.componentInstance.details()).toBeNull();
     expect(fixture.componentInstance.rows()).toBeNull();
+    fixture.destroy();
+  });
+
+  it.each(['CSV', 'XLSX'])(
+    'offers a routed full-page view for %s and preserves selected sheet and row page',
+    async (fileType) => {
+      const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+      const fixture = await create('file');
+      metadata.next({ ...detail, fileType });
+      await flush(fixture);
+      rows.next({ ...rowPage, number: 3 });
+      await flush(fixture);
+      (fixture.nativeElement.querySelector('.full-page-spreadsheet') as HTMLButtonElement).click();
+      expect(navigate).toHaveBeenCalledWith(['/spreadsheets', 101, 'view'], {
+        queryParams: { sheet: 201, row: 3 },
+      });
+      fixture.destroy();
+    },
+  );
+
+  it('uses the application page area without modal scroll locking and restores the requested sheet/page', async () => {
+    const modal = vi.spyOn(HTMLDialogElement.prototype, 'showModal');
+    const fixture = TestBed.createComponent(SpreadsheetViewComponent);
+    fixture.componentRef.setInput('file', file);
+    fixture.componentRef.setInput('pageView', true);
+    fixture.componentRef.setInput('initialSheetId', 202);
+    fixture.componentRef.setInput('initialRowPage', 2);
+    fixture.detectChanges();
+    await flush(fixture);
+    metadata.next(detail);
+    await flush(fixture);
+    expect(api.rows).toHaveBeenCalledExactlyOnceWith(101, 202, 2, 100);
+    expect(modal).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.querySelector('dialog').classList.contains('route-view')).toBe(
+      true,
+    );
+    expect(fixture.nativeElement.querySelector('.full-page-spreadsheet')).toBeNull();
     fixture.destroy();
   });
 });

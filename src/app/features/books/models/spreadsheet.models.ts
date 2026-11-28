@@ -33,7 +33,7 @@ export interface SpreadsheetPage {
 }
 
 export interface SpreadsheetRowsPage {
-  rows: Record<string, string>[];
+  rows: Record<string, string | null>[];
   rowNumbers: number[];
   number: number;
   size: number;

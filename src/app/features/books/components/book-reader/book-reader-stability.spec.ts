@@ -271,7 +271,7 @@ describe('reader stability and fullscreen controls', () => {
     }
   });
 
-  it('provides synchronized custom color pickers before, inside and after fullscreen without fetching or rasterizing again for colors', async () => {
+  it('retains externally selected colors without duplicating theme controls inside Full Page', async () => {
     await open();
     const select = fixture.nativeElement.querySelector('select') as HTMLSelectElement;
     select.value = 'colorful';
@@ -292,18 +292,19 @@ describe('reader stability and fullscreen controls', () => {
     expect(rasterCalls).toHaveLength(baseline);
     await reader.enterFullPage();
     await flush();
-    expect((fixture.nativeElement.querySelector('select') as HTMLSelectElement).value).toBe(
-      'colorful',
-    );
+    expect(fixture.nativeElement.querySelector('select')).toBeNull();
     pickers = fixture.nativeElement.querySelectorAll('input[type="color"]');
-    expect(Array.from(pickers, (picker) => picker.value)).toEqual(['#f5e7c6', '#213b67']);
-    pickers[1].value = '#173f22';
-    pickers[1].dispatchEvent(new Event('input', { bubbles: true }));
+    expect(pickers).toHaveLength(0);
+    expect(reader.backgroundColor()).toBe('#f5e7c6');
+    expect(reader.textColor()).toBe('#213b67');
     await flush();
     await reader.exitFullPage();
     await flush();
     expect(reader.pageTheme()).toBe('colorful');
-    expect(reader.textColor()).toBe('#173f22');
+    expect(reader.textColor()).toBe('#213b67');
+    expect((fixture.nativeElement.querySelector('select') as HTMLSelectElement).value).toBe(
+      'colorful',
+    );
     expect(api.readBook).toHaveBeenCalledTimes(1);
     expect(engine.load).toHaveBeenCalledTimes(1);
   });
@@ -407,8 +408,10 @@ describe('reader stability and fullscreen controls', () => {
       animate.mockClear();
       await reader.navigate(-1);
       await flush();
-      const backward = animate.mock.calls.find(([frames]) =>
-        frames.some((frame) => /rotateY\([1-9]/.test(String(frame['transform']))),
+      const backward = animate.mock.calls.find(
+        ([frames]) =>
+          frames[0]['transform'] === 'rotateY(-90deg)' &&
+          frames.at(-1)?.['transform'] === 'rotateY(0deg)',
       );
       expect(backward).toBeDefined();
       expect(Number(backward![1].duration)).toBeGreaterThanOrEqual(450);
@@ -416,6 +419,82 @@ describe('reader stability and fullscreen controls', () => {
     } finally {
       if (original) Object.defineProperty(HTMLElement.prototype, 'animate', original);
       else Reflect.deleteProperty(HTMLElement.prototype, 'animate');
+    }
+  });
+
+  it('turns double pages around the shared spine with different front/back pages in both directions and a blank odd slot', async () => {
+    const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'animate');
+    const calls: { element: HTMLElement; frames: Keyframe[]; cancel: ReturnType<typeof vi.fn> }[] =
+      [];
+    Object.defineProperty(HTMLElement.prototype, 'animate', {
+      configurable: true,
+      value(this: HTMLElement, frames: Keyframe[]) {
+        const cancel = vi.fn();
+        calls.push({ element: this, frames, cancel });
+        return { cancel, finished: new Promise(() => {}) } as unknown as Animation;
+      },
+    });
+    try {
+      Object.defineProperty(pdf, 'pageCount', { value: 3 });
+      await open();
+      await reader.setPageMode('double');
+      await fullPages();
+      calls.length = 0;
+      await reader.navigate(1);
+      await flush();
+      const next = calls.at(-1)!;
+      expect(reader.displayedPages()).toEqual([3]);
+      expect(next.element.classList.contains('turning-leaf')).toBe(true);
+      expect(next.element.style.transformOrigin).toBe('left center');
+      expect(next.frames.at(-1)?.['transform']).toBe('rotateY(-180deg)');
+      expect(next.element.querySelector('.turn-front')).not.toBeNull();
+      expect(next.element.querySelector('.turn-back')).not.toBeNull();
+      expect(
+        (fixture.nativeElement.querySelector('.reader-blank-page') as HTMLElement).hidden,
+      ).toBe(false);
+      await reader.navigate(-1);
+      await flush();
+      const previous = calls.at(-1)!;
+      expect(next.cancel).toHaveBeenCalled();
+      expect(reader.displayedPages()).toEqual([1, 2]);
+      expect(previous.element.style.transformOrigin).toBe('right center');
+      expect(previous.frames.at(-1)?.['transform']).toBe('rotateY(180deg)');
+      const backFace = previous.element.querySelector('.turn-back') as HTMLCanvasElement;
+      const liveRight = fixture.nativeElement.querySelectorAll('.book-spread > canvas')[1];
+      expect(contexts.get(backFace)?.drawImage).toHaveBeenCalledWith(liveRight, 0, 0);
+      expect(fixture.nativeElement.querySelectorAll('.turn-layer')).toHaveLength(1);
+      await reader.setPageMode('single');
+      await flush();
+      expect(fixture.nativeElement.querySelector('.turn-layer')).toBeNull();
+      expect(reader.pageNumber()).toBe(2);
+    } finally {
+      if (original) Object.defineProperty(HTMLElement.prototype, 'animate', original);
+      else Reflect.deleteProperty(HTMLElement.prototype, 'animate');
+    }
+  });
+
+  it('commits pages without a turn overlay when reduced motion is requested', async () => {
+    const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'animate');
+    const media = Object.getOwnPropertyDescriptor(window, 'matchMedia');
+    const animate = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, 'animate', { configurable: true, value: animate });
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: () => ({ matches: true }),
+    });
+    try {
+      await open();
+      await fullPages();
+      await reader.navigate(1);
+      await flush();
+      expect(reader.pageNumber()).toBe(2);
+      expect(animate).not.toHaveBeenCalled();
+      expect(fixture.nativeElement.querySelector('.turn-layer')).toBeNull();
+    } finally {
+      if (original) Object.defineProperty(HTMLElement.prototype, 'animate', original);
+      else Reflect.deleteProperty(HTMLElement.prototype, 'animate');
+      if (media) Object.defineProperty(window, 'matchMedia', media);
+      else Reflect.deleteProperty(window, 'matchMedia');
     }
   });
 });

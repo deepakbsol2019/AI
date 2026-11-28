@@ -1,6 +1,16 @@
 :host {
   display: block;
 }
+.ai-help-trigger {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  font-weight: 700;
+  flex-shrink: 0;
+}
 .site-header {
   background: var(--panel-background);
   text-shadow: var(--surface-text-shadow);

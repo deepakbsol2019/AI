@@ -1,0 +1,284 @@
+<app-application-layout [libraryControls]="false">
+  <main id="main-content" tabindex="-1" class="chat-page">
+    <header class="page-heading">
+      <div>
+        <h1>AI Help</h1>
+        <p>Your private chats are saved to your account.</p>
+      </div>
+      <a
+        class="btn btn-outline-primary"
+        routerLink="/"
+        aria-label="Close AI Help and return to Library"
+        >Close</a
+      >
+    </header>
+    <div class="chat-workspace">
+      <aside class="chat-sidebar" aria-label="Your chats">
+        <button
+          type="button"
+          class="btn btn-primary new-chat"
+          [disabled]="loading() || mutating() || selecting() || !!confirmation()"
+          (click)="create()"
+        >
+          + New chat
+        </button>
+        <nav aria-label="Chat pages">
+          @for (page of pages(); track page.pageId) {
+            <button
+              type="button"
+              class="chat-choice"
+              [class.selected]="selectedId() === page.pageId"
+              [attr.aria-current]="selectedId() === page.pageId ? 'page' : null"
+              [attr.aria-label]="'Open chat: ' + page.name"
+              [title]="page.name"
+              [disabled]="selecting() || mutating() || !!confirmation()"
+              (click)="selectPage(page)"
+            >
+              <span>{{ page.name }}</span>
+            </button>
+          }
+        </nav>
+      </aside>
+      <section
+        class="conversation"
+        [attr.aria-label]="selected()?.name || 'Conversation'"
+        [attr.aria-busy]="loading()"
+      >
+        @if (selected(); as page) {
+          <header class="conversation-heading">
+            <h2>{{ page.name }}</h2>
+            <div class="chat-actions" role="group" aria-label="Selected chat actions">
+              <button
+                type="button"
+                class="btn btn-outline-primary"
+                [disabled]="loading() || mutating() || !!confirmation()"
+                (click)="beginRename()"
+              >
+                Rename
+              </button>
+              <button
+                type="button"
+                class="btn btn-primary download-chat"
+                [disabled]="
+                  loading() ||
+                  mutating() ||
+                  !totalMessages() ||
+                  exporting().has(page.pageId) ||
+                  !!confirmation()
+                "
+                (click)="download()"
+              >
+                {{ exporting().has(page.pageId) ? 'Downloading…' : 'Download PDF' }}
+              </button>
+              <button
+                type="button"
+                class="btn btn-danger clean-chat"
+                [disabled]="
+                  loading() ||
+                  loadingOlder() ||
+                  mutating() ||
+                  sending().has(page.pageId) ||
+                  exporting().has(page.pageId) ||
+                  !totalMessages() ||
+                  !!confirmation()
+                "
+                (click)="ask('clean', $event)"
+              >
+                Clean
+              </button>
+              <button
+                type="button"
+                class="btn btn-danger delete-chat"
+                [disabled]="
+                  loading() ||
+                  loadingOlder() ||
+                  mutating() ||
+                  sending().has(page.pageId) ||
+                  exporting().has(page.pageId) ||
+                  !!confirmation()
+                "
+                (click)="ask('delete', $event)"
+              >
+                Delete
+              </button>
+            </div>
+          </header>
+          @if (renaming()) {
+            <form class="rename-chat" (ngSubmit)="rename()">
+              <label for="chat-name">Chat name</label
+              ><input
+                id="chat-name"
+                name="chatName"
+                [(ngModel)]="renameText"
+                maxlength="200"
+                [disabled]="mutating()"
+              />
+              <button
+                type="submit"
+                class="btn btn-primary"
+                [disabled]="mutating() || !renameText.trim()"
+              >
+                Save name
+              </button>
+              <button
+                type="button"
+                class="btn btn-outline-primary"
+                [disabled]="mutating()"
+                (click)="renaming.set(false)"
+              >
+                Cancel
+              </button>
+            </form>
+          }
+          @if (page.description) {
+            <p class="chat-details">{{ page.description }}</p>
+          }
+        }
+        @if (error() && !confirmation()) {
+          <p class="chat-error" role="alert">
+            {{ error() }}
+            <button
+              type="button"
+              class="btn btn-outline-primary btn-sm"
+              [disabled]="loading()"
+              (click)="load()"
+            >
+              Reload chats
+            </button>
+          </p>
+        }
+        @if (notice()) {
+          <p class="chat-notice" role="status">{{ notice() }}</p>
+        }
+        <div
+          class="message-list"
+          role="log"
+          aria-live="polite"
+          aria-relevant="additions"
+          aria-label="Selected chat conversation"
+        >
+          @if (loading()) {
+            <p role="status">Loading this chat…</p>
+          } @else {
+            @if (hasOlder()) {
+              <button
+                type="button"
+                class="btn btn-outline-primary older-messages"
+                [disabled]="loadingOlder() || !!confirmation()"
+                (click)="loadOlder()"
+              >
+                {{ loadingOlder() ? 'Loading…' : 'Load older messages' }}
+              </button>
+            }
+            @for (message of messages(); track message.messageId) {
+              <article class="chat-message" [class.user-message]="message.senderRole === 'USER'">
+                <strong>{{ message.senderRole === 'USER' ? 'You' : 'Assistant' }}</strong>
+                <p>{{ message.content }}</p>
+              </article>
+            } @empty {
+              <p class="empty-chat">
+                This chat has no messages. Send a message to begin. Empty chats have no PDF to
+                download.
+              </p>
+            }
+          }
+        </div>
+        <form class="chat-composer" (ngSubmit)="send()">
+          <label class="visually-hidden" for="ai-help-query">Your message</label>
+          <textarea
+            id="ai-help-query"
+            name="query"
+            [ngModel]="draft()"
+            (ngModelChange)="setDraft($event)"
+            placeholder="Type your message. Enter sends; Shift+Enter adds a line."
+            rows="2"
+            [disabled]="!selected() || loading() || mutating() || !!confirmation()"
+            (keydown)="composerKey($event)"
+          ></textarea>
+          <button
+            type="submit"
+            class="btn btn-primary send-chat"
+            [disabled]="
+              !selected() ||
+              loading() ||
+              mutating() ||
+              !draft().trim() ||
+              sending().has(selectedId()!) ||
+              !!confirmation()
+            "
+          >
+            {{ sending().has(selectedId()!) ? 'Sending…' : 'Send' }}
+          </button>
+        </form>
+        <p class="chat-note">
+          AI generation is not connected. Saved messages receive an acknowledgment, not an AI
+          answer.
+        </p>
+      </section>
+    </div>
+  </main>
+  @if (confirmation(); as action) {
+    <div class="chat-confirm-backdrop">
+      <section
+        #confirmDialog
+        class="chat-confirm"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="chat-confirm-title"
+        aria-describedby="chat-confirm-description"
+      >
+        <h2 id="chat-confirm-title">
+          {{ action.kind === 'clean' ? 'Clean this chat?' : 'Delete this chat?' }}
+        </h2>
+        <p id="chat-confirm-description">
+          @if (action.kind === 'clean') {
+            All messages in <strong>{{ action.name }}</strong> will be removed from the application
+            and cannot subsequently be downloaded for a report. The chat page, ID, and name will be
+            kept. Download the conversation first if you need a copy.
+          } @else {
+            The chat page <strong>{{ action.name }}</strong> and all its messages will be removed
+            from the application.
+          }
+        </p>
+        <p>Other chats and previously downloaded PDFs are unaffected.</p>
+        @if (error()) {
+          <p class="chat-error" role="alert">{{ error() }}</p>
+        }
+        <div class="confirmation-actions">
+          <button
+            type="button"
+            class="btn btn-outline-primary"
+            [disabled]="mutating()"
+            (click)="cancel()"
+          >
+            Cancel
+          </button>
+          @if (action.kind === 'clean') {
+            <button
+              type="button"
+              class="btn btn-primary"
+              [disabled]="mutating() || exporting().has(action.pageId)"
+              (click)="download(selected())"
+            >
+              {{ exporting().has(action.pageId) ? 'Downloading…' : 'Download PDF first' }}
+            </button>
+          }
+          <button
+            type="button"
+            class="btn btn-danger confirm-action"
+            [disabled]="mutating() || exporting().has(action.pageId)"
+            (click)="confirm()"
+          >
+            {{
+              mutating()
+                ? 'Working…'
+                : action.kind === 'clean'
+                  ? 'Remove all messages'
+                  : 'Delete chat and messages'
+            }}
+          </button>
+        </div>
+      </section>
+    </div>
+  }
+</app-application-layout>

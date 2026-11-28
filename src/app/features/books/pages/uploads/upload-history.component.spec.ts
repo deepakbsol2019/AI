@@ -28,9 +28,19 @@ describe('Persistent My Uploads history', () => {
     number: 0,
     size: 20,
   };
-  let api: { myUploads: ReturnType<typeof vi.fn>; uploadStatus: ReturnType<typeof vi.fn> };
+  let api: {
+    myUploads: ReturnType<typeof vi.fn>;
+    uploadStatus: ReturnType<typeof vi.fn>;
+    managedUploads: ReturnType<typeof vi.fn>;
+    managedUploadStatus: ReturnType<typeof vi.fn>;
+  };
   beforeEach(() => {
-    api = { myUploads: vi.fn(() => of(history)), uploadStatus: vi.fn(() => of(item)) };
+    api = {
+      myUploads: vi.fn(() => of(history)),
+      uploadStatus: vi.fn(() => of(item)),
+      managedUploads: vi.fn(() => of(history)),
+      managedUploadStatus: vi.fn(() => of(item)),
+    };
     TestBed.configureTestingModule({
       providers: [
         provideRouter([{ path: 'user/uploads', component: UploadHistoryComponent }]),
@@ -48,6 +58,20 @@ describe('Persistent My Uploads history', () => {
       element: harness.routeNativeElement!,
     };
   }
+  it('uses the role-scoped management API without changing My Uploads or download access', async () => {
+    api.managedUploads.mockReturnValue(
+      of({ ...history, content: [{ ...item, uploadedBy: 99, tenantId: 8 }] }),
+    );
+    const { component, harness, element } = await page('/user/uploads?scope=managed');
+    expect(api.managedUploads).toHaveBeenCalledWith(0, 20);
+    expect(api.myUploads).not.toHaveBeenCalled();
+    expect(element.textContent).toContain('User 99 · Tenant 8');
+    await component.refreshRow(41);
+    expect(api.managedUploadStatus).toHaveBeenCalledWith(41);
+    expect(api.uploadStatus).not.toHaveBeenCalled();
+    await harness.navigateByUrl('/user/uploads');
+    expect(api.myUploads).toHaveBeenCalledWith(0, 20);
+  });
   it('loads server history without needing a remembered receipt and displays actual uploader, date and state', async () => {
     const { element } = await page();
     expect(api.myUploads).toHaveBeenCalledWith(0, 20);
@@ -65,7 +89,11 @@ describe('Persistent My Uploads history', () => {
       'Current Status',
       'Failure / Processing Details',
       'Refresh Status',
+      'Delete',
     ]);
+    expect((element.querySelector('app-delete-upload button') as HTMLButtonElement).disabled).toBe(
+      true,
+    );
   });
   it('opens a notification-linked Upload ID and refreshes its actual failure without leaving the page', async () => {
     const { component, harness, element } = await page('/user/uploads?uploadId=41');

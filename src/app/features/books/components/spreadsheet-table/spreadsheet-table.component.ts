@@ -3,10 +3,11 @@ import { ViewerDatePipe } from '../../../../shared/pipes/viewer-date.pipe';
 import { BookDownloadService } from '../../data-access/book-download.service';
 import { SpreadsheetApiService } from '../../data-access/spreadsheet-api.service';
 import { SpreadsheetFile } from '../../models/spreadsheet.models';
+import { DeleteUploadComponent } from '../delete-upload/delete-upload.component';
 
 @Component({
   selector: 'app-spreadsheet-table',
-  imports: [ViewerDatePipe],
+  imports: [ViewerDatePipe, DeleteUploadComponent],
   template: `<table class="table align-middle mb-0">
     <caption class="visually-hidden">
       Completed CSV and Excel files. Download the original file or view its worksheets.
@@ -44,6 +45,7 @@ import { SpreadsheetFile } from '../../models/spreadsheet.models';
               <button type="button" class="btn btn-primary btn-sm" (click)="viewSheets.emit(file)">
                 View Sheet
               </button>
+              <app-delete-upload kind="spreadsheets" [fileId]="file.fileId" [filename]="file.fileName" (deleted)="deleted.emit()" />
             </div>
           </td>
         </tr>
@@ -94,6 +96,7 @@ export class SpreadsheetTableComponent {
   readonly busy = input(false);
   readonly viewFile = output<SpreadsheetFile>();
   readonly viewSheets = output<SpreadsheetFile>();
+  readonly deleted = output<void>();
   readonly downloads = inject(BookDownloadService);
   private readonly api = inject(SpreadsheetApiService);
   downloadFile(file: SpreadsheetFile): void {

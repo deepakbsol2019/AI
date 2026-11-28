@@ -54,6 +54,15 @@ export class BooksApiService {
     });
   }
 
+  managedUploads(page = 0, size = 20): Observable<UploadHistoryPage> {
+    return this.http.get<UploadHistoryPage>(`${this.baseUrl}/files/manage`, {
+      params: new HttpParams().set('page', page).set('size', size),
+    });
+  }
+  managedUploadStatus(id: number): Observable<UploadStatus> {
+    return this.http.get<UploadStatus>(`${this.baseUrl}/files/manage/${id}`);
+  }
+
   downloadBook(bookId: number): Observable<HttpResponse<Blob>> {
     return this.http.get(`${this.baseUrl}/download/book-download`, {
       params: { bookId },

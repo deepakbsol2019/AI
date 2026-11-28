@@ -38,6 +38,15 @@
       >
     </a>
     <div class="header-actions">
+      @if (sidebarAvailable()) {
+        <a
+          class="btn btn-primary ai-help-trigger"
+          routerLink="/ai-help"
+          aria-label="AI Help"
+          title="Open AI Help"
+          >AI</a
+        >
+      }
       @if (libraryControls()) {
         <div class="section-restores" role="group" aria-label="Restore minimized sections">
           <button

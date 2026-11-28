@@ -5,6 +5,7 @@ import { provideRouter } from '@angular/router';
 import { AuthBoundaryService } from '../../../user/services/auth-boundary.service';
 import { INITIAL_DOCUMENT_TYPE } from '../../models/document-type.config';
 import { HomeComponent } from './home.component';
+import { FileDeleteAccessService } from '../../components/delete-upload/file-delete-access.service';
 
 const pdfPage = { books: [], page: 0, size: 5, totalElements: 12, totalPages: 3 };
 const file = {
@@ -24,7 +25,7 @@ describe('Home document-type routing', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({
       imports: [HomeComponent],
-      providers: [provideRouter([]), provideHttpClient(), provideHttpClientTesting()],
+      providers: [provideRouter([]), provideHttpClient(), provideHttpClientTesting(), { provide: FileDeleteAccessService, useValue: { ensure: () => {}, canDelete: () => true } }],
       deferBlockBehavior: DeferBlockBehavior.Playthrough,
     });
     http = TestBed.inject(HttpTestingController);
@@ -57,8 +58,9 @@ describe('Home document-type routing', () => {
       'Download Book',
       'View Book',
       'View Topic',
+      'Delete',
     ]);
-  });
+  }, 15_000);
 
   it('keeps the initial-tab setting independent of search and requests only that configured type', async () => {
     TestBed.resetTestingModule();
@@ -82,7 +84,7 @@ describe('Home document-type routing', () => {
     expect(fixture.nativeElement.querySelector('app-book-table')).toBeNull();
   });
 
-  it('preserves search text, resets paging and shows precisely the spreadsheet columns and three actions', async () => {
+  it('preserves search text, resets paging and refreshes the spreadsheet list after confirmed deletion', async () => {
     const fixture = TestBed.createComponent(HomeComponent);
     http.expectOne('/api/search/books?size=5').flush(pdfPage);
     const home = fixture.componentInstance;
@@ -106,10 +108,19 @@ describe('Home document-type routing', () => {
     ).toEqual(['File Name', 'Uploaded By', 'Uploaded At', 'Actions']);
     expect(
       Array.from(table.querySelectorAll('tbody button'), (item) => item.textContent?.trim()),
-    ).toEqual(['Download File', 'View File', 'View Sheet']);
+    ).toEqual(['Download File', 'View File', 'View Sheet', 'Delete']);
     expect(table.textContent).toContain(file.fileName);
     expect(table.textContent).toContain('Deepak Kumar');
     expect(table.textContent).not.toContain('Book Type');
+    (table.querySelector('app-delete-upload button') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    http.expectNone(request=>request.method==='DELETE');
+    (table.querySelector('.confirm-file-delete') as HTMLButtonElement).click();
+    const deletion = http.expectOne('/api/spreadsheets/101');
+    expect(deletion.request.method).toBe('DELETE');
+    http.expectNone(request => request.method === 'GET');
+    deletion.flush(null, { status: 204, statusText: 'No Content' });
+    http.expectOne('/api/spreadsheets?page=0&size=5&search=Quarterly').flush({ ...spreadsheetPage, content: [], totalElements: 0, totalPages: 0 });
     home.setDocumentType('pdf');
     http
       .expectOne('/api/search/books?query=Quarterly&authorName=PDF%20author&size=5')

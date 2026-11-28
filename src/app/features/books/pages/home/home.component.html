@@ -134,6 +134,7 @@
                 (viewBook)="viewBook($event)"
                 (viewTopics)="viewTopics($event)"
                 (metadataSaved)="onMetadataSaved($event)"
+                  (deleted)="reload(true)"
               />
             } @placeholder {
               <div class="section-placeholder" role="status">Opening the collection…</div>
@@ -148,6 +149,7 @@
               [busy]="loading()"
               (viewFile)="openSpreadsheet($event, 'file')"
               (viewSheets)="openSpreadsheet($event, 'sheets')"
+                (deleted)="reload(true)"
             />
           }
         </div>

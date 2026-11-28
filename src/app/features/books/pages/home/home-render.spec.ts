@@ -105,7 +105,7 @@ describe('Home rendered integration', () => {
     const search = scrollRegion.querySelector('app-book-search') as HTMLElement;
     const table = scrollRegion.querySelector('app-book-table') as HTMLElement;
     expect(search.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(element.querySelectorAll('app-book-table thead th')).toHaveLength(7);
+    expect(element.querySelectorAll('app-book-table thead th')).toHaveLength(8);
     expect(
       element.querySelector('app-book-table .type-cell .truncated-value')?.textContent?.trim(),
     ).toBe('Programming');

@@ -15,10 +15,12 @@
   max-width: 100%;
 }
 .metadata-value {
-  flex: 1;
+  flex: 1 1 0;
+  width: 0;
   min-width: 0;
   max-width: 100%;
   white-space: inherit;
+  overflow: hidden;
 }
 .description-field .metadata-value {
   white-space: pre-line;
@@ -28,7 +30,8 @@
   flex-wrap: nowrap;
   align-items: center;
   gap: 0.25rem;
-  flex: 1;
+  flex: 1 1 0;
+  width: 0;
   min-width: 0;
   max-width: 100%;
 }
@@ -124,6 +127,7 @@
   gap: 0.6rem;
   flex: none;
   padding-top: 0.8rem;
+  flex-wrap: wrap;
 }
 @media (max-width: 600px) {
   .description-editor {

@@ -1,6 +1,8 @@
 <dialog
   #sheetDialog
   class="spreadsheet-dialog"
+  [class.route-view]="pageView()"
+  [open]="pageView()"
   [class.file-preview]="activeSheet() !== null"
   aria-labelledby="spreadsheet-title"
   (close)="close()"
@@ -13,11 +15,13 @@
         <p class="eyebrow">
           {{ mode() === 'sheets' && !activeSheet() ? 'WORKSHEETS' : 'SPREADSHEET VIEW' }}
         </p>
-        <h2 id="spreadsheet-title">{{ file().fileName }}</h2>
+        <h2 id="spreadsheet-title" [title]="displayFile().fileName">
+          {{ displayFile().fileName }}
+        </h2>
         <p class="small muted">
-          {{ file().createdByName || 'User ' + file().createdBy }} ·
-          {{ file().uploadedAt | viewerDate }} · {{ file().sheetCount }}
-          {{ file().sheetCount === 1 ? 'sheet' : 'sheets' }}
+          {{ displayFile().createdByName || 'User ' + displayFile().createdBy }} ·
+          {{ displayFile().uploadedAt | viewerDate }} · {{ displayFile().sheetCount }}
+          {{ displayFile().sheetCount === 1 ? 'sheet' : 'sheets' }}
         </p>
       </div>
       <button
@@ -31,10 +35,22 @@
     </div>
     <div class="sheet-actions">
       <button type="button" class="btn btn-outline-primary" (click)="back()">Back</button>
+      @if (!pageView()) {
+        <button
+          type="button"
+          class="btn btn-primary full-page-spreadsheet"
+          [disabled]="loading() || !details()"
+          (click)="openFullPage()"
+        >
+          Full Page
+        </button>
+      }
       <button
         type="button"
         class="btn btn-primary"
-        [disabled]="downloads.isDocumentDownloading('file:' + file().fileId)"
+        [disabled]="
+          loading() || !details() || downloads.isDocumentDownloading('file:' + file().fileId)
+        "
         (click)="downloadFile()"
       >
         Download File
@@ -105,7 +121,7 @@
           role="region"
           [attr.aria-label]="sheet.sheetName + ' preview'"
         >
-          <table class="table table-bordered table-sm">
+          <table class="table table-bordered table-sm" [style.width]="tableWidth()">
             <thead>
               <tr>
                 <th scope="col">Source row</th>
@@ -116,7 +132,9 @@
                       sheet.header[column] || 'Column ' + (index + 1) + ', blank header'
                     "
                   >
-                    {{ sheet.header[column] }}
+                    <span class="cell-content" tabindex="0" [title]="sheet.header[column]">{{
+                      sheet.header[column]
+                    }}</span>
                   </th>
                 }
               </tr>
@@ -126,7 +144,11 @@
                 <tr>
                   <th scope="row">{{ rows()!.rowNumbers[index] }}</th>
                   @for (column of columns(); track column) {
-                    <td>{{ row[column] }}</td>
+                    <td>
+                      <span class="cell-content" tabindex="0" [title]="row[column] || ''">{{
+                        row[column]
+                      }}</span>
+                    </td>
                   }
                 </tr>
               } @empty {

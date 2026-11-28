@@ -22,7 +22,7 @@
       </filter>
     </defs>
   </svg>
-  <ng-template #appearanceControls>
+  <ng-template #zoomControls>
     <div class="control-group zoom-controls" aria-label="Page zoom">
       <button
         type="button"
@@ -52,6 +52,9 @@
         {{ fullPage() ? 'Fit page' : 'Fit width' }}
       </button>
     </div>
+  </ng-template>
+  <ng-template #appearanceControls>
+    <ng-container [ngTemplateOutlet]="zoomControls" />
     <div class="color-control">
       <label for="reader-color-mode">Mode</label>
       <select id="reader-color-mode" [value]="pageTheme()" (change)="changeTheme($event)">
@@ -153,10 +156,6 @@
         <ng-container [ngTemplateOutlet]="appearanceControls" />
       </div>
     </header>
-  } @else {
-    <div class="reader-toolbar full-reader-appearance" aria-label="Fullscreen reading appearance">
-      <ng-container [ngTemplateOutlet]="appearanceControls" />
-    </div>
   }
   <section
     #pageViewport
@@ -194,6 +193,7 @@
       #bookSurface
       class="book-spread"
       [class.facing-pages]="displayedPages().length === 2"
+      [class.double-page-layout]="pageMode() === 'double'"
       [class.showing-cover]="fullPage() && displayStage() !== 'pages'"
     >
       <section
@@ -237,6 +237,18 @@
         [attr.aria-label]="title() + ', page ' + displayedPages()[1] + ' of ' + pageCount()"
         >Your browser does not support PDF canvas rendering.</canvas
       >
+      <div
+        class="reader-blank-page"
+        aria-hidden="true"
+        [hidden]="
+          pageMode() !== 'double' ||
+          displayedPages().length !== 1 ||
+          status() !== 'ready' ||
+          (fullPage() && displayStage() !== 'pages')
+        "
+        [style.width.px]="blankPageSize().width"
+        [style.height.px]="blankPageSize().height"
+      ></div>
     </div>
   </section>
   @if (fullPage()) {
@@ -257,16 +269,19 @@
       </div>
       <div class="controls-center">
         <span class="full-page-position" aria-live="polite">{{ pageLabel() }}</span>
-        <button
-          type="button"
-          class="reader-button full-page-mode"
-          aria-label="Single Page / Double Page"
-          [attr.aria-pressed]="pageMode() === 'double'"
-          [disabled]="rendering()"
-          (click)="setPageMode(pageMode() === 'single' ? 'double' : 'single')"
-        >
-          {{ pageMode() === 'single' ? 'Single Page' : 'Double Page' }}
-        </button>
+        <div class="mode-zoom-controls">
+          <button
+            type="button"
+            class="reader-button full-page-mode"
+            aria-label="Single Page / Double Page"
+            [attr.aria-pressed]="pageMode() === 'double'"
+            [disabled]="rendering()"
+            (click)="setPageMode(pageMode() === 'single' ? 'double' : 'single')"
+          >
+            {{ pageMode() === 'single' ? 'Single Page' : 'Double Page' }}
+          </button>
+          <ng-container [ngTemplateOutlet]="zoomControls" />
+        </div>
       </div>
       <div class="controls-right">
         <button

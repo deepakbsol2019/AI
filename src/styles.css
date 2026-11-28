@@ -174,6 +174,30 @@ a {
   padding: 0.4rem 0.75rem;
   font-size: 0.76rem;
 }
+/* Destructive intent must survive the shared solid-blue button theme. */
+.btn.btn-danger:not(:disabled),
+.btn.btn-outline-danger:not(:disabled) {
+  color: #fff !important;
+  background: #b42332 !important;
+  border-color: #b42332 !important;
+}
+:is(.btn.btn-danger, .btn.btn-outline-danger):not(:disabled):is(:hover, :active, .active) {
+  color: #fff !important;
+  background: #861b27 !important;
+  border-color: #861b27 !important;
+}
+/* Shrink text containers, never let long labels force adjacent controls out of place. */
+app-application-layout, main, section, article, form, fieldset {
+  min-width: 0;
+}
+.form-control, .form-select, textarea { max-width: 100%; }
+.table-responsive { max-width: 100%; overscroll-behavior: contain; }
+td, th { overflow-wrap: anywhere; }
+dialog { max-width: calc(100vw - 1rem); }
+@media (max-width: 600px) {
+  .btn { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+  .pagination { flex-wrap: wrap; gap: .25rem; }
+}
 .form-label {
   color: var(--ink);
   font-size: 0.77rem;

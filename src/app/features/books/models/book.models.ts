@@ -53,6 +53,7 @@ export interface BookSearchResponse {
 }
 
 export interface UploadStatus {
+  tenantId?: number;
   book_upload_id: number;
   status: 'inprogress' | 'Success' | 'failed';
   message: string;

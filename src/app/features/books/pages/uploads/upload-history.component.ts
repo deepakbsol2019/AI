@@ -7,17 +7,31 @@ import { UploadHistoryPage, UploadStatus, uploadState } from '../../models/book.
 import { ViewerDatePipe } from '../../../../shared/pipes/viewer-date.pipe';
 import { apiErrorMessage } from '../../../../shared/utils/api-error';
 import { AuthBoundaryService } from '../../../user/services/auth-boundary.service';
+import { DeleteUploadComponent } from '../../components/delete-upload/delete-upload.component';
 
 /** Durable server history; all ownership checks use the authenticated tenant and uploader. */
 @Component({
   selector: 'app-upload-history',
   standalone: true,
-  imports: [RouterLink, ViewerDatePipe],
+  imports: [RouterLink, ViewerDatePipe, DeleteUploadComponent],
   template: `
     <header class="history-heading">
-      <h1>My Uploads</h1>
+      <h1>{{ managed() ? 'Manage Uploads' : 'My Uploads' }}</h1>
       <a class="btn btn-outline-primary" routerLink="/">Back to Library</a>
     </header>
+    <nav class="history-actions" aria-label="Upload scope">
+      <a class="btn btn-primary" routerLink="/user/uploads">My Uploads</a>
+      <a class="btn btn-primary" routerLink="/user/uploads" [queryParams]="{ scope: 'managed' }"
+        >Files I can delete</a
+      >
+    </nav>
+    @if (managed()) {
+      <p role="note">
+        Super users can manage uploads across tenants; admins manage their tenant's uploads. Other
+        roles see their own uploads with delete permission. Download access remains unchanged in the
+        Library.
+      </p>
+    }
     <p>
       Your upload history remains available after you close this page or sign in again. Times use
       your current viewing timezone.
@@ -82,6 +96,7 @@ import { AuthBoundaryService } from '../../../user/services/auth-boundary.servic
             <th>Current Status</th>
             <th>Failure / Processing Details</th>
             <th>Refresh Status</th>
+            <th>Delete</th>
           </tr>
         </thead>
         <tbody>
@@ -96,7 +111,11 @@ import { AuthBoundaryService } from '../../../user/services/auth-boundary.servic
               <td>
                 <a
                   [routerLink]="['/user/uploads']"
-                  [queryParams]="{ uploadId: item.book_upload_id, page: pageIndex() }"
+                  [queryParams]="{
+                    uploadId: item.book_upload_id,
+                    page: pageIndex(),
+                    scope: managed() ? 'managed' : null,
+                  }"
                   >{{ item.book_upload_id }}</a
                 >
               </td>
@@ -121,10 +140,19 @@ import { AuthBoundaryService } from '../../../user/services/auth-boundary.servic
                   Refresh Status
                 </button>
               </td>
+              <td>
+                <app-delete-upload
+                  kind="uploads"
+                  [fileId]="item.book_upload_id"
+                  [filename]="item.fileName || item.bookName || 'upload'"
+                  [disabled]="state(item) === 'PENDING' || state(item) === 'PROCESSING'"
+                  (deleted)="uploadDeleted(item.book_upload_id)"
+                />
+              </td>
             </tr>
           } @empty {
             <tr>
-              <td colspan="7">
+              <td colspan="8">
                 {{ loading() ? 'Loading uploads…' : 'No uploads found for your account.' }}
               </td>
             </tr>
@@ -236,6 +264,7 @@ export class UploadHistoryComponent {
   private readonly destroy = inject(DestroyRef);
   private readonly boundary = inject(AuthBoundaryService);
   readonly history = signal<UploadHistoryPage | null>(null);
+  readonly managed = signal(false);
   readonly loading = signal(false);
   readonly error = signal<string | null>(null);
   readonly pageIndex = signal(0);
@@ -260,6 +289,7 @@ export class UploadHistoryComponent {
       this.rowLoading.set(null);
     });
     this.route.queryParamMap.pipe(takeUntilDestroyed()).subscribe((params) => {
+      this.managed.set(params.get('scope') === 'managed');
       this.selectedGeneration++;
       this.pageIndex.set(Math.max(0, Number.parseInt(params.get('page') || '0', 10) || 0));
       const supplied = params.get('uploadId'),
@@ -281,7 +311,9 @@ export class UploadHistoryComponent {
     }[uploadState(item)];
   }
   uploader(item: UploadStatus) {
-    return item.uploadedBy == null ? 'Not available' : `User ${item.uploadedBy}`;
+    return item.uploadedBy == null
+      ? 'Not available'
+      : `User ${item.uploadedBy}${item.tenantId ? ' · Tenant ' + item.tenantId : ''}`;
   }
   async refresh() {
     const generation = ++this.generation;
@@ -289,9 +321,10 @@ export class UploadHistoryComponent {
     this.error.set(null);
     try {
       const page = await firstValueFrom(
-        this.api
-          .myUploads(this.pageIndex(), 20)
-          .pipe(takeUntil(this.boundary.resets), takeUntilDestroyed(this.destroy)),
+        (this.managed()
+          ? this.api.managedUploads(this.pageIndex(), 20)
+          : this.api.myUploads(this.pageIndex(), 20)
+        ).pipe(takeUntil(this.boundary.resets), takeUntilDestroyed(this.destroy)),
       );
       if (generation === this.generation) this.history.set(page);
     } catch (error) {
@@ -309,9 +342,10 @@ export class UploadHistoryComponent {
     this.selectedError.set(null);
     try {
       const item = await firstValueFrom(
-        this.api
-          .uploadStatus(id)
-          .pipe(takeUntil(this.boundary.resets), takeUntilDestroyed(this.destroy)),
+        (this.managed() ? this.api.managedUploadStatus(id) : this.api.uploadStatus(id)).pipe(
+          takeUntil(this.boundary.resets),
+          takeUntilDestroyed(this.destroy),
+        ),
       );
       if (generation === this.selectedGeneration) this.selected.set(item);
     } catch (error) {
@@ -330,9 +364,10 @@ export class UploadHistoryComponent {
     this.error.set(null);
     try {
       const item = await firstValueFrom(
-        this.api
-          .uploadStatus(id)
-          .pipe(takeUntil(this.boundary.resets), takeUntilDestroyed(this.destroy)),
+        (this.managed() ? this.api.managedUploadStatus(id) : this.api.uploadStatus(id)).pipe(
+          takeUntil(this.boundary.resets),
+          takeUntilDestroyed(this.destroy),
+        ),
       );
       if (generation === this.generation) {
         this.history.update((page) =>
@@ -354,9 +389,22 @@ export class UploadHistoryComponent {
   changePage(delta: number) {
     void this.router.navigate(['/user/uploads'], {
       queryParams: {
+        ...(this.managed() ? { scope: 'managed' } : {}),
         page: Math.max(0, this.pageIndex() + delta),
         ...(this.selectedId() ? { uploadId: this.selectedId() } : {}),
       },
     });
+  }
+  uploadDeleted(id: number): void {
+    if (this.selectedId() === id) {
+      this.selectedGeneration++;
+      this.selectedId.set(null);
+      this.selected.set(null);
+      this.selectedError.set(null);
+      void this.router.navigate(['/user/uploads'], {
+        queryParams: { page: this.pageIndex(), ...(this.managed() ? { scope: 'managed' } : {}) },
+      });
+    }
+    void this.refresh();
   }
 }

@@ -16,6 +16,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Router } from '@angular/router';
 import { firstValueFrom, Subject, takeUntil } from 'rxjs';
 import { ViewerDatePipe } from '../../../../shared/pipes/viewer-date.pipe';
 import { NotificationOutletComponent } from '../../../../shared/ui/notification-outlet.component';
@@ -41,12 +42,16 @@ import {
 export class SpreadsheetViewComponent implements OnDestroy {
   readonly file = input.required<SpreadsheetFile>();
   readonly mode = input<'file' | 'sheets'>('file');
+  readonly pageView = input(false);
+  readonly initialSheetId = input<number | null>(null);
+  readonly initialRowPage = input(0);
   readonly closed = output<void>();
   readonly downloads = inject(BookDownloadService);
   private readonly api = inject(SpreadsheetApiService);
   private readonly boundary = inject(AuthBoundaryService);
   private readonly destroy = inject(DestroyRef);
   private readonly document = inject(DOCUMENT);
+  private readonly router = inject(Router, { optional: true });
   private readonly dialog = viewChild<ElementRef<HTMLDialogElement>>('sheetDialog');
   readonly details = signal<SpreadsheetDetails | null>(null);
   readonly loading = signal(true);
@@ -64,6 +69,8 @@ export class SpreadsheetViewComponent implements OnDestroy {
       (_, index) => `column_${index + 1}`,
     ),
   );
+  readonly displayFile = computed(() => this.details() || this.file());
+  readonly tableWidth = computed(() => `${Math.max(1, this.columns().length + 1) * 180}px`);
   private generation = 0;
   private rowGeneration = 0;
   private readonly cancelMetadata = new Subject<void>();
@@ -79,8 +86,10 @@ export class SpreadsheetViewComponent implements OnDestroy {
     this.boundary.resets.pipe(takeUntilDestroyed()).subscribe(() => this.close());
     afterNextRender(() => {
       if (this.finished) return;
-      this.releaseScroll = lockLibraryScroll(this.document);
-      this.dialog()?.nativeElement.showModal();
+      if (!this.pageView()) {
+        this.releaseScroll = lockLibraryScroll(this.document);
+        this.dialog()?.nativeElement.showModal();
+      }
     });
   }
 
@@ -109,8 +118,13 @@ export class SpreadsheetViewComponent implements OnDestroy {
         ...details,
         sheets: [...details.sheets].sort((a, b) => a.sheetIndex - b.sheetIndex),
       });
-      if (this.mode() === 'file' && this.details()!.sheets.length)
-        await this.viewSheet(this.details()!.sheets[0]);
+      if (this.mode() === 'file' && this.details()!.sheets.length) {
+        const selected =
+          this.details()!.sheets.find((sheet) => sheet.sheetId === this.initialSheetId()) ||
+          this.details()!.sheets[0];
+        this.activeSheetId.set(selected.sheetId);
+        await this.loadRows(this.initialRowPage());
+      }
     } catch (error) {
       const message = await apiErrorMessage(error);
       if (!this.finished && generation === this.generation) this.error.set(message);
@@ -170,7 +184,7 @@ export class SpreadsheetViewComponent implements OnDestroy {
   }
 
   downloadFile(): void {
-    const file = this.file();
+    const file = this.displayFile();
     this.downloads.downloadDocument(
       `file:${file.fileId}`,
       this.api.downloadFile(file.fileId),
@@ -179,7 +193,7 @@ export class SpreadsheetViewComponent implements OnDestroy {
   }
 
   downloadSheet(sheet: SpreadsheetSheet): void {
-    const file = this.file();
+    const file = this.displayFile();
     if (!this.details()?.sheets.some((item) => item.sheetId === sheet.sheetId)) return;
     const base = file.fileName.replace(/\.[^.]+$/, '');
     const extension = file.fileType === 'CSV' ? 'csv' : 'xlsx';
@@ -188,6 +202,13 @@ export class SpreadsheetViewComponent implements OnDestroy {
       this.api.downloadSheet(file.fileId, sheet.sheetId),
       `${base}_${sheet.sheetName}.${extension}`,
     );
+  }
+
+  openFullPage(): void {
+    if (this.pageView() || this.loading() || !this.details()) return;
+    void this.router?.navigate(['/spreadsheets', this.file().fileId, 'view'], {
+      queryParams: { sheet: this.activeSheetId(), row: this.rows()?.number || 0 },
+    });
   }
 
   close(): void {

@@ -41,6 +41,13 @@ import type {
   ReaderRequest,
 } from '../../models/reader.models';
 
+interface CapturedTurn {
+  direction: -1 | 1;
+  mode: ReaderPageMode;
+  front: HTMLCanvasElement;
+  fixed: HTMLCanvasElement | null;
+}
+
 @Component({
   selector: 'app-book-reader',
   imports: [IconComponent, NotificationOutletComponent, NgTemplateOutlet],
@@ -80,6 +87,7 @@ export class BookReaderComponent implements OnDestroy {
   readonly stage = signal<ReaderStage>('pages');
   readonly displayStage = signal<ReaderStage>('pages');
   readonly displayedPages = signal<readonly number[]>([1]);
+  readonly blankPageSize = signal({ width: 0, height: 0 });
   readonly soundEnabled = signal(false);
   readonly visiblePages = computed(() =>
     spreadPages(this.pageNumber(), this.pageCount(), this.pageMode()),
@@ -153,7 +161,7 @@ export class BookReaderComponent implements OnDestroy {
   private resizeObserver: ResizeObserver | null = null;
   private resizeTimer: ReturnType<typeof setTimeout> | undefined;
   private animation: Animation | null = null;
-  private turnSnapshot: HTMLCanvasElement | null = null;
+  private turnSnapshot: CapturedTurn | null = null;
   private lastRenderKey = '';
   private observedSize = '';
   private entryPage = 1;
@@ -178,6 +186,8 @@ export class BookReaderComponent implements OnDestroy {
           this.observedSize = size;
           clearTimeout(this.resizeTimer);
           this.resizeTimer = setTimeout(() => {
+            this.animation?.cancel();
+            this.clearTurn();
             if (this.pdf) void this.renderPage();
           }, 100);
         });
@@ -253,6 +263,8 @@ export class BookReaderComponent implements OnDestroy {
   }
   async enterFullPage(): Promise<void> {
     if (this.status() !== 'ready' || this.rendering() || this.fullPage()) return;
+    this.animation?.cancel();
+    this.clearTurn();
     this.entryPage = this.pageNumber();
     this.entryScroll = {
       top: this.viewport()?.nativeElement.scrollTop || 0,
@@ -278,6 +290,7 @@ export class BookReaderComponent implements OnDestroy {
     this.soundEnabled.set(false);
     this.sound.disable();
     this.animation?.cancel();
+    this.clearTurn();
     this.fullPage.set(false);
     this.stage.set('pages');
     if (!this.movedInFullPage) this.pageNumber.set(this.entryPage);
@@ -319,24 +332,76 @@ export class BookReaderComponent implements OnDestroy {
     }
     this.animation?.cancel();
     if (kind === 'turn' && this.turnSnapshot) {
-      const sheet = this.turnSnapshot;
-      element.appendChild(sheet);
-      sheet.style.transformOrigin = direction === 1 ? 'left center' : 'right center';
-      this.animation = sheet.animate(
-        [
+      const turn = this.turnSnapshot;
+      const layer = this.turnElement('div', 'turn-layer');
+      layer.setAttribute('aria-hidden', 'true');
+      const first = this.canvas()?.nativeElement;
+      const second = this.secondCanvas()?.nativeElement;
+      let sheet: HTMLElement;
+      let frames: Keyframe[];
+      if (turn.mode === 'double' && first) {
+        // Both directions share the seam between the two slots, including an odd last spread.
+        const spine = first.offsetLeft + this.canvasWidth(first) + 1;
+        layer.style.perspectiveOrigin = `${spine}px 50%`;
+        const backSource = direction === 1 ? first : second;
+        const leaf = this.turnElement('div', 'turning-leaf');
+        leaf.dataset['direction'] = direction === 1 ? 'next' : 'previous';
+        leaf.style.width = turn.front.style.width || `${turn.front.width}px`;
+        leaf.style.height = turn.front.style.height || `${turn.front.height}px`;
+        leaf.style.top = `${first.offsetTop}px`;
+        leaf.style.left = `${direction === 1 ? spine : spine - this.canvasWidth(turn.front)}px`;
+        leaf.style.transformOrigin = direction === 1 ? 'left center' : 'right center';
+        turn.front.className += ' turn-front';
+        const back =
+          backSource && (direction === 1 || this.displayedPages().length === 2)
+            ? this.copyCanvas(backSource)
+            : this.blankCanvas(turn.front);
+        back.className += ' turn-back';
+        for (const face of [turn.front, back]) {
+          face.style.left = '0';
+          face.style.top = '0';
+          face.style.width = '100%';
+          face.style.height = '100%';
+        }
+        leaf.append(turn.front, back);
+        if (turn.fixed) layer.appendChild(turn.fixed);
+        layer.appendChild(leaf);
+        sheet = leaf;
+        frames = [
+          { transform: 'rotateY(0deg)' },
+          { transform: `rotateY(${direction * -90}deg)`, offset: 0.5 },
+          { transform: `rotateY(${direction * -180}deg)` },
+        ];
+      } else if (direction === -1 && first) {
+        // Bring the previous page into the page box; never rotate the current page outwards.
+        layer.appendChild(turn.front);
+        sheet = this.copyCanvas(first);
+        sheet.className += ' turning-sheet incoming-previous';
+        sheet.style.left = `${first.offsetLeft}px`;
+        sheet.style.top = `${first.offsetTop}px`;
+        sheet.style.transformOrigin = 'left center';
+        layer.appendChild(sheet);
+        frames = [{ transform: 'rotateY(-90deg)' }, { transform: 'rotateY(0deg)' }];
+      } else {
+        // Preserve the established single-page Next motion.
+        sheet = turn.front;
+        sheet.style.transformOrigin = 'left center';
+        layer.appendChild(sheet);
+        frames = [
           { transform: 'perspective(1600px) rotateY(0deg)', opacity: 1 },
-          {
-            transform: `perspective(1600px) rotateY(${direction * -65}deg)`,
-            opacity: 1,
-            offset: 0.8,
-          },
-          { transform: `perspective(1600px) rotateY(${direction * -95}deg)`, opacity: 0 },
-        ],
-        { duration: 580, easing: 'cubic-bezier(.22,.61,.36,1)', fill: 'forwards' },
-      );
+          { transform: 'perspective(1600px) rotateY(-65deg)', opacity: 1, offset: 0.8 },
+          { transform: 'perspective(1600px) rotateY(-95deg)', opacity: 0 },
+        ];
+      }
+      element.appendChild(layer);
+      this.animation = sheet.animate(frames, {
+        duration: 580,
+        easing: 'cubic-bezier(.22,.61,.36,1)',
+        fill: 'forwards',
+      });
       void this.animation.finished?.then(
-        () => sheet.remove(),
-        () => sheet.remove(),
+        () => layer.remove(),
+        () => layer.remove(),
       );
       this.turnSnapshot = null;
       return;
@@ -354,28 +419,62 @@ export class BookReaderComponent implements OnDestroy {
   private captureTurn(direction: -1 | 1): void {
     this.animation?.cancel();
     this.clearTurn();
-    const source =
-      direction === 1 && this.displayedPages().length === 2
-        ? this.secondCanvas()?.nativeElement
-        : this.canvas()?.nativeElement;
+    const first = this.canvas()?.nativeElement;
+    const second = this.secondCanvas()?.nativeElement;
+    const source = direction === 1 && this.displayedPages().length === 2 ? second : first;
     if (!source || !source.width || !this.surface()?.nativeElement.animate) return;
-    const snapshot = this.document.createElement('canvas');
-    snapshot.width = source.width;
-    snapshot.height = source.height;
-    snapshot.getContext('2d')?.drawImage(source, 0, 0);
-    snapshot.className = `${source.className} turning-sheet`;
-    snapshot.style.cssText = source.style.cssText;
-    snapshot.style.left = `${source.offsetLeft}px`;
-    snapshot.style.top = `${source.offsetTop}px`;
-    snapshot.setAttribute('aria-hidden', 'true');
-    this.turnSnapshot = snapshot;
+    const fixedSource = this.pageMode() === 'double' ? (direction === 1 ? first : second) : null;
+    this.turnSnapshot = {
+      direction,
+      mode: this.pageMode(),
+      front: this.copyCanvas(source),
+      fixed:
+        fixedSource && (direction === 1 || this.displayedPages().length === 2)
+          ? this.copyCanvas(fixedSource)
+          : null,
+    };
+  }
+
+  private canvasWidth(canvas: HTMLCanvasElement): number {
+    return Number.parseFloat(canvas.style.width) || canvas.offsetWidth || canvas.width;
+  }
+
+  private turnElement<K extends keyof HTMLElementTagNameMap>(
+    tag: K,
+    className: string,
+  ): HTMLElementTagNameMap[K] {
+    const element = this.document.createElement(tag);
+    element.className = className;
+    // Manually created animation nodes need the same Angular style scope as the live pages.
+    for (const name of this.surface()?.nativeElement.getAttributeNames() || [])
+      if (name.startsWith('_ngcontent-')) element.setAttribute(name, '');
+    return element;
+  }
+
+  private copyCanvas(source: HTMLCanvasElement): HTMLCanvasElement {
+    const copy = this.turnElement('canvas', `${source.className} turning-sheet`);
+    copy.width = source.width;
+    copy.height = source.height;
+    copy.getContext('2d')?.drawImage(source, 0, 0);
+    copy.style.cssText = source.style.cssText;
+    copy.style.left = `${source.offsetLeft}px`;
+    copy.style.top = `${source.offsetTop}px`;
+    copy.setAttribute('aria-hidden', 'true');
+    return copy;
+  }
+
+  private blankCanvas(source: HTMLCanvasElement): HTMLCanvasElement {
+    const blank = this.turnElement('canvas', source.className);
+    blank.width = source.width;
+    blank.height = source.height;
+    blank.style.cssText = source.style.cssText;
+    return blank;
   }
 
   private clearTurn(): void {
-    this.turnSnapshot?.remove();
     this.turnSnapshot = null;
     this.surface()
-      ?.nativeElement.querySelectorAll('.turning-sheet')
+      ?.nativeElement.querySelectorAll('.turn-layer')
       .forEach((sheet) => sheet.remove());
   }
 
@@ -592,6 +691,10 @@ export class BookReaderComponent implements OnDestroy {
         contexts[index]!.drawImage(source, 0, 0);
       });
       this.displayedPages.set(numbers);
+      this.blankPageSize.set({
+        width: Number.parseFloat(targets[0]?.style.width || '0'),
+        height: Number.parseFloat(targets[0]?.style.height || '0'),
+      });
       this.displayStage.set('pages');
       this.lastRenderKey = key;
       this.observedSize = [viewportWidth, viewportHeight].join('x');
@@ -626,6 +729,8 @@ export class BookReaderComponent implements OnDestroy {
   }
 
   private releaseDocument(): void {
+    this.animation?.cancel();
+    this.clearTurn();
     ++this.renderVersion;
     this.lastRenderKey = '';
     this.http?.unsubscribe();

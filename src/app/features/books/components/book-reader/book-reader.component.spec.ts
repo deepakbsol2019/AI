@@ -311,7 +311,7 @@ describe('BookReaderComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('No PDF content returned');
   });
 
-  it('enters a separate covered book presentation with exactly five bottom controls and exits to the same reader position', async () => {
+  it('puts zoom beside the bottom page mode control and exits to the same reader position', async () => {
     const fixture = await create();
     books.next(response());
     await settle(fixture);
@@ -329,7 +329,10 @@ describe('BookReaderComponent', () => {
     expect(fixture.nativeElement.querySelector('.reader-footer')).toBeNull();
     expect(
       fixture.nativeElement.querySelector('.full-reader-controls').querySelectorAll('button'),
-    ).toHaveLength(5);
+    ).toHaveLength(8);
+    expect(fixture.nativeElement.querySelector('.full-reader-appearance')).toBeNull();
+    expect(fixture.nativeElement.querySelector('select')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.mode-zoom-controls .zoom-in')).not.toBeNull();
     expect(fixture.componentInstance.stage()).toBe('front');
     expect(fixture.nativeElement.querySelector('.front-cover h2').textContent).toContain(
       book.bookName,

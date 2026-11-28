@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { BookDownloadService } from '../../data-access/book-download.service';
@@ -28,6 +29,7 @@ describe('BookTableComponent', () => {
     TestBed.configureTestingModule({
       imports: [BookTableComponent],
       providers: [
+        provideRouter([]),
         provideHttpClient(),
         provideHttpClientTesting(),
         { provide: BookDownloadService, useValue: downloads },
@@ -53,11 +55,12 @@ describe('BookTableComponent', () => {
       'Download Book',
       'View Book',
       'View Topic',
+      'Delete',
     ]);
     expect(element.querySelector('tbody .type-cell .truncated-value')?.textContent?.trim()).toBe(
       'Reference',
     );
-    expect(element.querySelectorAll('tbody td')).toHaveLength(7);
+    expect(element.querySelectorAll('tbody td')).toHaveLength(8);
     (element.querySelector('tbody .btn-outline-primary') as HTMLButtonElement).click();
     expect(downloads.downloadBook).toHaveBeenCalledWith(selectedBook);
     (element.querySelector('tbody .view-button') as HTMLButtonElement).click();
@@ -94,7 +97,7 @@ describe('BookTableComponent', () => {
     const element = fixture.nativeElement as HTMLElement;
     expect(element.textContent).toContain('Finding books');
     expect(element.querySelector('.book-scroll-area')?.classList.contains('no-books')).toBe(true);
-    expect(element.querySelector('tbody td')?.getAttribute('colspan')).toBe('7');
+    expect(element.querySelector('tbody td')?.getAttribute('colspan')).toBe('8');
     expect(element.textContent).not.toContain('No matching books');
     fixture.componentRef.setInput('busy', false);
     fixture.detectChanges();

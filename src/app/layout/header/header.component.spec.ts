@@ -11,6 +11,18 @@ describe('Library header controls', () => {
     }),
   );
 
+  it('exposes AI Help to signed-in superadmins even outside the library controls', () => {
+    const fixture = TestBed.createComponent(HeaderComponent);
+    fixture.componentRef.setInput('sidebarAvailable', true);
+    fixture.componentRef.setInput('libraryControls', false);
+    fixture.componentRef.setInput('profileName', 'Superadmin');
+    fixture.detectChanges();
+    const link = fixture.nativeElement.querySelector('a[aria-label="AI Help"]') as HTMLAnchorElement;
+    expect(link).not.toBeNull();
+    expect(link.getAttribute('href')).toBe('/ai-help');
+    expect(link.getAttribute('aria-disabled')).not.toBe('true');
+  });
+
   it('replaces the navigation toggle with a leftmost profile icon and compact identity tooltip', () => {
     const fixture = TestBed.createComponent(HeaderComponent);
     const toggled = vi.fn();
